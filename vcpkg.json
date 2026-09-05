@@ -1,14 +1,19 @@
 {
+  "name": "opengl-api",
   "version-string": "1.0.0",
   "builtin-baseline": "256acc64012b23a13041d8705805e1f23b43a024",
-  "dependencies" : [ {
-    "name" : "sdl3",
-    "version>=" : "3.4.4"
-  }, {
-    "name" : "glew",
-    "version>=" : "2.3.1"
-  }, {
-    "name" : "glm",
-    "version>=" : "1.0.3"
-  } ]
+  "dependencies": [
+    {
+      "name": "sdl3",
+      "version>=": "3.4.4"
+    },
+    {
+      "name": "glew",
+      "version>=": "2.3.1"
+    },
+    {
+      "name": "glm",
+      "version>=": "1.0.3"
+    }
+  ]
 }

@@ -60,7 +60,7 @@ void frame(int width, int height)
         #extension GL_NV_mesh_shader : require
 
         layout(local_size_x = 3) in;
-        layout(max_vertices=3, max_primitives=1) out;
+        layout(max_vertices=64, max_primitives=126) out;
         layout(triangles) out;
 
         out vec3 vertex[];
@@ -175,7 +175,11 @@ void frame(int width, int height)
     static auto pass1_depth = gl_create_texture_depth(width, height, nullptr);
 
     gl_pipeline_t pass1 = {.module = module, .color = pass1_color, .depth = pass1_depth, .clear_color = true, .clear_depth = true, .depth_test = true, .depth_func = GL_LEQUAL,  };
-    gl_begin_render(pass1);
+    gl_begin_meshlet(pass1);
+
+    gl_set_uniform_mat4("projMat", &projMat[0][0]);
+    gl_set_uniform_mat4("viewMat", &viewMat[0][0]);
+    gl_set_uniform_mat4("modelMat", &modelMat[0][0]);
 
     static auto meshlet = gl_create_meshlet_sphere(2, 64, 32);
     gl_bind_buffer(meshlet.vertex_vbo, {.binding = 0, .target = GL_SHADER_STORAGE_BUFFER,});
@@ -183,14 +187,10 @@ void frame(int width, int height)
     gl_bind_buffer(meshlet.uv_vbo, {.binding = 2, .target = GL_SHADER_STORAGE_BUFFER,});
     gl_bind_buffer(meshlet.index_vbo, {.binding = 3, .target = GL_SHADER_STORAGE_BUFFER,});
 
-    gl_set_uniform_mat4("projMat", &projMat[0][0]);
-    gl_set_uniform_mat4("viewMat", &viewMat[0][0]);
-    gl_set_uniform_mat4("modelMat", &modelMat[0][0]);
-
     gl_set_viewport(0, 0, width, height);
     gl_draw_mesh_task(meshlet.index_count / 3, 1, 1);
 
-    gl_end_render(pass1);
+    gl_end_meshlet(pass1);
 
     gl_draw_screen(width, height, pass1_color);
 }

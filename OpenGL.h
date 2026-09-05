@@ -138,17 +138,17 @@ void gl_destroy_texture(gl_texture_t& texture);
 void gl_bind_texture(gl_texture_t texture, gl_texture_bind_t desc = {});
 void gl_bind_texture_storage(gl_texture_t texture, gl_texture_storage_bind_t desc = {});
 
-gl_texture_t gl_image_2_texture(gl_image_t image);
-gl_image_t gl_texture_2_image(gl_texture_t texture, void* buffer, size_t length);
-
 gl_sampler_t gl_create_sampler(GLenum min_filter, GLenum mag_filter, GLenum wrap_s, GLenum wrap_t, GLenum wrap_r);
 void gl_destroy_sampler(gl_sampler_t& sampler);
 void gl_bind_sampler(gl_sampler_t sampler, GLuint texture_unit);
 
+gl_texture_t gl_image_2_texture(gl_image_t image);
+gl_image_t gl_texture_2_image(gl_texture_t texture, void* buffer, size_t length);
+
 gl_module_t gl_create_module_compute(const char* comp_src);
 gl_module_t gl_create_module_graphics(const char* vert_src, const char* frag_src);
 gl_module_t gl_create_module_meshlet(const char* task_src, const char* mesh_src, const char* frag_src);
-void gl_destroy_module(gl_module_t& program);
+void gl_destroy_module(gl_module_t& module);
 
 void gl_set_uniform_int(const char* name, int32_t value);
 void gl_set_uniform_uint(const char* name, uint32_t value);
@@ -393,39 +393,6 @@ static void gl_bind_texture_storage(gl_texture_t texture, gl_texture_storage_bin
 
 // ====================================================================
 
-static gl_texture_t gl_image_2_texture(gl_image_t image)
-{
-    return gl_create_texture_color(image.width, image.height, image.pixels);
-}
-
-static gl_image_t gl_texture_2_image(gl_texture_t texture, void* buffer, size_t length)
-{
-    gl_image_t result = {};
-
-    if (texture.target == GL_TEXTURE_2D)
-    {
-        if (length < texture.width * texture.height * sizeof(uint32_t)) return result;
-
-        glBindTexture(texture.target, texture.handle);
-        glGetTexImage(
-            texture.target,
-            0,
-            texture.format,
-            GL_UNSIGNED_BYTE,
-            buffer
-        );
-        glBindTexture(texture.target, 0);
-        result.pixels = buffer;
-    }
-
-    result.width = texture.width;
-    result.height = texture.height;
-    result.format = texture.format;
-    return result;
-}
-
-// ====================================================================
-
 static gl_sampler_t gl_create_sampler(
     GLenum min_filter,      // 缩小过滤方式，如 GL_LINEAR_MIPMAP_LINEAR
     GLenum mag_filter,      // 放大过滤方式，如 GL_LINEAR
@@ -460,6 +427,39 @@ static void gl_bind_sampler(
     GLuint texture_unit)
 {
     glBindSampler(texture_unit, sampler.handle);
+}
+
+// ====================================================================
+
+static gl_texture_t gl_image_2_texture(gl_image_t image)
+{
+    return gl_create_texture_color(image.width, image.height, image.pixels);
+}
+
+static gl_image_t gl_texture_2_image(gl_texture_t texture, void* buffer, size_t length)
+{
+    gl_image_t result = {};
+
+    if (texture.target == GL_TEXTURE_2D)
+    {
+        if (length < texture.width * texture.height * sizeof(uint32_t)) return result;
+
+        glBindTexture(texture.target, texture.handle);
+        glGetTexImage(
+            texture.target,
+            0,
+            texture.format,
+            GL_UNSIGNED_BYTE,
+            buffer
+        );
+        glBindTexture(texture.target, 0);
+        result.pixels = buffer;
+    }
+
+    result.width = texture.width;
+    result.height = texture.height;
+    result.format = texture.format;
+    return result;
 }
 
 // ====================================================================
@@ -643,10 +643,10 @@ static gl_module_t gl_create_module_meshlet(
     return result;
 }
 
-static void gl_destroy_module(gl_module_t& program)
+static void gl_destroy_module(gl_module_t& module)
 {
-    glDeleteProgram(program.handle);
-    program.handle = 0;
+    glDeleteProgram(module.handle);
+    module.handle = 0;
 }
 
 static void gl_set_uniform_int(const char* name, int32_t value)
@@ -1039,9 +1039,8 @@ static void gl_draw_screen(int width, int height, gl_texture_t texture)
             final = texture(texture0, uv);
         }
     )";
-    static auto program = gl_create_module_graphics(VS, FS);
-
-    gl_pipeline_t pass = {.module = program,};
+    static auto module = gl_create_module_graphics(VS, FS);
+    gl_pipeline_t pass = {.module = module,};
     gl_begin_render(pass);
     gl_set_viewport(0, 0, width, height);
     gl_bind_texture(texture, {.binding = 0,});
