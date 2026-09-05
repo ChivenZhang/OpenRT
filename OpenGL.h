@@ -169,8 +169,8 @@ void gl_set_viewport(int32_t x, int32_t y, int32_t width, int32_t height);
 void gl_set_scissor(int32_t x, int32_t y, int32_t width, int32_t height);
 
 inline void (*gl_begin_meshlet)(gl_pipeline_t& pipeline) = gl_begin_render;
-void gl_draw_mesh_task(uint32_t groupX, uint32_t groupY, uint32_t groupZ);
 inline void (*gl_end_meshlet)(gl_pipeline_t& pipeline) = gl_end_render;
+void gl_draw_mesh_task(uint32_t groupX, uint32_t groupY, uint32_t groupZ);
 
 gl_mesh_t gl_create_mesh(const float* vertices, const float* normals, const float* uvs, size_t vertex_count, const unsigned int* indices, size_t index_count);
 void gl_destroy_mesh(gl_mesh_t& mesh);
