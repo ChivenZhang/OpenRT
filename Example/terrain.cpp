@@ -177,7 +177,7 @@ void frame(int width, int height)
     static auto pass1_depth = gl_create_texture_depth(width, height, nullptr);
 
     gl_pipeline_t pass1 = {.module = module, .color = pass1_color, .depth = pass1_depth, .clear_color = true, .clear_depth = true, .depth_test = true, .depth_func = GL_LEQUAL,  };
-    gl_begin_render(pass1);
+    gl_begin_meshlet(pass1);
 
     static auto meshlet = gl_create_meshlet_sphere(2, 64, 32);
     gl_bind_buffer(meshlet.vertex_vbo, {.binding = 0, .target = GL_SHADER_STORAGE_BUFFER,});
@@ -192,7 +192,7 @@ void frame(int width, int height)
     gl_set_viewport(0, 0, width, height);
     gl_draw_mesh_task(meshlet.index_count / 3, 1, 1);
 
-    gl_end_render(pass1);
+    gl_end_meshlet(pass1);
 
     gl_draw_screen(width, height, pass1_color);
 }
