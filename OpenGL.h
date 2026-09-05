@@ -772,29 +772,35 @@ static void gl_begin_render(gl_pipeline_t& pipeline)
         abort();
     }
 
+    glUseProgram(pipeline.module.handle);
+
     if (pipeline.color.handle || pipeline.depth.handle)
     {
         glGenFramebuffers(1, &pipeline.handle);
         glBindFramebuffer(GL_FRAMEBUFFER, pipeline.handle);
 
+        uint32_t width = 0, height = 0;
         if (pipeline.color.handle)
         {
             glBindTexture(GL_TEXTURE_2D, pipeline.color.handle);
             glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, pipeline.color.handle, 0);
+            width = std::max(width, pipeline.color.width);
+            height = std::max(height, pipeline.color.height);
         }
         if (pipeline.depth.handle)
         {
             glBindTexture(GL_TEXTURE_2D, pipeline.depth.handle);
             glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, pipeline.depth.handle, 0);
+            width = std::max(width, pipeline.depth.width);
+            height = std::max(height, pipeline.depth.height);
         }
         if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
         {
             fprintf(stderr, "Framebuffer not complete\n");
             abort();
         }
+        gl_set_viewport(0, 0, (int32_t)width, (int32_t)height);
     }
-
-    glUseProgram(pipeline.module.handle);
 
     glClearColor(pipeline.color_value.r, pipeline.color_value.g, pipeline.color_value.b, pipeline.color_value.a);
 
