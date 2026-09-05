@@ -14,7 +14,7 @@ else()
     link_directories(${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/lib)
 endif()
 
-add_executable(OpenGL main.cpp)
+add_executable(OpenGL Example/default.cpp)
 find_package(SDL3 CONFIG REQUIRED)
 target_link_libraries(OpenGL PRIVATE SDL3::SDL3)
 find_package(GLEW CONFIG REQUIRED)

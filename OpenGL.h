@@ -2,9 +2,196 @@
 #include <iostream>
 #include <GL/glew.h>
 
+/*
+   Do this:
+      #define OPENGL_IMPLEMENTATION
+   before you include this file in *one* C or C++ file to create the implementation.
+
+   // i.e. it should look like this:
+   #include ...
+   #define OPENGL_IMPLEMENTATION
+   #include "OpenGL.h"
+ */
+
 // ====================================================================
 
-inline void gl_hello_world()
+struct gl_buffer_t
+{
+    GLuint handle = 0;
+    size_t size = 0;
+    GLenum usage = GL_STATIC_DRAW;
+};
+
+struct gl_buffer_bind_t
+{
+    uint32_t binding = 0;
+    GLenum target = GL_UNIFORM_BUFFER;
+};
+
+struct gl_texture_t
+{
+    GLuint handle = 0;
+    uint32_t width = 0, height = 0;
+    GLenum target = GL_TEXTURE_2D;
+    GLenum format = GL_RGBA;
+    GLenum internal_format = GL_RGBA;
+};
+
+struct gl_texture_bind_t
+{
+    uint32_t binding = 0;
+    GLenum aspect_mode = GL_DEPTH_COMPONENT;
+};
+
+struct gl_texture_storage_bind_t
+{
+    uint32_t binding = 0;
+    uint32_t base_level = 0;
+    uint32_t base_layer = 0;
+    uint32_t level_count = 1;
+    uint32_t layer_count = 1;
+    GLenum access = GL_WRITE_ONLY;
+};
+
+struct gl_image_t
+{
+    void* pixels = nullptr;
+    uint32_t width = 0, height = 0;
+    GLenum format = GL_RGBA;
+};
+
+struct gl_sampler_t
+{
+    GLuint handle = 0;
+};
+
+struct gl_module_t
+{
+    GLuint handle = 0;
+};
+
+struct gl_pipeline_t
+{
+    GLuint handle = 0;
+    gl_module_t module;
+    gl_texture_t color;
+    gl_texture_t depth;
+    bool clear_color = false;
+    bool clear_depth = false;
+    bool clear_stencil = false;
+    bool depth_test = false;
+    bool depth_write = true;
+    bool scissor_test = false;
+    GLenum depth_func = GL_LESS;
+    GLenum cull_mode = GL_BACK;
+    GLenum front_face = GL_CCW;
+    GLenum fill_mode = GL_FILL;
+    struct
+    {
+        float r = 0, g = 0, b = 0, a = 0;
+    } color_value;
+    float depth_value = 1.0f;
+};
+
+struct gl_mesh_t
+{
+    GLuint handle = 0;
+
+    gl_buffer_t vertex_vbo;
+    gl_buffer_t normal_vbo;
+    gl_buffer_t uv_vbo;
+    gl_buffer_t index_vbo;
+
+    GLsizei vertex_count = 0;
+    GLsizei index_count = 0;
+    GLenum index_type = GL_UNSIGNED_INT;
+    GLenum primitive_type = GL_TRIANGLES;
+};
+
+struct gl_meshlet_t
+{
+    gl_buffer_t vertex_vbo;
+    gl_buffer_t normal_vbo;
+    gl_buffer_t uv_vbo;
+    gl_buffer_t index_vbo;
+
+    GLsizei vertex_count = 0;
+    GLsizei index_count = 0;
+    GLenum index_type = GL_UNSIGNED_INT;
+    GLenum primitive_type = GL_TRIANGLES;
+};
+
+// ====================================================================
+
+void gl_hello_world();
+
+gl_buffer_t gl_create_buffer(size_t size, GLenum usage = GL_STATIC_DRAW, const void* data = nullptr);
+void gl_destroy_buffer(gl_buffer_t buffer);
+void gl_bind_buffer(gl_buffer_t buffer, gl_buffer_bind_t desc = {});
+void gl_read_buffer(gl_buffer_t buffer, size_t offset, size_t size, void* data);
+void gl_write_buffer(gl_buffer_t buffer, size_t offset, size_t size, const void* data);
+
+gl_texture_t gl_create_texture_color(uint32_t width, uint32_t height, const void* data);
+gl_texture_t gl_create_texture_depth(int width, int height, const void* data);
+gl_texture_t gl_create_texture_depth_stencil(int width, int height, const void* data);
+void gl_destroy_texture(gl_texture_t& texture);
+void gl_bind_texture(gl_texture_t texture, gl_texture_bind_t desc = {});
+void gl_bind_texture_storage(gl_texture_t texture, gl_texture_storage_bind_t desc = {});
+
+gl_texture_t gl_image_2_texture(gl_image_t image);
+gl_image_t gl_texture_2_image(gl_texture_t texture, void* buffer, size_t length);
+
+gl_sampler_t gl_create_sampler(GLenum min_filter, GLenum mag_filter, GLenum wrap_s, GLenum wrap_t, GLenum wrap_r);
+void gl_destroy_sampler(gl_sampler_t& sampler);
+void gl_bind_sampler(gl_sampler_t sampler, GLuint texture_unit);
+
+gl_module_t gl_create_module_compute(const char* comp_src);
+gl_module_t gl_create_module_graphics(const char* vert_src, const char* frag_src);
+gl_module_t gl_create_module_meshlet(const char* task_src, const char* mesh_src, const char* frag_src);
+void gl_destroy_module(gl_module_t& program);
+
+void gl_set_uniform_int(const char* name, int32_t value);
+void gl_set_uniform_uint(const char* name, uint32_t value);
+void gl_set_uniform_float(const char* name, float value);
+void gl_set_uniform_vec2(const char* name, const float* value);
+void gl_set_uniform_vec3(const char* name, const float* value);
+void gl_set_uniform_vec4(const char* name, const float* value);
+void gl_set_uniform_mat3(const char* name, const float* value);
+void gl_set_uniform_mat4(const char* name, const float* value);
+
+void gl_begin_compute(gl_pipeline_t& pipeline);
+void gl_end_compute(gl_pipeline_t& pipeline);
+void gl_dispatch_compute(uint32_t groupX, uint32_t groupY, uint32_t groupZ);
+
+void gl_begin_render(gl_pipeline_t& pipeline);
+void gl_end_render(gl_pipeline_t& pipeline);
+void gl_set_viewport(int32_t x, int32_t y, int32_t width, int32_t height);
+void gl_set_scissor(int32_t x, int32_t y, int32_t width, int32_t height);
+
+inline void (*gl_begin_meshlet)(gl_pipeline_t& pipeline) = gl_end_render;
+void gl_draw_mesh_task(uint32_t groupX, uint32_t groupY, uint32_t groupZ);
+inline void (*gl_end_meshlet)(gl_pipeline_t& pipeline) = gl_end_render;
+
+gl_mesh_t gl_create_mesh(const float* vertices, const float* normals, const float* uvs, size_t vertex_count, const unsigned int* indices, size_t index_count);
+void gl_destroy_mesh(gl_mesh_t& mesh);
+void gl_draw_mesh(gl_mesh_t mesh);
+
+gl_meshlet_t gl_create_meshlet(const float* vertices, const float* normals, const float* uvs, size_t vertex_count, const unsigned int* indices, size_t index_count);
+void gl_destroy_meshlet(gl_meshlet_t& meshlet);
+
+gl_mesh_t gl_create_mesh_screen();
+void gl_draw_screen(int width, int height, gl_texture_t texture);
+gl_mesh_t gl_create_mesh_cube(float width, float height, float length);
+gl_mesh_t gl_create_mesh_plane(float size, int N = 1);
+gl_mesh_t gl_create_mesh_sphere(float radius, int rings, int slices);
+gl_meshlet_t gl_create_meshlet_plane(float size, int N = 1);
+gl_meshlet_t gl_create_meshlet_sphere(float radius, int rings, int slices);
+
+// ====================================================================
+
+#ifdef OPENGL_IMPLEMENTATION
+
+static void gl_hello_world()
 {
     glewExperimental = GL_TRUE;
     GLenum err = glewInit();
@@ -20,17 +207,10 @@ inline void gl_hello_world()
 
 // ====================================================================
 
-struct gl_buffer_t
-{
-    GLuint handle = 0;
-    size_t size = 0;
-    GLenum usage = GL_STATIC_DRAW;
-};
-
-inline gl_buffer_t gl_create_buffer(
+static gl_buffer_t gl_create_buffer(
     size_t size,
-    GLenum usage = GL_STATIC_DRAW,
-    const void* data = nullptr
+    GLenum usage,
+    const void* data
 )
 {
     gl_buffer_t result = {};
@@ -38,21 +218,18 @@ inline gl_buffer_t gl_create_buffer(
     glBindBuffer(GL_ARRAY_BUFFER, result.handle);
     glBufferData(GL_ARRAY_BUFFER, (GLsizeiptr)size, data, usage);
     glBindBuffer(GL_ARRAY_BUFFER, 0);
+
+    result.size = size;
     return result;
 }
 
-inline void gl_delete_buffer(gl_buffer_t buffer)
+static void gl_destroy_buffer(gl_buffer_t buffer)
 {
     glDeleteBuffers(1, &buffer.handle);
+    buffer.handle = 0;
 }
 
-struct gl_buffer_bind_t
-{
-    uint32_t binding = 0;
-    GLenum target = GL_UNIFORM_BUFFER;
-};
-
-inline void gl_bind_buffer(gl_buffer_t buffer, gl_buffer_bind_t desc = {})
+static void gl_bind_buffer(gl_buffer_t buffer, gl_buffer_bind_t desc)
 {
     switch (desc.target)
     {
@@ -66,7 +243,7 @@ inline void gl_bind_buffer(gl_buffer_t buffer, gl_buffer_bind_t desc = {})
     }
 }
 
-inline void gl_read_buffer(
+static void gl_read_buffer(
     gl_buffer_t buffer,
     size_t offset,
     size_t size,
@@ -86,7 +263,7 @@ inline void gl_read_buffer(
     glBindBuffer(GL_ARRAY_BUFFER, 0);
 }
 
-inline void gl_write_buffer(
+static void gl_write_buffer(
     gl_buffer_t buffer,
     size_t offset,
     size_t size,
@@ -103,16 +280,7 @@ inline void gl_write_buffer(
 
 // ====================================================================
 
-struct gl_texture_t
-{
-    GLuint handle = 0;
-    uint32_t width = 0, height = 0;
-    GLenum target = GL_TEXTURE_2D;
-    GLenum format = GL_RGBA;
-    GLenum internal_format = GL_RGBA;
-};
-
-inline gl_texture_t gl_create_texture_color(
+static gl_texture_t gl_create_texture_color(
     uint32_t width,
     uint32_t height,
     const void* data)
@@ -137,7 +305,7 @@ inline gl_texture_t gl_create_texture_color(
     return result;
 }
 
-inline gl_texture_t gl_create_texture_depth(
+static gl_texture_t gl_create_texture_depth(
     int width,
     int height,
     const void* data)
@@ -168,7 +336,7 @@ inline gl_texture_t gl_create_texture_depth(
     return result;
 }
 
-inline gl_texture_t gl_create_texture_depth_stencil(
+static gl_texture_t gl_create_texture_depth_stencil(
     int width,
     int height,
     const void* data)
@@ -200,19 +368,13 @@ inline gl_texture_t gl_create_texture_depth_stencil(
     return result;
 }
 
-inline void gl_destroy_texture(gl_texture_t texture)
+static void gl_destroy_texture(gl_texture_t& texture)
 {
     glDeleteTextures(1, &texture.handle);
     texture.handle = 0;
 }
 
-struct gl_texture_bind_t
-{
-    uint32_t binding = 0;
-    GLenum aspect_mode = GL_DEPTH_COMPONENT;
-};
-
-inline void gl_bind_texture(gl_texture_t texture, gl_texture_bind_t desc = {})
+static void gl_bind_texture(gl_texture_t texture, gl_texture_bind_t desc)
 {
     glActiveTexture(GL_TEXTURE0 + desc.binding);
     glBindTexture(texture.target, texture.handle);
@@ -223,17 +385,7 @@ inline void gl_bind_texture(gl_texture_t texture, gl_texture_bind_t desc = {})
     }
 }
 
-struct gl_texture_storage_bind_t
-{
-    uint32_t binding = 0;
-    uint32_t base_level = 0;
-    uint32_t base_layer = 0;
-    uint32_t level_count = 1;
-    uint32_t layer_count = 1;
-    GLenum access = GL_WRITE_ONLY;
-};
-
-inline void gl_bind_texture_storage(gl_texture_t texture, gl_texture_storage_bind_t desc = {})
+static void gl_bind_texture_storage(gl_texture_t texture, gl_texture_storage_bind_t desc)
 {
     glBindImageTexture(desc.binding, texture.handle, (GLint)desc.base_level, 1 < desc.layer_count,
                        (GLint)desc.base_layer, desc.access, texture.internal_format);
@@ -241,19 +393,12 @@ inline void gl_bind_texture_storage(gl_texture_t texture, gl_texture_storage_bin
 
 // ====================================================================
 
-struct gl_image_t
-{
-    void* pixels = nullptr;
-    uint32_t width = 0, height = 0;
-    GLenum format = GL_RGBA;
-};
-
-inline gl_texture_t gl_image_2_texture(gl_image_t image)
+static gl_texture_t gl_image_2_texture(gl_image_t image)
 {
     return gl_create_texture_color(image.width, image.height, image.pixels);
 }
 
-inline gl_image_t gl_texture_2_image(gl_texture_t texture, void* buffer, size_t length)
+static gl_image_t gl_texture_2_image(gl_texture_t texture, void* buffer, size_t length)
 {
     gl_image_t result = {};
 
@@ -281,12 +426,7 @@ inline gl_image_t gl_texture_2_image(gl_texture_t texture, void* buffer, size_t 
 
 // ====================================================================
 
-struct gl_sampler_t
-{
-    GLuint handle = 0;
-};
-
-inline gl_sampler_t gl_create_sampler(
+static gl_sampler_t gl_create_sampler(
     GLenum min_filter,      // 缩小过滤方式，如 GL_LINEAR_MIPMAP_LINEAR
     GLenum mag_filter,      // 放大过滤方式，如 GL_LINEAR
     GLenum wrap_s,          // S 轴环绕方式，如 GL_REPEAT
@@ -309,13 +449,13 @@ inline gl_sampler_t gl_create_sampler(
     return result;
 }
 
-inline void gl_destroy_sampler(gl_sampler_t sampler)
+static void gl_destroy_sampler(gl_sampler_t& sampler)
 {
     glDeleteSamplers(1, &sampler.handle);
     sampler.handle = 0;
 }
 
-inline void gl_bind_sampler(
+static void gl_bind_sampler(
     gl_sampler_t sampler,
     GLuint texture_unit)
 {
@@ -324,30 +464,61 @@ inline void gl_bind_sampler(
 
 // ====================================================================
 
-struct gl_program_t
+static gl_module_t gl_create_module_compute(const char* comp_src)
 {
-    GLuint handle = 0;
-};
+    gl_module_t result = {};
 
-inline gl_program_t gl_create_program_graphics(
+    GLuint cs = glCreateShader(GL_COMPUTE_SHADER);
+    glShaderSource(cs, 1, &comp_src, nullptr);
+    glCompileShader(cs);
+
+    GLint success = 0;
+    glGetShaderiv(cs, GL_COMPILE_STATUS, &success);
+    if (!success)
+    {
+        char log[1024];
+        glGetShaderInfoLog(cs, sizeof(log), nullptr, log);
+        fprintf(stderr, "Compute shader compile error:\n%s\n", log);
+        abort();
+    }
+
+    result.handle = glCreateProgram();
+    glAttachShader(result.handle, cs);
+    glLinkProgram(result.handle);
+
+    glGetProgramiv(result.handle, GL_LINK_STATUS, &success);
+    if (!success)
+    {
+        char log[1024];
+        glGetProgramInfoLog(result.handle, sizeof(log), nullptr, log);
+        fprintf(stderr, "Compute program link error:\n%s\n", log);
+        abort();
+    }
+
+    glDeleteShader(cs);
+
+    return result;
+}
+
+static gl_module_t gl_create_module_graphics(
     const char* vert_src,
     const char* frag_src)
 {
-    gl_program_t result = {};
+    gl_module_t result = {};
 
     // ---- Vertex Shader ----
     GLuint vs = 0;
     if (vert_src)
     {
         vs = glCreateShader(GL_VERTEX_SHADER);
-        glShaderSource(vs, 1, &vert_src, NULL);
+        glShaderSource(vs, 1, &vert_src, nullptr);
         glCompileShader(vs);
         GLint success = 0;
         glGetShaderiv(vs, GL_COMPILE_STATUS, &success);
         if (!success)
         {
             char log[1024];
-            glGetShaderInfoLog(vs, sizeof(log), NULL, log);
+            glGetShaderInfoLog(vs, sizeof(log), nullptr, log);
             fprintf(stderr, "vs compile error:\n%s\n", log);
             abort();
         }
@@ -358,14 +529,14 @@ inline gl_program_t gl_create_program_graphics(
     if (frag_src)
     {
         fs = glCreateShader(GL_FRAGMENT_SHADER);
-        glShaderSource(fs, 1, &frag_src, NULL);
+        glShaderSource(fs, 1, &frag_src, nullptr);
         glCompileShader(fs);
         GLint success = 0;
         glGetShaderiv(fs, GL_COMPILE_STATUS, &success);
         if (!success)
         {
             char log[1024];
-            glGetShaderInfoLog(fs, sizeof(log), NULL, log);
+            glGetShaderInfoLog(fs, sizeof(log), nullptr, log);
             fprintf(stderr, "vs compile error:\n%s\n", log);
             abort();
         }
@@ -384,7 +555,7 @@ inline gl_program_t gl_create_program_graphics(
     if (!success)
     {
         char log[1024];
-        glGetProgramInfoLog(result.handle, sizeof(log), NULL, log);
+        glGetProgramInfoLog(result.handle, sizeof(log), nullptr, log);
         fprintf(stderr, "Program link error:\n%s\n", log);
         abort();
     }
@@ -395,62 +566,26 @@ inline gl_program_t gl_create_program_graphics(
     return result;
 }
 
-inline gl_program_t gl_create_program_compute(const char* comp_src)
-{
-    gl_program_t result = {};
-
-    GLuint cs = glCreateShader(GL_COMPUTE_SHADER);
-    glShaderSource(cs, 1, &comp_src, NULL);
-    glCompileShader(cs);
-
-    GLint success = 0;
-    glGetShaderiv(cs, GL_COMPILE_STATUS, &success);
-    if (!success)
-    {
-        char log[1024];
-        glGetShaderInfoLog(cs, sizeof(log), NULL, log);
-        fprintf(stderr, "Compute shader compile error:\n%s\n", log);
-        abort();
-    }
-
-    result.handle = glCreateProgram();
-    glAttachShader(result.handle, cs);
-    glLinkProgram(result.handle);
-
-    glGetProgramiv(result.handle, GL_LINK_STATUS, &success);
-    if (!success)
-    {
-        char log[1024];
-        glGetProgramInfoLog(result.handle, sizeof(log), NULL, log);
-        fprintf(stderr, "Compute program link error:\n%s\n", log);
-        abort();
-    }
-
-    glDeleteShader(cs);
-
-    return result;
-}
-
-inline gl_program_t gl_create_program_meshlet(
+static gl_module_t gl_create_module_meshlet(
     const char* task_src,
     const char* mesh_src,
     const char* frag_src)
 {
-    gl_program_t result = {};
+    gl_module_t result = {};
 
     // ---- Task Shader（可选）----
     GLuint task = 0;
     if (task_src)
     {
         task = glCreateShader(GL_TASK_SHADER_NV);
-        glShaderSource(task, 1, &task_src, NULL);
+        glShaderSource(task, 1, &task_src, nullptr);
         glCompileShader(task);
         GLint success = 0;
         glGetShaderiv(task, GL_COMPILE_STATUS, &success);
         if (!success)
         {
             char log[1024];
-            glGetShaderInfoLog(task, sizeof(log), NULL, log);
+            glGetShaderInfoLog(task, sizeof(log), nullptr, log);
             fprintf(stderr, "Task shader compile error:\n%s\n", log);
             abort();
         }
@@ -458,27 +593,27 @@ inline gl_program_t gl_create_program_meshlet(
 
     // ---- Mesh Shader ----
     GLuint mesh = glCreateShader(GL_MESH_SHADER_NV);
-    glShaderSource(mesh, 1, &mesh_src, NULL);
+    glShaderSource(mesh, 1, &mesh_src, nullptr);
     glCompileShader(mesh);
     GLint success = 0;
     glGetShaderiv(mesh, GL_COMPILE_STATUS, &success);
     if (!success)
     {
         char log[1024];
-        glGetShaderInfoLog(mesh, sizeof(log), NULL, log);
+        glGetShaderInfoLog(mesh, sizeof(log), nullptr, log);
         fprintf(stderr, "Mesh shader compile error:\n%s\n", log);
         abort();
     }
 
     // ---- Fragment Shader ----
     GLuint fs = glCreateShader(GL_FRAGMENT_SHADER);
-    glShaderSource(fs, 1, &frag_src, NULL);
+    glShaderSource(fs, 1, &frag_src, nullptr);
     glCompileShader(fs);
     glGetShaderiv(fs, GL_COMPILE_STATUS, &success);
     if (!success)
     {
         char log[1024];
-        glGetShaderInfoLog(fs, sizeof(log), NULL, log);
+        glGetShaderInfoLog(fs, sizeof(log), nullptr, log);
         fprintf(stderr, "Fragment shader compile error:\n%s\n", log);
         abort();
     }
@@ -495,7 +630,7 @@ inline gl_program_t gl_create_program_meshlet(
     if (!success)
     {
         char log[1024];
-        glGetProgramInfoLog(result.handle, sizeof(log), NULL, log);
+        glGetProgramInfoLog(result.handle, sizeof(log), nullptr, log);
         fprintf(stderr, "Mesh program link error:\n%s\n", log);
         abort();
     }
@@ -508,13 +643,13 @@ inline gl_program_t gl_create_program_meshlet(
     return result;
 }
 
-inline void gl_destroy_program(gl_program_t program)
+static void gl_destroy_module(gl_module_t& program)
 {
     glDeleteProgram(program.handle);
     program.handle = 0;
 }
 
-inline void gl_set_uniform_int(const char* name, int32_t value)
+static void gl_set_uniform_int(const char* name, int32_t value)
 {
     GLint program = 0;
     glGetIntegerv(GL_CURRENT_PROGRAM, &program);
@@ -524,7 +659,7 @@ inline void gl_set_uniform_int(const char* name, int32_t value)
         glUniform1i(loc, value);
 }
 
-inline void gl_set_uniform_uint(const char* name, uint32_t value)
+static void gl_set_uniform_uint(const char* name, uint32_t value)
 {
     GLint program = 0;
     glGetIntegerv(GL_CURRENT_PROGRAM, &program);
@@ -534,7 +669,7 @@ inline void gl_set_uniform_uint(const char* name, uint32_t value)
         glUniform1ui(loc, value);
 }
 
-inline void gl_set_uniform_float(const char* name, float value)
+static void gl_set_uniform_float(const char* name, float value)
 {
     GLint program = 0;
     glGetIntegerv(GL_CURRENT_PROGRAM, &program);
@@ -544,7 +679,7 @@ inline void gl_set_uniform_float(const char* name, float value)
         glUniform1f(loc, value);
 }
 
-inline void gl_set_uniform_vec2(const char* name, const float* value)
+static void gl_set_uniform_vec2(const char* name, const float* value)
 {
     GLint program = 0;
     glGetIntegerv(GL_CURRENT_PROGRAM, &program);
@@ -554,7 +689,7 @@ inline void gl_set_uniform_vec2(const char* name, const float* value)
         glUniform2fv(loc, 1, value);
 }
 
-inline void gl_set_uniform_vec3(const char* name, const float* value)
+static void gl_set_uniform_vec3(const char* name, const float* value)
 {
     GLint program = 0;
     glGetIntegerv(GL_CURRENT_PROGRAM, &program);
@@ -564,7 +699,7 @@ inline void gl_set_uniform_vec3(const char* name, const float* value)
         glUniform3fv(loc, 1, value);
 }
 
-inline void gl_set_uniform_vec4(const char* name, const float* value)
+static void gl_set_uniform_vec4(const char* name, const float* value)
 {
     GLint program = 0;
     glGetIntegerv(GL_CURRENT_PROGRAM, &program);
@@ -574,7 +709,7 @@ inline void gl_set_uniform_vec4(const char* name, const float* value)
         glUniform4fv(loc, 1, value);
 }
 
-inline void gl_set_uniform_mat3(const char* name, const float* value)
+static void gl_set_uniform_mat3(const char* name, const float* value)
 {
     GLint program = 0;
     glGetIntegerv(GL_CURRENT_PROGRAM, &program);
@@ -584,7 +719,7 @@ inline void gl_set_uniform_mat3(const char* name, const float* value)
         glUniformMatrix3fv(loc, 1, GL_FALSE, value);
 }
 
-inline void gl_set_uniform_mat4(const char* name, const float* value)
+static void gl_set_uniform_mat4(const char* name, const float* value)
 {
     GLint program = 0;
     glGetIntegerv(GL_CURRENT_PROGRAM, &program);
@@ -596,76 +731,7 @@ inline void gl_set_uniform_mat4(const char* name, const float* value)
 
 // ====================================================================
 
-struct gl_pipeline_t
-{
-    GLuint handle = 0;
-    gl_texture_t color;
-    gl_texture_t depth;
-};
-
-inline gl_pipeline_t gl_create_pipeline(
-    int width,
-    int height,
-    gl_texture_t color,
-    gl_texture_t depth)
-{
-    gl_pipeline_t result = {};
-    glGenFramebuffers(1, &result.handle);
-    glBindFramebuffer(GL_FRAMEBUFFER, result.handle);
-
-    if (color.handle && width == color.width && height == color.height)
-    {
-        glBindTexture(GL_TEXTURE_2D, color.handle);
-        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, color.handle, 0);
-    }
-    if (depth.handle && width == depth.width && height == depth.height)
-    {
-        glBindTexture(GL_TEXTURE_2D, depth.handle);
-        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, depth.handle, 0);
-    }
-
-    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
-    {
-        fprintf(stderr, "Framebuffer not complete\n");
-        abort();
-    }
-
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
-
-    result.color = color;
-    result.depth = depth;
-    return result;
-}
-
-inline void gl_destroy_pipeline(gl_pipeline_t pipeline)
-{
-    glDeleteFramebuffers(1, &pipeline.handle);
-    pipeline.handle = 0;
-}
-
-struct gl_color_t
-{
-    float r = 0, g = 0, b = 0, a = 0;
-};
-
-struct gl_pipeline_bind_t
-{
-    gl_program_t program;
-    bool clear_color = false;
-    bool clear_depth = false;
-    bool clear_stencil = false;
-    bool depth_test = false;
-    bool depth_write = true;
-    bool scissor_test = false;
-    gl_color_t color_value;
-    float depth_value = 1.0f;
-    GLenum depth_func = GL_LESS;
-    GLenum cull_mode = GL_BACK;
-    GLenum front_face = GL_CCW;
-    GLenum fill_mode = GL_FILL;
-};
-
-inline void gl_begin_render(gl_pipeline_t pipeline, gl_pipeline_bind_t desc = {})
+inline void gl_begin_compute(gl_pipeline_t& pipeline)
 {
     GLint program = 0;
     glGetIntegerv(GL_CURRENT_PROGRAM, &program);
@@ -675,88 +741,133 @@ inline void gl_begin_render(gl_pipeline_t pipeline, gl_pipeline_bind_t desc = {}
         abort();
     }
 
-    glBindFramebuffer(GL_FRAMEBUFFER, pipeline.handle);
-    glUseProgram(desc.program.handle);
-
-    glClearDepth(desc.depth_value);
-
-    glClearColor(desc.color_value.r, desc.color_value.g, desc.color_value.b, desc.color_value.a);
-
-    auto clearMask = GL_NONE;
-    if (desc.clear_color) clearMask |= GL_COLOR_BUFFER_BIT;
-    if (desc.clear_depth) clearMask |= GL_DEPTH_BUFFER_BIT;
-    if (desc.clear_stencil) clearMask |= GL_STENCIL_BUFFER_BIT;
-    if (clearMask != GL_NONE) glClear(clearMask);
-
-    if (desc.depth_test) glEnable(GL_DEPTH_TEST);
-    else glDisable(GL_DEPTH_TEST);
-
-    if (desc.scissor_test) glEnable(GL_SCISSOR_TEST);
-    else glDisable(GL_SCISSOR_TEST);
-
-    glDepthMask(desc.depth_write);
-
-    glDepthFunc(desc.depth_func);
-
-    glFrontFace(desc.front_face);
-    if (desc.cull_mode) glCullFace(desc.cull_mode);
-    if (desc.cull_mode) glEnable(GL_CULL_FACE);
-    else glDisable(GL_CULL_FACE);
-
-    if (desc.front_face) glEnable(GL_FRONT_FACE);
-    else glDisable(GL_FRONT_FACE);
-
-    glPolygonMode(GL_FRONT_AND_BACK, desc.fill_mode);
+    glUseProgram(pipeline.module.handle);
 }
 
-inline void gl_end_render(gl_pipeline_t pipeline)
+inline void gl_end_compute(gl_pipeline_t& pipeline)
 {
+    GLint program = 0;
+    glGetIntegerv(GL_CURRENT_PROGRAM, &program);
+    if (program && program != pipeline.module.handle)
+    {
+        fprintf(stderr, "Pipeline not end\n");
+        abort();
+    }
+
     glUseProgram(0);
-    glBindFramebuffer(GL_FRAMEBUFFER,0);
 }
 
-inline void gl_set_viewport(int32_t x, int32_t y, int32_t width, int32_t height)
-{
-    glViewport(x, y, width, height);
-}
-
-inline void gl_set_scissor(int32_t x, int32_t y, int32_t width, int32_t height)
-{
-    glScissor(x, y, width, height);
-}
-
-inline void gl_dispatch_compute(uint32_t groupX, uint32_t groupY, uint32_t groupZ)
+static void gl_dispatch_compute(uint32_t groupX, uint32_t groupY, uint32_t groupZ)
 {
     glDispatchCompute(std::max(1U, groupX), std::max(1U, groupY), std::max(1U, groupZ));
 }
 
-inline void gl_draw_mesh_task(uint32_t groupX, uint32_t groupY, uint32_t groupZ)
+static void gl_begin_render(gl_pipeline_t& pipeline)
+{
+    GLint program = 0;
+    glGetIntegerv(GL_CURRENT_PROGRAM, &program);
+    if (program)
+    {
+        fprintf(stderr, "Pipeline not end\n");
+        abort();
+    }
+
+    if (pipeline.color.handle || pipeline.depth.handle)
+    {
+        glGenFramebuffers(1, &pipeline.handle);
+        glBindFramebuffer(GL_FRAMEBUFFER, pipeline.handle);
+
+        if (pipeline.color.handle)
+        {
+            glBindTexture(GL_TEXTURE_2D, pipeline.color.handle);
+            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, pipeline.color.handle, 0);
+        }
+        if (pipeline.depth.handle)
+        {
+            glBindTexture(GL_TEXTURE_2D, pipeline.depth.handle);
+            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, pipeline.depth.handle, 0);
+        }
+        if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+        {
+            fprintf(stderr, "Framebuffer not complete\n");
+            abort();
+        }
+    }
+
+    glUseProgram(pipeline.module.handle);
+
+    glClearColor(pipeline.color_value.r, pipeline.color_value.g, pipeline.color_value.b, pipeline.color_value.a);
+
+    glClearDepth(pipeline.depth_value);
+
+    auto clearMask = GL_NONE;
+    if (pipeline.clear_color) clearMask |= GL_COLOR_BUFFER_BIT;
+    if (pipeline.clear_depth) clearMask |= GL_DEPTH_BUFFER_BIT;
+    if (pipeline.clear_stencil) clearMask |= GL_STENCIL_BUFFER_BIT;
+    if (clearMask != GL_NONE) glClear(clearMask);
+
+    if (pipeline.depth_test) glEnable(GL_DEPTH_TEST);
+    else glDisable(GL_DEPTH_TEST);
+
+    if (pipeline.scissor_test) glEnable(GL_SCISSOR_TEST);
+    else glDisable(GL_SCISSOR_TEST);
+
+    glDepthMask(pipeline.depth_write);
+
+    glDepthFunc(pipeline.depth_func);
+
+    glFrontFace(pipeline.front_face);
+    if (pipeline.cull_mode) glCullFace(pipeline.cull_mode);
+    if (pipeline.cull_mode) glEnable(GL_CULL_FACE);
+    else glDisable(GL_CULL_FACE);
+
+    if (pipeline.front_face) glEnable(GL_FRONT_FACE);
+    else glDisable(GL_FRONT_FACE);
+
+    glPolygonMode(GL_FRONT_AND_BACK, pipeline.fill_mode);
+}
+
+static void gl_end_render(gl_pipeline_t& pipeline)
+{
+    GLint program = 0;
+    glGetIntegerv(GL_CURRENT_PROGRAM, &program);
+    if (program && program != pipeline.module.handle)
+    {
+        fprintf(stderr, "Pipeline not end\n");
+        abort();
+    }
+
+    if (pipeline.handle && (pipeline.color.handle || pipeline.depth.handle))
+    {
+        glBindFramebuffer(GL_FRAMEBUFFER,0);
+        glDeleteFramebuffers(1, &pipeline.handle);
+        pipeline.handle = 0;
+    }
+
+    glUseProgram(0);
+}
+
+static void gl_set_viewport(int32_t x, int32_t y, int32_t width, int32_t height)
+{
+    glViewport(x, y, width, height);
+}
+
+static void gl_set_scissor(int32_t x, int32_t y, int32_t width, int32_t height)
+{
+    glScissor(x, y, width, height);
+}
+
+static void gl_draw_mesh_task(uint32_t groupX, uint32_t groupY, uint32_t groupZ)
 {
     glDrawMeshTasksNV(0, std::max(1U, groupX) * std::max(1U, groupY) * std::max(1U, groupZ));
 }
 
 // ====================================================================
 
-struct gl_mesh_t
-{
-    GLuint handle = 0;
-
-    GLuint vertex_vbo = 0;
-    GLuint normal_vbo = 0;
-    GLuint uv_vbo = 0;
-    GLsizei vertex_count = 0;
-
-    GLuint index_vbo = 0;
-    GLsizei index_count = 0;
-    GLenum index_type = GL_UNSIGNED_INT;
-
-    GLenum primitive_type = GL_TRIANGLES;
-};
-
-inline gl_mesh_t gl_create_mesh(
-    const float* vertexs,
-    const float* normals,
-    const float* uvs,
+static gl_mesh_t gl_create_mesh(
+    const float* vertices,   // vec3
+    const float* normals,   // vec3
+    const float* uvs,       // vec2
     size_t vertex_count,
     const unsigned int* indices,
     size_t index_count)
@@ -764,45 +875,35 @@ inline gl_mesh_t gl_create_mesh(
     gl_mesh_t result = {};
 
     glGenVertexArrays(1, &result.handle);
-    glGenBuffers(1, &result.vertex_vbo);
-    glGenBuffers(1, &result.normal_vbo);
-    glGenBuffers(1, &result.uv_vbo);
-    glGenBuffers(1, &result.index_vbo);
-
     glBindVertexArray(result.handle);
 
-    // position
-    if (vertexs)
+    if (vertices)
     {
-        glBindBuffer(GL_ARRAY_BUFFER, result.vertex_vbo);
-        glBufferData(GL_ARRAY_BUFFER, vertex_count * 3 * sizeof(float), vertexs, GL_STATIC_DRAW);
+        result.vertex_vbo = gl_create_buffer(vertex_count * 3 * sizeof(float), GL_STATIC_DRAW, vertices);
+        glBindBuffer(GL_ARRAY_BUFFER, result.vertex_vbo.handle);
         glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
         glEnableVertexAttribArray(0);
     }
 
-    // normal
     if (normals)
     {
-        glBindBuffer(GL_ARRAY_BUFFER, result.normal_vbo);
-        glBufferData(GL_ARRAY_BUFFER, vertex_count * 3 * sizeof(float), normals, GL_STATIC_DRAW);
+        result.normal_vbo = gl_create_buffer(vertex_count * 3 * sizeof(float), GL_STATIC_DRAW, normals);
+        glBindBuffer(GL_ARRAY_BUFFER, result.normal_vbo.handle);
         glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
         glEnableVertexAttribArray(1);
     }
 
-    // uv
     if (uvs)
     {
-        glBindBuffer(GL_ARRAY_BUFFER, result.uv_vbo);
-        glBufferData(GL_ARRAY_BUFFER, vertex_count * 2 * sizeof(float), uvs, GL_STATIC_DRAW);
+        result.uv_vbo = gl_create_buffer(vertex_count * 2 * sizeof(float), GL_STATIC_DRAW, uvs);
+        glBindBuffer(GL_ARRAY_BUFFER, result.uv_vbo.handle);
         glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(float), (void*)0);
         glEnableVertexAttribArray(2);
     }
 
-    // index
     if (indices)
     {
-        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, result.index_vbo);
-        glBufferData(GL_ELEMENT_ARRAY_BUFFER, index_count * sizeof(uint32_t), indices, GL_STATIC_DRAW);
+        result.index_vbo = gl_create_buffer(index_count * sizeof(uint32_t), GL_STATIC_DRAW, indices);
     }
 
     glBindVertexArray(0);
@@ -814,17 +915,18 @@ inline gl_mesh_t gl_create_mesh(
     return result;
 }
 
-inline void gl_destroy_mesh(gl_mesh_t mesh)
+static void gl_destroy_mesh(gl_mesh_t& mesh)
 {
+    gl_destroy_buffer(mesh.vertex_vbo);
+    gl_destroy_buffer(mesh.normal_vbo);
+    gl_destroy_buffer(mesh.uv_vbo);
+    gl_destroy_buffer(mesh.index_vbo);
+
     glDeleteVertexArrays(1, &mesh.handle);
-    glDeleteBuffers(1, &mesh.vertex_vbo);
-    glDeleteBuffers(1, &mesh.normal_vbo);
-    glDeleteBuffers(1, &mesh.uv_vbo);
-    glDeleteBuffers(1, &mesh.index_vbo);
     mesh.handle = 0;
 }
 
-inline void gl_draw_mesh(gl_mesh_t mesh)
+static void gl_draw_mesh(gl_mesh_t mesh)
 {
     glBindVertexArray(mesh.handle);
     if (mesh.index_count) glDrawElements(mesh.primitive_type, mesh.index_count, mesh.index_type, (void*)0);
@@ -834,22 +936,8 @@ inline void gl_draw_mesh(gl_mesh_t mesh)
 
 // ====================================================================
 
-struct gl_meshlet_t
-{
-    GLuint vertex_vbo = 0;
-    GLuint normal_vbo = 0;
-    GLuint uv_vbo = 0;
-    GLsizei vertex_count = 0;
-
-    GLuint index_vbo = 0;
-    GLsizei index_count = 0;
-    GLenum index_type = GL_UNSIGNED_INT;
-
-    GLenum primitive_type = GL_TRIANGLES;
-};
-
-inline gl_meshlet_t gl_create_meshlet(
-    const float* vertexs,   // vec4
+static gl_meshlet_t gl_create_meshlet(
+    const float* vertices,   // vec4
     const float* normals,   // vec4
     const float* uvs,
     size_t vertex_count,
@@ -858,41 +946,24 @@ inline gl_meshlet_t gl_create_meshlet(
 {
     gl_meshlet_t result = {};
 
-    glGenBuffers(1, &result.vertex_vbo);
-    glGenBuffers(1, &result.normal_vbo);
-    glGenBuffers(1, &result.uv_vbo);
-    glGenBuffers(1, &result.index_vbo);
-
-    // position
-    if (vertexs)
+    if (vertices)
     {
-        glBindBuffer(GL_ARRAY_BUFFER, result.vertex_vbo);
-        glBufferData(GL_ARRAY_BUFFER, vertex_count * 4 * sizeof(float), vertexs, GL_STATIC_DRAW);
-        glBindBuffer(GL_ARRAY_BUFFER, 0);
+        result.vertex_vbo = gl_create_buffer(vertex_count * 4 * sizeof(float), GL_STATIC_DRAW, vertices);
     }
 
-    // normal
     if (normals)
     {
-        glBindBuffer(GL_ARRAY_BUFFER, result.normal_vbo);
-        glBufferData(GL_ARRAY_BUFFER, vertex_count * 4 * sizeof(float), normals, GL_STATIC_DRAW);
-        glBindBuffer(GL_ARRAY_BUFFER, 0);
+        result.normal_vbo = gl_create_buffer(vertex_count * 4 * sizeof(float), GL_STATIC_DRAW, normals);
     }
 
-    // uv
     if (uvs)
     {
-        glBindBuffer(GL_ARRAY_BUFFER, result.uv_vbo);
-        glBufferData(GL_ARRAY_BUFFER, vertex_count * 2 * sizeof(float), uvs, GL_STATIC_DRAW);
-        glBindBuffer(GL_ARRAY_BUFFER, 0);
+        result.uv_vbo = gl_create_buffer(vertex_count * 2 * sizeof(float), GL_STATIC_DRAW, uvs);
     }
 
-    // index
     if (indices)
     {
-        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, result.index_vbo);
-        glBufferData(GL_ELEMENT_ARRAY_BUFFER, index_count * sizeof(uint32_t), indices, GL_STATIC_DRAW);
-        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+        result.index_vbo = gl_create_buffer(index_count * sizeof(uint32_t), GL_STATIC_DRAW, indices);
     }
 
     result.vertex_count = (GLsizei)vertex_count;
@@ -902,19 +973,19 @@ inline gl_meshlet_t gl_create_meshlet(
     return result;
 }
 
-inline void gl_destroy_meshlet(gl_meshlet_t meshlet)
+static void gl_destroy_meshlet(gl_meshlet_t& meshlet)
 {
-    glDeleteBuffers(1, &meshlet.vertex_vbo);
-    glDeleteBuffers(1, &meshlet.normal_vbo);
-    glDeleteBuffers(1, &meshlet.uv_vbo);
-    glDeleteBuffers(1, &meshlet.index_vbo);
+    gl_destroy_buffer(meshlet.vertex_vbo);
+    gl_destroy_buffer(meshlet.normal_vbo);
+    gl_destroy_buffer(meshlet.uv_vbo);
+    gl_destroy_buffer(meshlet.index_vbo);
 }
 
 // ====================================================================
 
 #include <vector>
 
-inline gl_mesh_t gl_create_mesh_screen()
+static gl_mesh_t gl_create_mesh_screen()
 {
     static const float points[] = {
         -1.0f, -1.0f, 0.0f,
@@ -930,7 +1001,7 @@ inline gl_mesh_t gl_create_mesh_screen()
     return quad;
 }
 
-inline void gl_draw_screen(int width, int height, gl_texture_t texture)
+static void gl_draw_screen(int width, int height, gl_texture_t texture)
 {
     constexpr auto VS = R"(
         #version 460
@@ -962,15 +1033,17 @@ inline void gl_draw_screen(int width, int height, gl_texture_t texture)
             final = texture(texture0, uv);
         }
     )";
-    static auto program = gl_create_program_graphics(VS, FS);
-    gl_begin_render({}, {.program = program,});
+    static auto program = gl_create_module_graphics(VS, FS);
+
+    gl_pipeline_t pass = {.module = program,};
+    gl_begin_render(pass);
     gl_set_viewport(0, 0, width, height);
     gl_bind_texture(texture, {.binding = 0,});
     gl_draw_mesh(gl_create_mesh_screen());
-    gl_end_render({});
+    gl_end_render(pass);
 }
 
-inline gl_mesh_t gl_create_mesh_cube(float width, float height, float length)
+static gl_mesh_t gl_create_mesh_cube(float width, float height, float length)
 {
     static const float v[24 * 3] = {
         // 前
@@ -1044,7 +1117,7 @@ inline gl_mesh_t gl_create_mesh_cube(float width, float height, float length)
     );
 }
 
-inline gl_mesh_t gl_create_mesh_plane(int N, float size = 1.0f)
+static gl_mesh_t gl_create_mesh_plane(float size, int N)
 {
     int vertsX = N + 1;
     int vertsY = N + 1;
@@ -1111,7 +1184,7 @@ inline gl_mesh_t gl_create_mesh_plane(int N, float size = 1.0f)
     );
 }
 
-inline gl_mesh_t gl_create_mesh_sphere(float radius, int rings, int slices)
+static gl_mesh_t gl_create_mesh_sphere(float radius, int rings, int slices)
 {
     int vertex_count = (rings + 1) * (slices + 1);
     int index_count = rings * slices * 6;
@@ -1176,7 +1249,7 @@ inline gl_mesh_t gl_create_mesh_sphere(float radius, int rings, int slices)
 
 // ====================================================================
 
-inline gl_meshlet_t gl_create_meshlet_plane(int N, float size = 1.0f)
+static gl_meshlet_t gl_create_meshlet_plane(float size, int N)
 {
     int vertsX = N + 1;
     int vertsY = N + 1;
@@ -1243,7 +1316,7 @@ inline gl_meshlet_t gl_create_meshlet_plane(int N, float size = 1.0f)
     );
 }
 
-inline gl_meshlet_t gl_create_meshlet_sphere(float radius, int rings, int slices)
+static gl_meshlet_t gl_create_meshlet_sphere(float radius, int rings, int slices)
 {
     int vertex_count = (rings + 1) * (slices + 1);
     int index_count = rings * slices * 6;
@@ -1305,3 +1378,5 @@ inline gl_meshlet_t gl_create_meshlet_sphere(float radius, int rings, int slices
         vertex_count, indices.data(), index_count
     );
 }
+
+#endif
