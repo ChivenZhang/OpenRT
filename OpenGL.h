@@ -230,7 +230,7 @@ struct gl_texture_storage_bind_t
     uint32_t base_layer = 0;
     uint32_t level_count = 1;
     uint32_t layer_count = 1;
-    GLenum access = GL_READ_WRITE;
+    GLenum access = GL_WRITE_ONLY;
 };
 
 inline void gl_bind_texture_storage(gl_texture_t texture, gl_texture_storage_bind_t desc = {})
@@ -346,7 +346,7 @@ inline gl_program_t gl_create_program_graphics(
         glGetShaderiv(vs, GL_COMPILE_STATUS, &success);
         if (!success)
         {
-            char log[512];
+            char log[1024];
             glGetShaderInfoLog(vs, sizeof(log), NULL, log);
             fprintf(stderr, "vs compile error:\n%s\n", log);
             abort();
@@ -364,7 +364,7 @@ inline gl_program_t gl_create_program_graphics(
         glGetShaderiv(fs, GL_COMPILE_STATUS, &success);
         if (!success)
         {
-            char log[512];
+            char log[1024];
             glGetShaderInfoLog(fs, sizeof(log), NULL, log);
             fprintf(stderr, "vs compile error:\n%s\n", log);
             abort();
@@ -383,7 +383,7 @@ inline gl_program_t gl_create_program_graphics(
     glGetProgramiv(result.handle, GL_LINK_STATUS, &success);
     if (!success)
     {
-        char log[512];
+        char log[1024];
         glGetProgramInfoLog(result.handle, sizeof(log), NULL, log);
         fprintf(stderr, "Program link error:\n%s\n", log);
         abort();
@@ -407,7 +407,7 @@ inline gl_program_t gl_create_program_compute(const char* comp_src)
     glGetShaderiv(cs, GL_COMPILE_STATUS, &success);
     if (!success)
     {
-        char log[512];
+        char log[1024];
         glGetShaderInfoLog(cs, sizeof(log), NULL, log);
         fprintf(stderr, "Compute shader compile error:\n%s\n", log);
         abort();
@@ -420,7 +420,7 @@ inline gl_program_t gl_create_program_compute(const char* comp_src)
     glGetProgramiv(result.handle, GL_LINK_STATUS, &success);
     if (!success)
     {
-        char log[512];
+        char log[1024];
         glGetProgramInfoLog(result.handle, sizeof(log), NULL, log);
         fprintf(stderr, "Compute program link error:\n%s\n", log);
         abort();
@@ -431,7 +431,7 @@ inline gl_program_t gl_create_program_compute(const char* comp_src)
     return result;
 }
 
-inline gl_program_t gl_create_program_mesh(
+inline gl_program_t gl_create_program_meshlet(
     const char* task_src,
     const char* mesh_src,
     const char* frag_src)
@@ -449,7 +449,7 @@ inline gl_program_t gl_create_program_mesh(
         glGetShaderiv(task, GL_COMPILE_STATUS, &success);
         if (!success)
         {
-            char log[512];
+            char log[1024];
             glGetShaderInfoLog(task, sizeof(log), NULL, log);
             fprintf(stderr, "Task shader compile error:\n%s\n", log);
             abort();
@@ -464,7 +464,7 @@ inline gl_program_t gl_create_program_mesh(
     glGetShaderiv(mesh, GL_COMPILE_STATUS, &success);
     if (!success)
     {
-        char log[512];
+        char log[1024];
         glGetShaderInfoLog(mesh, sizeof(log), NULL, log);
         fprintf(stderr, "Mesh shader compile error:\n%s\n", log);
         abort();
@@ -477,7 +477,7 @@ inline gl_program_t gl_create_program_mesh(
     glGetShaderiv(fs, GL_COMPILE_STATUS, &success);
     if (!success)
     {
-        char log[512];
+        char log[1024];
         glGetShaderInfoLog(fs, sizeof(log), NULL, log);
         fprintf(stderr, "Fragment shader compile error:\n%s\n", log);
         abort();
@@ -494,7 +494,7 @@ inline gl_program_t gl_create_program_mesh(
     glGetProgramiv(result.handle, GL_LINK_STATUS, &success);
     if (!success)
     {
-        char log[512];
+        char log[1024];
         glGetProgramInfoLog(result.handle, sizeof(log), NULL, log);
         fprintf(stderr, "Mesh program link error:\n%s\n", log);
         abort();
@@ -698,8 +698,8 @@ inline void gl_begin_render(gl_pipeline_t pipeline, gl_pipeline_bind_t desc = {}
 
     glDepthFunc(desc.depth_func);
 
-    glCullFace(desc.cull_mode);
     glFrontFace(desc.front_face);
+    if (desc.cull_mode) glCullFace(desc.cull_mode);
     if (desc.cull_mode) glEnable(GL_CULL_FACE);
     else glDisable(GL_CULL_FACE);
 
@@ -754,7 +754,7 @@ struct gl_mesh_t
 };
 
 inline gl_mesh_t gl_create_mesh(
-    const float* positions,
+    const float* vertexs,
     const float* normals,
     const float* uvs,
     size_t vertex_count,
@@ -772,10 +772,10 @@ inline gl_mesh_t gl_create_mesh(
     glBindVertexArray(result.handle);
 
     // position
-    if (positions)
+    if (vertexs)
     {
         glBindBuffer(GL_ARRAY_BUFFER, result.vertex_vbo);
-        glBufferData(GL_ARRAY_BUFFER, vertex_count * 3 * sizeof(float), positions, GL_STATIC_DRAW);
+        glBufferData(GL_ARRAY_BUFFER, vertex_count * 3 * sizeof(float), vertexs, GL_STATIC_DRAW);
         glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
         glEnableVertexAttribArray(0);
     }
@@ -807,9 +807,10 @@ inline gl_mesh_t gl_create_mesh(
 
     glBindVertexArray(0);
 
-    result.index_count = (GLsizei)index_count;
     result.vertex_count = (GLsizei)vertex_count;
+    result.index_count = (GLsizei)index_count;
     result.index_type = GL_UNSIGNED_INT;
+    result.primitive_type = GL_TRIANGLES;
     return result;
 }
 
@@ -829,6 +830,84 @@ inline void gl_draw_mesh(gl_mesh_t mesh)
     if (mesh.index_count) glDrawElements(mesh.primitive_type, mesh.index_count, mesh.index_type, (void*)0);
     else glDrawArrays(mesh.primitive_type, 0, mesh.vertex_count);
     glBindVertexArray(0);
+}
+
+// ====================================================================
+
+struct gl_meshlet_t
+{
+    GLuint vertex_vbo = 0;
+    GLuint normal_vbo = 0;
+    GLuint uv_vbo = 0;
+    GLsizei vertex_count = 0;
+
+    GLuint index_vbo = 0;
+    GLsizei index_count = 0;
+    GLenum index_type = GL_UNSIGNED_INT;
+
+    GLenum primitive_type = GL_TRIANGLES;
+};
+
+inline gl_meshlet_t gl_create_meshlet(
+    const float* vertexs,   // vec4
+    const float* normals,   // vec4
+    const float* uvs,
+    size_t vertex_count,
+    const unsigned int* indices,
+    size_t index_count)
+{
+    gl_meshlet_t result = {};
+
+    glGenBuffers(1, &result.vertex_vbo);
+    glGenBuffers(1, &result.normal_vbo);
+    glGenBuffers(1, &result.uv_vbo);
+    glGenBuffers(1, &result.index_vbo);
+
+    // position
+    if (vertexs)
+    {
+        glBindBuffer(GL_ARRAY_BUFFER, result.vertex_vbo);
+        glBufferData(GL_ARRAY_BUFFER, vertex_count * 4 * sizeof(float), vertexs, GL_STATIC_DRAW);
+        glBindBuffer(GL_ARRAY_BUFFER, 0);
+    }
+
+    // normal
+    if (normals)
+    {
+        glBindBuffer(GL_ARRAY_BUFFER, result.normal_vbo);
+        glBufferData(GL_ARRAY_BUFFER, vertex_count * 4 * sizeof(float), normals, GL_STATIC_DRAW);
+        glBindBuffer(GL_ARRAY_BUFFER, 0);
+    }
+
+    // uv
+    if (uvs)
+    {
+        glBindBuffer(GL_ARRAY_BUFFER, result.uv_vbo);
+        glBufferData(GL_ARRAY_BUFFER, vertex_count * 2 * sizeof(float), uvs, GL_STATIC_DRAW);
+        glBindBuffer(GL_ARRAY_BUFFER, 0);
+    }
+
+    // index
+    if (indices)
+    {
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, result.index_vbo);
+        glBufferData(GL_ELEMENT_ARRAY_BUFFER, index_count * sizeof(uint32_t), indices, GL_STATIC_DRAW);
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+    }
+
+    result.vertex_count = (GLsizei)vertex_count;
+    result.index_count = (GLsizei)index_count;
+    result.index_type = GL_UNSIGNED_INT;
+    result.primitive_type = GL_TRIANGLES;
+    return result;
+}
+
+inline void gl_destroy_meshlet(gl_meshlet_t meshlet)
+{
+    glDeleteBuffers(1, &meshlet.vertex_vbo);
+    glDeleteBuffers(1, &meshlet.normal_vbo);
+    glDeleteBuffers(1, &meshlet.uv_vbo);
+    glDeleteBuffers(1, &meshlet.index_vbo);
 }
 
 // ====================================================================
@@ -965,69 +1044,6 @@ inline gl_mesh_t gl_create_mesh_cube(float width, float height, float length)
     );
 }
 
-inline gl_mesh_t gl_create_mesh_sphere(float radius, int rings, int slices)
-{
-    int vertex_count = (rings + 1) * (slices + 1);
-    int index_count = rings * slices * 6;
-
-    std::vector<float> positions(vertex_count * 3);
-    std::vector<float> normals(vertex_count * 3);
-    std::vector<float> uvs(vertex_count * 2);
-    std::vector<unsigned int> indices(index_count);
-
-    int v = 0;
-    for (int r = 0; r <= rings; r++)
-    {
-        float theta = r * 3.14159265f / rings;
-        for (int s = 0; s <= slices; s++)
-        {
-            float phi = s * 2.0f * 3.14159265f / slices;
-
-            float x = sinf(theta) * cosf(phi);
-            float y = cosf(theta);
-            float z = sinf(theta) * sinf(phi);
-
-            positions[v * 3 + 0] = x * radius;
-            positions[v * 3 + 1] = y * radius;
-            positions[v * 3 + 2] = z * radius;
-
-            normals[v * 3 + 0] = x;
-            normals[v * 3 + 1] = y;
-            normals[v * 3 + 2] = z;
-
-            uvs[v * 2 + 0] = (float)s / slices;
-            uvs[v * 2 + 1] = (float)r / rings;
-
-            v++;
-        }
-    }
-
-    int idx = 0;
-    for (int r = 0; r < rings; r++)
-    {
-        for (int s = 0; s < slices; s++)
-        {
-            int tl = r * (slices + 1) + s;
-            int tr = tl + 1;
-            int bl = (r + 1) * (slices + 1) + s;
-            int br = bl + 1;
-
-            indices[idx++] = tl;
-            indices[idx++] = tr;
-            indices[idx++] = bl;
-
-            indices[idx++] = tr;
-            indices[idx++] = br;
-            indices[idx++] = bl;
-        }
-    }
-
-    return gl_create_mesh(
-        positions.data(), normals.data(), uvs.data(),
-        vertex_count, indices.data(), index_count
-    );
-}
-
 inline gl_mesh_t gl_create_mesh_plane(int N, float size = 1.0f)
 {
     int vertsX = N + 1;
@@ -1045,8 +1061,8 @@ inline gl_mesh_t gl_create_mesh_plane(int N, float size = 1.0f)
         {
             size_t i = z * vertsX + x;
 
-            float fx = (float)x / N;
-            float fz = (float)z / N;
+            float fx = (float)x / N - 0.5f;
+            float fz = (float)z / N - 0.5f;
 
             positions[i * 3 + 0] = fx * size;
             positions[i * 3 + 1] = 0.0f; // Y = 0
@@ -1092,5 +1108,200 @@ inline gl_mesh_t gl_create_mesh_plane(int N, float size = 1.0f)
         vertex_count,
         indices.data(),
         index_count
+    );
+}
+
+inline gl_mesh_t gl_create_mesh_sphere(float radius, int rings, int slices)
+{
+    int vertex_count = (rings + 1) * (slices + 1);
+    int index_count = rings * slices * 6;
+
+    std::vector<float> positions(vertex_count * 3);
+    std::vector<float> normals(vertex_count * 3);
+    std::vector<float> uvs(vertex_count * 2);
+    std::vector<unsigned int> indices(index_count);
+
+    int v = 0;
+    for (int r = 0; r <= rings; r++)
+    {
+        float theta = r * 3.14159265f / rings;
+        for (int s = 0; s <= slices; s++)
+        {
+            float phi = -s * 2.0f * 3.14159265f / slices;
+
+            float x = sinf(theta) * cosf(phi);
+            float y = cosf(theta);
+            float z = sinf(theta) * sinf(phi);
+
+            positions[v * 3 + 0] = x * radius;
+            positions[v * 3 + 1] = y * radius;
+            positions[v * 3 + 2] = z * radius;
+
+            normals[v * 3 + 0] = x;
+            normals[v * 3 + 1] = y;
+            normals[v * 3 + 2] = z;
+
+            uvs[v * 2 + 0] = (float)s / slices;
+            uvs[v * 2 + 1] = (float)r / rings;
+
+            v++;
+        }
+    }
+
+    int idx = 0;
+    for (int r = 0; r < rings; r++)
+    {
+        for (int s = 0; s < slices; s++)
+        {
+            int tl = r * (slices + 1) + s;
+            int tr = tl + 1;
+            int bl = (r + 1) * (slices + 1) + s;
+            int br = bl + 1;
+
+            indices[idx++] = tl;
+            indices[idx++] = bl;
+            indices[idx++] = tr;
+
+            indices[idx++] = tr;
+            indices[idx++] = bl;
+            indices[idx++] = br;
+        }
+    }
+
+    return gl_create_mesh(
+        positions.data(), normals.data(), uvs.data(),
+        vertex_count, indices.data(), index_count
+    );
+}
+
+// ====================================================================
+
+inline gl_meshlet_t gl_create_meshlet_plane(int N, float size = 1.0f)
+{
+    int vertsX = N + 1;
+    int vertsY = N + 1;
+    size_t vertex_count = vertsX * vertsY;
+
+    std::vector<float> positions(vertex_count * 4);
+    std::vector<float> normals(vertex_count * 4);
+    std::vector<float> uvs(vertex_count * 2);
+
+    // ---- 生成顶点 ----
+    for (int z = 0; z <= N; z++)
+    {
+        for (int x = 0; x <= N; x++)
+        {
+            size_t i = z * vertsX + x;
+
+            float fx = (float)x / N - 0.5f;
+            float fz = (float)z / N - 0.5f;
+
+            positions[i * 4 + 0] = fx * size;
+            positions[i * 4 + 1] = 0.0f; // Y = 0
+            positions[i * 4 + 2] = fz * size;
+
+            normals[i * 4 + 0] = 0.0f;
+            normals[i * 4 + 1] = 1.0f; // 法线朝上 (+Y)
+            normals[i * 4 + 2] = 0.0f;
+
+            uvs[i * 2 + 0] = fx;
+            uvs[i * 2 + 1] = fz;
+        }
+    }
+
+    // ---- 生成索引 ----
+    size_t index_count = N * N * 6;
+    std::vector<unsigned int> indices(index_count);
+
+    size_t idx = 0;
+    for (int z = 0; z < N; z++)
+    {
+        for (int x = 0; x < N; x++)
+        {
+            unsigned int tl = z * vertsX + x;
+            unsigned int tr = tl + 1;
+            unsigned int bl = (z + 1) * vertsX + x;
+            unsigned int br = bl + 1;
+
+            indices[idx++] = tl;
+            indices[idx++] = bl;
+            indices[idx++] = tr;
+
+            indices[idx++] = tr;
+            indices[idx++] = bl;
+            indices[idx++] = br;
+        }
+    }
+
+    return gl_create_meshlet(
+        positions.data(),
+        normals.data(),
+        uvs.data(),
+        vertex_count,
+        indices.data(),
+        index_count
+    );
+}
+
+inline gl_meshlet_t gl_create_meshlet_sphere(float radius, int rings, int slices)
+{
+    int vertex_count = (rings + 1) * (slices + 1);
+    int index_count = rings * slices * 6;
+
+    std::vector<float> positions(vertex_count * 4);
+    std::vector<float> normals(vertex_count * 4);
+    std::vector<float> uvs(vertex_count * 2);
+    std::vector<unsigned int> indices(index_count);
+
+    int v = 0;
+    for (int r = 0; r <= rings; r++)
+    {
+        float theta = r * 3.14159265f / rings;
+        for (int s = 0; s <= slices; s++)
+        {
+            float phi = -s * 2.0f * 3.14159265f / slices;
+
+            float x = sinf(theta) * cosf(phi);
+            float y = cosf(theta);
+            float z = sinf(theta) * sinf(phi);
+
+            positions[v * 4 + 0] = x * radius;
+            positions[v * 4 + 1] = y * radius;
+            positions[v * 4 + 2] = z * radius;
+
+            normals[v * 4 + 0] = x;
+            normals[v * 4 + 1] = y;
+            normals[v * 4 + 2] = z;
+
+            uvs[v * 2 + 0] = (float)s / slices;
+            uvs[v * 2 + 1] = (float)r / rings;
+
+            v++;
+        }
+    }
+
+    int idx = 0;
+    for (int r = 0; r < rings; r++)
+    {
+        for (int s = 0; s < slices; s++)
+        {
+            int tl = r * (slices + 1) + s;
+            int tr = tl + 1;
+            int bl = (r + 1) * (slices + 1) + s;
+            int br = bl + 1;
+
+            indices[idx++] = tl;
+            indices[idx++] = bl;
+            indices[idx++] = tr;
+
+            indices[idx++] = tr;
+            indices[idx++] = bl;
+            indices[idx++] = br;
+        }
+    }
+
+    return gl_create_meshlet(
+        positions.data(), normals.data(), uvs.data(),
+        vertex_count, indices.data(), index_count
     );
 }

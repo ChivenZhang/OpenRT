@@ -38,6 +38,8 @@ int main()
         return -1;
     }
 
+    SDL_GL_SetSwapInterval(0);
+
     // 初始化 GLEW
     gl_hello_world();
 
@@ -64,47 +66,60 @@ int main()
 
 void frame(int width, int height)
 {
-    constexpr auto VS = R"(
+    constexpr auto MS = R"(
         #version 460
-        layout(location = 0) in vec3 in_vertex;
-        layout(location = 1) in vec3 in_normal;
-        layout(location = 2) in vec2 in_uv;
-        out vec3 vertex;
-        out vec3 normal;
-        out vec2 uv;
+        #extension GL_NV_mesh_shader : require
+
+        layout(local_size_x = 3) in;
+        layout(max_vertices=3, max_primitives=1) out;
+        layout(triangles) out;
 
         uniform mat4 projMat, viewMat, modelMat;
 
+        layout(std430, binding = 0) buffer Vertices
+        {
+            vec3 vertices[];
+        };
+
+        layout(std430, binding = 1) buffer Indices
+        {
+            uint indices[];
+        };
+
         void main()
         {
-            vertex = vec3(modelMat * vec4(in_vertex, 1.0));
-            normal = vec3(modelMat * vec4(in_normal, 0.0));
-            uv = in_uv;
-            gl_Position = projMat * viewMat * vec4(vertex, 1.0);
+            uint meshlet_id = gl_WorkGroupID.x;
+
+            uint thread_id = gl_LocalInvocationID.x;
+
+            uint index = indices[meshlet_id * 3 + thread_id];
+
+            vec3 point = vertices[index];
+
+            gl_MeshVerticesNV[thread_id].gl_Position = projMat * viewMat * modelMat * vec4(point, 1);
+
+            gl_PrimitiveIndicesNV[thread_id] = thread_id;
+
+            gl_PrimitiveCountNV = 1;
         }
     )";
     constexpr auto FS = R"(
         #version 460
-        in vec3 vertex;
-        in vec3 normal;
-        in vec2 uv;
         out vec4 final;
-
-        layout(binding = 0) uniform sampler2D texture0;
 
         void main()
         {
-            final = vec4(1, 0.5, 0.3, 1.0);
+            final = vec4(1,1,0,1);
         }
     )";
-    static auto program = gl_create_program_graphics(VS, FS);
+    static auto program = gl_create_program_meshlet(nullptr, MS, FS);
     static auto pass1_color = gl_create_texture_color(width, height, nullptr);
     static auto pass1_depth = gl_create_texture_depth(width, height, nullptr);
     static auto pass1 = gl_create_pipeline(width, height, pass1_color, pass1_depth);
 
     auto projMat = glm::perspective(glm::radians(60.0f), (float)width / (float)height, 0.1f, 100.0f);
-    auto viewMat = glm::lookAt(glm::vec3(0, 1.8, 5), glm::vec3(0, 0, 0), glm::vec3(0, 1, 0));
-    auto modelMat = glm::translate(glm::mat4(1.0f), glm::vec3(-2, 0, 0));
+    auto viewMat = glm::lookAt(glm::vec3(0, 2, 4), glm::vec3(0, 0, 0), glm::vec3(0, 1, 0));
+    auto modelMat = glm::translate(glm::mat4(1.0f), glm::vec3(0, 0, 0));
 
     gl_begin_render(pass1, {.program = program, .clear_color = true, .clear_depth = true, .depth_test = true, .depth_func = GL_LEQUAL, .fill_mode = GL_LINE, });
 
@@ -112,8 +127,21 @@ void frame(int width, int height)
     gl_set_uniform_mat4("viewMat", &viewMat[0][0]);
     gl_set_uniform_mat4("modelMat", &modelMat[0][0]);
     gl_set_viewport(0, 0, width, height);
-    static auto plane = gl_create_mesh_plane(10, 4);
-    gl_draw_mesh(plane);
+    static auto meshlet = gl_create_meshlet_plane(10, 4);
+
+    gl_buffer_t vertices
+    {
+        .handle = meshlet.vertex_vbo,
+        .size = meshlet.vertex_count * sizeof(glm::vec4),
+    };
+    gl_buffer_t indices
+    {
+        .handle = meshlet.index_vbo,
+        .size = meshlet.index_count * sizeof(uint32_t),
+    };
+    gl_bind_buffer(vertices, {.binding = 0, .target = GL_SHADER_STORAGE_BUFFER,});
+    gl_bind_buffer(indices, {.binding = 1, .target = GL_SHADER_STORAGE_BUFFER,});
+    gl_draw_mesh_task(meshlet.index_count / 3, 1, 1);
 
     gl_end_render(pass1);
 
