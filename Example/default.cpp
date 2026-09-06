@@ -17,7 +17,7 @@ int main()
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 6);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
 
-    SDL_Window* window = SDL_CreateWindow("OpenGL Demo", 1000, 600, SDL_WINDOW_OPENGL);
+    SDL_Window* window = SDL_CreateWindow("Terrain Demo", 1000, 600, SDL_WINDOW_OPENGL);
     if (!window) {
         fprintf(stderr, "Window creation failed: %s\n", SDL_GetError());
         SDL_Quit();
@@ -51,6 +51,21 @@ int main()
     SDL_DestroyWindow(window);
     SDL_Quit();
     return 0;
+}
+
+#include <opencv2/opencv.hpp>
+gl_texture_t gl_load_texture(const char* filename)
+{
+    cv::Mat image = cv::imread(filename, cv::IMREAD_UNCHANGED);
+    if (image.empty()) {
+        fprintf(stderr, "Failed to load image: %s\n", filename);
+        return {};
+    }
+    if (image.channels() == 1) cv::cvtColor(image, image, cv::COLOR_GRAY2RGBA);
+    else if (image.channels() == 3) cv::cvtColor(image, image, cv::COLOR_BGR2RGBA);
+    else if (image.channels() == 4) cv::cvtColor(image, image, cv::COLOR_BGRA2RGBA);
+    else return {};
+    return gl_create_texture_color(image.cols, image.rows, image.data);
 }
 
 void frame(int width, int height)
@@ -97,13 +112,11 @@ void frame(int width, int height)
 
             uint index = indices[meshlet_id * 3 + thread_id];
 
-            vec3 point = vertices[index];
-
-            vertex[thread_id] = vec3(modelMat * vec4(point, 1));
+            vertex[thread_id] = vec3(modelMat * vec4(vertices[index], 1));
             normal[thread_id] = vec3(modelMat * vec4(normals[index], 0));
             uv[thread_id] = uvs[index];
 
-            gl_MeshVerticesNV[thread_id].gl_Position = projMat * viewMat * modelMat * vec4(point, 1);
+            gl_MeshVerticesNV[thread_id].gl_Position = projMat * viewMat * modelMat * vec4(vertices[index], 1);
 
             gl_PrimitiveIndicesNV[thread_id] = thread_id;
 
@@ -118,16 +131,18 @@ void frame(int width, int height)
         in vec2 uv;
         out vec4 final;
 
+        layout(binding = 0) uniform sampler2D texture0;
+
         // ===== 常量定义 =====
         // 光源属性
         const vec3 LIGHT_POSITION = vec3(5.0, 5.0, 5.0);
-        const vec3 LIGHT_COLOR = vec3(1.0, 1.0, 1.0);
-        const float LIGHT_INTENSITY = 1.0;
+        const vec3 LIGHT_COLOR = vec3(1.0, 0.98, 0.94);       // 暖白色太阳光
+        const float LIGHT_INTENSITY = 1.5;                     // 太阳光强度
 
         // 材质属性
         const vec3 AMBIENT_COLOR = vec3(0.1, 0.1, 0.1);
-        const vec3 DIFFUSE_COLOR = vec3(0.8, 0.6, 0.4);
-        const vec3 SPECULAR_COLOR = vec3(1.0, 1.0, 1.0);
+        const vec3 DIFFUSE_COLOR = vec3(1.0, 1.0, 1.0);
+        const vec3 SPECULAR_COLOR = vec3(0.5, 0.5, 0.5);
         const float SHININESS = 32.0;
 
         // 相机位置（用于计算观察方向）
@@ -152,7 +167,7 @@ void frame(int width, int height)
 
             // ===== 漫反射 =====
             float diff = max(dot(N, L), 0.0);
-            vec3 diffuse = diff * DIFFUSE_COLOR;
+            vec3 diffuse = diff * DIFFUSE_COLOR * texture(texture0, uv).rgb;
 
             // ===== 镜面反射（Blinn-Phong）=====
             float spec = pow(max(dot(N, H), 0.0), SHININESS);
@@ -168,7 +183,7 @@ void frame(int width, int height)
 
     auto projMat = glm::perspective(glm::radians(60.0f), (float)width / (float)height, 0.1f, 100.0f);
     auto viewMat = glm::lookAt(glm::vec3(0, 2, 5), glm::vec3(0, 0, 0), glm::vec3(0, 1, 0));
-    auto modelMat = glm::translate(glm::mat4(1.0f), glm::vec3(0, 0, 0));
+    auto modelMat = glm::rotate(glm::mat4(1.0f), (float)SDL_GetTicks() / 2000.0f, glm::vec3(0, 1, 0));
 
     static auto module = gl_create_module_meshlet(nullptr, MS, FS);
     static auto pass1_color = gl_create_texture_color(width, height, nullptr);
@@ -186,6 +201,9 @@ void frame(int width, int height)
     gl_bind_buffer(meshlet.normal_vbo, {.binding = 1, .target = GL_SHADER_STORAGE_BUFFER,});
     gl_bind_buffer(meshlet.uv_vbo, {.binding = 2, .target = GL_SHADER_STORAGE_BUFFER,});
     gl_bind_buffer(meshlet.index_vbo, {.binding = 3, .target = GL_SHADER_STORAGE_BUFFER,});
+
+    static auto texture0 = gl_load_texture("../../Earth.png");
+    gl_bind_texture(texture0, {.binding = 0,});
 
     gl_set_viewport(0, 0, width, height);
     gl_draw_mesh_task(meshlet.index_count / 3, 1, 1);

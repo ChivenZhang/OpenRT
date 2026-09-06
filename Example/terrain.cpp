@@ -53,19 +53,39 @@ int main()
     return 0;
 }
 
+#include <opencv2/opencv.hpp>
+gl_texture_t gl_load_texture(const char* filename)
+{
+    cv::Mat image = cv::imread(filename, cv::IMREAD_UNCHANGED);
+    if (image.empty()) {
+        fprintf(stderr, "Failed to load image: %s\n", filename);
+        return {};
+    }
+
+    if (image.depth() != CV_8U) cv::normalize(image, image, 0, 255, cv::NORM_MINMAX, CV_8UC1);
+
+    if (image.channels() == 1) cv::cvtColor(image, image, cv::COLOR_GRAY2RGBA);
+    else if (image.channels() == 3) cv::cvtColor(image, image, cv::COLOR_BGR2RGBA);
+    else if (image.channels() == 4) cv::cvtColor(image, image, cv::COLOR_BGRA2RGBA);
+    else return {};
+    return gl_create_texture_color(image.cols, image.rows, image.data);
+}
+
 void frame(int width, int height)
 {
     constexpr auto MS = R"(
         #version 460
         #extension GL_NV_mesh_shader : require
 
-        layout(local_size_x = 3) in;
+        layout(local_size_x = 1) in;
         layout(max_vertices=64, max_primitives=126) out;
         layout(triangles) out;
 
         out vec3 vertex[];
         out vec3 normal[];
         out vec2 uv[];
+
+        layout(binding = 1) uniform sampler2D texture1;
 
         uniform mat4 projMat, viewMat, modelMat;
 
@@ -93,19 +113,26 @@ void frame(int width, int height)
         {
             uint meshlet_id = gl_WorkGroupID.x;
 
-            uint thread_id = gl_LocalInvocationID.x;
+            for(uint i=0; i<3; ++i)
+            {
+                uint index = indices[meshlet_id * 3 + i];
 
-            uint index = indices[meshlet_id * 3 + thread_id];
+                vec3 worldPos = vec3(modelMat * vec4(vertices[index], 1));
 
-            vec3 point = vertices[index];
+                vec3 worldNormal = vec3(modelMat * vec4(normals[index], 0));
 
-            vertex[thread_id] = vec3(modelMat * vec4(point, 1));
-            normal[thread_id] = vec3(modelMat * vec4(normals[index], 0));
-            uv[thread_id] = uvs[index];
+                float height = texture(texture1, uvs[index]).r;
 
-            gl_MeshVerticesNV[thread_id].gl_Position = projMat * viewMat * modelMat * vec4(point, 1);
+                worldPos.y += height * 4;
 
-            gl_PrimitiveIndicesNV[thread_id] = thread_id;
+                vertex[i] = vec3(worldPos);
+                normal[i] = vec3(worldNormal);
+                uv[i] = uvs[index];
+
+                gl_MeshVerticesNV[i].gl_Position = projMat * viewMat * vec4(worldPos, 1);
+
+                gl_PrimitiveIndicesNV[i] = i;
+            }
 
             gl_PrimitiveCountNV = 1;
         }
@@ -118,16 +145,19 @@ void frame(int width, int height)
         in vec2 uv;
         out vec4 final;
 
+        layout(binding = 0) uniform sampler2D texture0;
+        layout(binding = 1) uniform sampler2D texture1;
+
         // ===== 常量定义 =====
         // 光源属性
         const vec3 LIGHT_POSITION = vec3(5.0, 5.0, 5.0);
-        const vec3 LIGHT_COLOR = vec3(1.0, 1.0, 1.0);
-        const float LIGHT_INTENSITY = 1.0;
+        const vec3 LIGHT_COLOR = vec3(1.0, 0.98, 0.94);       // 暖白色太阳光
+        const float LIGHT_INTENSITY = 1.5;                     // 太阳光强度
 
         // 材质属性
         const vec3 AMBIENT_COLOR = vec3(0.1, 0.1, 0.1);
-        const vec3 DIFFUSE_COLOR = vec3(0.8, 0.6, 0.4);
-        const vec3 SPECULAR_COLOR = vec3(1.0, 1.0, 1.0);
+        const vec3 DIFFUSE_COLOR = vec3(1.0, 1.0, 1.0);
+        const vec3 SPECULAR_COLOR = vec3(0.5, 0.5, 0.5);
         const float SHININESS = 32.0;
 
         // 相机位置（用于计算观察方向）
@@ -152,7 +182,7 @@ void frame(int width, int height)
 
             // ===== 漫反射 =====
             float diff = max(dot(N, L), 0.0);
-            vec3 diffuse = diff * DIFFUSE_COLOR;
+            vec3 diffuse = diff * DIFFUSE_COLOR * texture(texture0, uv).rgb;
 
             // ===== 镜面反射（Blinn-Phong）=====
             float spec = pow(max(dot(N, H), 0.0), SHININESS);
@@ -168,24 +198,29 @@ void frame(int width, int height)
 
     auto projMat = glm::perspective(glm::radians(60.0f), (float)width / (float)height, 0.1f, 100.0f);
     auto viewMat = glm::lookAt(glm::vec3(0, 2, 5), glm::vec3(0, 0, 0), glm::vec3(0, 1, 0));
-    auto modelMat = glm::translate(glm::mat4(1.0f), glm::vec3(0, 0, 0));
+    auto modelMat = glm::rotate(glm::mat4(1.0f), (float)SDL_GetTicks() / 2000.0f, glm::vec3(0, 1, 0));
 
     static auto module = gl_create_module_meshlet(nullptr, MS, FS);
     static auto pass1_color = gl_create_texture_color(width, height, nullptr);
     static auto pass1_depth = gl_create_texture_depth(width, height, nullptr);
 
-    gl_pipeline_t pass1 = {.module = module, .color = pass1_color, .depth = pass1_depth, .clear_color = true, .clear_depth = true, .depth_test = true, .depth_func = GL_LEQUAL,  };
+    gl_pipeline_t pass1 = {.module = module, .color = pass1_color, .depth = pass1_depth, .clear_color = true, .clear_depth = true, .depth_test = true, .depth_func = GL_LEQUAL, .fill_mode = GL_LINE, };
     gl_begin_meshlet(pass1);
 
     gl_set_uniform_mat4("projMat", &projMat[0][0]);
     gl_set_uniform_mat4("viewMat", &viewMat[0][0]);
     gl_set_uniform_mat4("modelMat", &modelMat[0][0]);
 
-    static auto meshlet = gl_create_meshlet_sphere(2, 64, 32);
+    static auto meshlet = gl_create_meshlet_plane(5, 10);
     gl_bind_buffer(meshlet.vertex_vbo, {.binding = 0, .target = GL_SHADER_STORAGE_BUFFER,});
     gl_bind_buffer(meshlet.normal_vbo, {.binding = 1, .target = GL_SHADER_STORAGE_BUFFER,});
     gl_bind_buffer(meshlet.uv_vbo, {.binding = 2, .target = GL_SHADER_STORAGE_BUFFER,});
     gl_bind_buffer(meshlet.index_vbo, {.binding = 3, .target = GL_SHADER_STORAGE_BUFFER,});
+
+    static auto texture0 = gl_load_texture("../../DiffuseTerrain.png");
+    static auto texture1 = gl_load_texture("../../HeightTerrain.png");
+    gl_bind_texture(texture0, {.binding = 0,});
+    gl_bind_texture(texture1, {.binding = 1,});
 
     gl_set_viewport(0, 0, width, height);
     gl_draw_mesh_task(meshlet.index_count / 3, 1, 1);

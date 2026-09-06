@@ -68,14 +68,14 @@ struct gl_sampler_t
 struct gl_module_t
 {
     GLuint handle = 0;
+    GLenum target = GL_NONE;
 };
 
 struct gl_pipeline_t
 {
     GLuint handle = 0;
     gl_module_t module;
-    gl_texture_t color;
-    gl_texture_t depth;
+    gl_texture_t color, color1, color2, depth;
     bool clear_color = false;
     bool clear_depth = false;
     bool clear_stencil = false;
@@ -497,6 +497,7 @@ static gl_module_t gl_create_module_compute(const char* comp_src)
 
     glDeleteShader(cs);
 
+    result.target = GL_COMPUTE_SHADER;
     return result;
 }
 
@@ -563,6 +564,7 @@ static gl_module_t gl_create_module_graphics(
     glDeleteShader(vs);
     glDeleteShader(fs);
 
+    result.target = GL_VERTEX_SHADER;
     return result;
 }
 
@@ -574,33 +576,33 @@ static gl_module_t gl_create_module_meshlet(
     gl_module_t result = {};
 
     // ---- Task Shader（可选）----
-    GLuint task = 0;
+    GLuint ts = 0;
     if (task_src)
     {
-        task = glCreateShader(GL_TASK_SHADER_NV);
-        glShaderSource(task, 1, &task_src, nullptr);
-        glCompileShader(task);
+        ts = glCreateShader(GL_TASK_SHADER_NV);
+        glShaderSource(ts, 1, &task_src, nullptr);
+        glCompileShader(ts);
         GLint success = 0;
-        glGetShaderiv(task, GL_COMPILE_STATUS, &success);
+        glGetShaderiv(ts, GL_COMPILE_STATUS, &success);
         if (!success)
         {
             char log[1024];
-            glGetShaderInfoLog(task, sizeof(log), nullptr, log);
+            glGetShaderInfoLog(ts, sizeof(log), nullptr, log);
             fprintf(stderr, "Task shader compile error:\n%s\n", log);
             abort();
         }
     }
 
     // ---- Mesh Shader ----
-    GLuint mesh = glCreateShader(GL_MESH_SHADER_NV);
-    glShaderSource(mesh, 1, &mesh_src, nullptr);
-    glCompileShader(mesh);
+    GLuint ms = glCreateShader(GL_MESH_SHADER_NV);
+    glShaderSource(ms, 1, &mesh_src, nullptr);
+    glCompileShader(ms);
     GLint success = 0;
-    glGetShaderiv(mesh, GL_COMPILE_STATUS, &success);
+    glGetShaderiv(ms, GL_COMPILE_STATUS, &success);
     if (!success)
     {
         char log[1024];
-        glGetShaderInfoLog(mesh, sizeof(log), nullptr, log);
+        glGetShaderInfoLog(ms, sizeof(log), nullptr, log);
         fprintf(stderr, "Mesh shader compile error:\n%s\n", log);
         abort();
     }
@@ -620,9 +622,8 @@ static gl_module_t gl_create_module_meshlet(
 
     // ---- Program ----
     result.handle = glCreateProgram();
-    if (task)
-        glAttachShader(result.handle, task);
-    glAttachShader(result.handle, mesh);
+    if (ts) glAttachShader(result.handle, ts);
+    glAttachShader(result.handle, ms);
     glAttachShader(result.handle, fs);
     glLinkProgram(result.handle);
 
@@ -635,11 +636,11 @@ static gl_module_t gl_create_module_meshlet(
         abort();
     }
 
-    if (task)
-        glDeleteShader(task);
-    glDeleteShader(mesh);
+    if (ts) glDeleteShader(ts);
+    glDeleteShader(ms);
     glDeleteShader(fs);
 
+    result.target = GL_MESH_SHADER_NV;
     return result;
 }
 
@@ -741,6 +742,18 @@ inline void gl_begin_compute(gl_pipeline_t& pipeline)
         abort();
     }
 
+    if (pipeline.module.handle == 0)
+    {
+        fprintf(stderr, "Pipeline module is not created\n");
+        abort();
+    }
+
+    if (pipeline.module.target != GL_COMPUTE_SHADER)
+    {
+        fprintf(stderr, "Pipeline module is not compute shader\n");
+        abort();
+    }
+
     glUseProgram(pipeline.module.handle);
 }
 
@@ -751,6 +764,18 @@ inline void gl_end_compute(gl_pipeline_t& pipeline)
     if (program && program != pipeline.module.handle)
     {
         fprintf(stderr, "Pipeline not end\n");
+        abort();
+    }
+
+    if (pipeline.module.handle == 0)
+    {
+        fprintf(stderr, "Pipeline module is not created\n");
+        abort();
+    }
+
+    if (pipeline.module.target != GL_COMPUTE_SHADER)
+    {
+        fprintf(stderr, "Pipeline module is not compute shader\n");
         abort();
     }
 
@@ -772,9 +797,22 @@ static void gl_begin_render(gl_pipeline_t& pipeline)
         abort();
     }
 
+    if (pipeline.module.handle == 0)
+    {
+        fprintf(stderr, "Pipeline module is not created\n");
+        abort();
+    }
+
+    if (pipeline.module.target != GL_VERTEX_SHADER && pipeline.module.target != GL_MESH_SHADER_NV)
+    {
+        fprintf(stderr, "Pipeline module is not render shader\n");
+        abort();
+    }
+
+    pipeline.handle = 0;
     glUseProgram(pipeline.module.handle);
 
-    if (pipeline.color.handle || pipeline.depth.handle)
+    if (pipeline.color.handle || pipeline.color1.handle || pipeline.color2.handle || pipeline.depth.handle)
     {
         glGenFramebuffers(1, &pipeline.handle);
         glBindFramebuffer(GL_FRAMEBUFFER, pipeline.handle);
@@ -786,6 +824,20 @@ static void gl_begin_render(gl_pipeline_t& pipeline)
             glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, pipeline.color.handle, 0);
             width = std::max(width, pipeline.color.width);
             height = std::max(height, pipeline.color.height);
+        }
+        if (pipeline.color1.handle)
+        {
+            glBindTexture(GL_TEXTURE_2D, pipeline.color1.handle);
+            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_2D, pipeline.color1.handle, 0);
+            width = std::max(width, pipeline.color1.width);
+            height = std::max(height, pipeline.color1.height);
+        }
+        if (pipeline.color2.handle)
+        {
+            glBindTexture(GL_TEXTURE_2D, pipeline.color2.handle);
+            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT2, GL_TEXTURE_2D, pipeline.color2.handle, 0);
+            width = std::max(width, pipeline.color2.width);
+            height = std::max(height, pipeline.color2.height);
         }
         if (pipeline.depth.handle)
         {
@@ -840,6 +892,18 @@ static void gl_end_render(gl_pipeline_t& pipeline)
     if (program && program != pipeline.module.handle)
     {
         fprintf(stderr, "Pipeline not end\n");
+        abort();
+    }
+
+    if (pipeline.module.handle == 0)
+    {
+        fprintf(stderr, "Pipeline module is not created\n");
+        abort();
+    }
+
+    if (pipeline.module.target != GL_VERTEX_SHADER && pipeline.module.target != GL_MESH_SHADER_NV)
+    {
+        fprintf(stderr, "Pipeline module is not render shader\n");
         abort();
     }
 
@@ -1139,12 +1203,12 @@ static gl_mesh_t gl_create_mesh_plane(float size, int N)
         {
             size_t i = z * vertsX + x;
 
-            float fx = (float)x / N - 0.5f;
-            float fz = (float)z / N - 0.5f;
+            float fx = (float)x / N;
+            float fz = (float)z / N;
 
-            positions[i * 3 + 0] = fx * size;
+            positions[i * 3 + 0] = (fx - 0.5f) * size;
             positions[i * 3 + 1] = 0.0f; // Y = 0
-            positions[i * 3 + 2] = fz * size;
+            positions[i * 3 + 2] = (fz - 0.5f) * size;
 
             normals[i * 3 + 0] = 0.0f;
             normals[i * 3 + 1] = 1.0f; // 法线朝上 (+Y)
@@ -1271,12 +1335,12 @@ static gl_meshlet_t gl_create_meshlet_plane(float size, int N)
         {
             size_t i = z * vertsX + x;
 
-            float fx = (float)x / N - 0.5f;
-            float fz = (float)z / N - 0.5f;
+            float fx = (float)x / N;
+            float fz = (float)z / N;
 
-            positions[i * 4 + 0] = fx * size;
+            positions[i * 4 + 0] = (fx - 0.5f) * size;
             positions[i * 4 + 1] = 0.0f; // Y = 0
-            positions[i * 4 + 2] = fz * size;
+            positions[i * 4 + 2] = (fz - 0.5f) * size;
 
             normals[i * 4 + 0] = 0.0f;
             normals[i * 4 + 1] = 1.0f; // 法线朝上 (+Y)
