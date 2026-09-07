@@ -64,9 +64,12 @@ void frame(int width, int height)
         layout(max_vertices=64, max_primitives=126) out;
         layout(triangles) out;
 
-        out vec3 vertex[];
-        out vec3 normal[];
-        out vec2 uv[];
+        out PerVertexData
+        {
+            vec3 vertex;
+            vec3 normal;
+            vec2 uv;
+        }  ms_out[];
 
         uniform mat4 projMat, viewMat, modelMat;
 
@@ -98,9 +101,9 @@ void frame(int width, int height)
 
             uint index = indices[meshlet_id * 3 + thread_id];
 
-            vertex[thread_id] = vec3(modelMat * vec4(vertices[index], 1));
-            normal[thread_id] = vec3(modelMat * vec4(normals[index], 0));
-            uv[thread_id] = uvs[index];
+            ms_out[thread_id].vertex = vec3(modelMat * vec4(vertices[index], 1));
+            ms_out[thread_id].normal = vec3(modelMat * vec4(normals[index], 0));
+            ms_out[thread_id].uv = uvs[index];
 
             gl_MeshVerticesNV[thread_id].gl_Position = projMat * viewMat * modelMat * vec4(vertices[index], 1);
 
@@ -112,18 +115,20 @@ void frame(int width, int height)
     constexpr auto FS = R"(
         #version 460
 
-        in vec3 vertex;
-        in vec3 normal;
-        in vec2 uv;
+        in PerVertexData
+        {
+            vec3 vertex;
+            vec3 normal;
+            vec2 uv;
+        }  fs_in;
         out vec4 final;
 
         layout(binding = 0) uniform sampler2D texture0;
 
-        // ===== 常量定义 =====
         // 光源属性
         const vec3 LIGHT_POSITION = vec3(5.0, 5.0, 5.0);
-        const vec3 LIGHT_COLOR = vec3(1.0, 0.98, 0.94);       // 暖白色太阳光
-        const float LIGHT_INTENSITY = 1.5;                     // 太阳光强度
+        const vec3 LIGHT_COLOR = vec3(1.0, 0.98, 0.94);
+        const float LIGHT_INTENSITY = 1.5;
 
         // 材质属性
         const vec3 AMBIENT_COLOR = vec3(0.1, 0.1, 0.1);
@@ -137,13 +142,13 @@ void frame(int width, int height)
         void main()
         {
             // 归一化法线
-            vec3 N = normalize(normal);
+            vec3 N = normalize(fs_in.normal);
 
             // 计算光照方向
-            vec3 L = normalize(LIGHT_POSITION - vertex);
+            vec3 L = normalize(LIGHT_POSITION - fs_in.vertex);
 
             // 计算观察方向
-            vec3 V = normalize(CAMERA_POSITION - vertex);
+            vec3 V = normalize(CAMERA_POSITION - fs_in.vertex);
 
             // 计算半程向量（Blinn-Phong 的核心）
             vec3 H = normalize(L + V);
@@ -153,7 +158,7 @@ void frame(int width, int height)
 
             // ===== 漫反射 =====
             float diff = max(dot(N, L), 0.0);
-            vec3 diffuse = diff * DIFFUSE_COLOR * texture(texture0, uv).rgb;
+            vec3 diffuse = diff * DIFFUSE_COLOR * texture(texture0, fs_in.uv).rgb;
 
             // ===== 镜面反射（Blinn-Phong）=====
             float spec = pow(max(dot(N, H), 0.0), SHININESS);
@@ -175,7 +180,7 @@ void frame(int width, int height)
     static auto pass1_color = gl_create_texture_color(width, height, nullptr);
     static auto pass1_depth = gl_create_texture_depth(width, height, nullptr);
 
-    gl_pipeline_t pass1 = {.module = module, .color = pass1_color, .depth = pass1_depth, .clear_color = true, .clear_depth = true, .depth_test = true, .depth_func = GL_LEQUAL,  };
+    gl_pass_t pass1 = {.module = module, .color = {{.texture = pass1_color, .clear = true, }}, .depth = {.texture = pass1_depth, .clear = true, .write = true, .func = GL_LEQUAL, }, };
     gl_begin_meshlet(pass1);
 
     gl_set_uniform_mat4("projMat", &projMat[0][0]);

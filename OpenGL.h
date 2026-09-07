@@ -78,26 +78,61 @@ struct gl_module_t
     GLenum target = GL_NONE;
 };
 
-struct gl_pipeline_t
+struct gl_pass_t
 {
     GLuint handle = 0;
     gl_module_t module;
-    gl_texture_t color, color1, color2, depth;
-    bool clear_color = false;
-    bool clear_depth = false;
-    bool clear_stencil = false;
-    bool depth_test = false;
-    bool depth_write = true;
-    bool scissor_test = false;
-    GLenum depth_func = GL_LESS;
+
+    struct
+    {
+        bool clear_color = false;
+        bool clear_depth = false;
+        bool clear_stencil = false;
+        float color_value[4] = {};
+        float depth_value = 1.0f;
+        uint32_t stencil_value = (uint32_t)-1;
+        struct
+        {
+            GLenum opt = GL_ADD, src = GL_ONE, dst = GL_ZERO;
+        } blend;
+    } screen;
+
+    struct gl_color_attach_t
+    {
+        gl_texture_t texture;
+        bool clear = false;
+        float value[4] = {};
+        struct
+        {
+            GLenum opt = GL_ADD, src = GL_ONE, dst = GL_ZERO;
+        } blend_color, blend_alpha;
+    };
+    gl_color_attach_t color[2];
+
+    struct
+    {
+        gl_texture_t texture;
+        bool clear = false;
+        bool write = false;
+        GLenum func = GL_ALWAYS;
+        float value = 1.0f;
+    } depth;
+
+    struct
+    {
+        bool clear = false;
+        uint32_t read = (uint32_t)-1;
+        uint32_t write = (uint32_t)-1;
+        struct
+        {
+            GLenum func = GL_ALWAYS, sfail = GL_KEEP, dpfail = GL_KEEP, dppass = GL_KEEP;
+        } back, front;
+	    uint32_t value = (uint32_t)-1;
+    } stencil;
+
     GLenum cull_mode = GL_BACK;
     GLenum front_face = GL_CCW;
     GLenum fill_mode = GL_FILL;
-    struct
-    {
-        float r = 0, g = 0, b = 0, a = 0;
-    } color_value;
-    float depth_value = 1.0f;
 };
 
 struct gl_mesh_t
@@ -166,17 +201,17 @@ void gl_set_uniform_vec4(const char* name, const float* value);
 void gl_set_uniform_mat3(const char* name, const float* value);
 void gl_set_uniform_mat4(const char* name, const float* value);
 
-void gl_begin_compute(gl_pipeline_t& pipeline);
-void gl_end_compute(gl_pipeline_t& pipeline);
+void gl_begin_compute(gl_pass_t& pass);
+void gl_end_compute(gl_pass_t& pass);
 void gl_dispatch_compute(uint32_t groupX, uint32_t groupY, uint32_t groupZ);
 
-void gl_begin_render(gl_pipeline_t& pipeline);
-void gl_end_render(gl_pipeline_t& pipeline);
+void gl_begin_render(gl_pass_t& pass);
+void gl_end_render(gl_pass_t& pass);
 void gl_set_viewport(int32_t x, int32_t y, int32_t width, int32_t height);
 void gl_set_scissor(int32_t x, int32_t y, int32_t width, int32_t height);
 
-inline void (*gl_begin_meshlet)(gl_pipeline_t& pipeline) = gl_begin_render;
-inline void (*gl_end_meshlet)(gl_pipeline_t& pipeline) = gl_end_render;
+inline void (*gl_begin_meshlet)(gl_pass_t& pass) = gl_begin_render;
+inline void (*gl_end_meshlet)(gl_pass_t& pass) = gl_end_render;
 void gl_draw_mesh_task(uint32_t groupX, uint32_t groupY, uint32_t groupZ);
 
 gl_mesh_t gl_create_mesh(const float* vertices, const float* normals, const float* uvs, size_t vertex_count, const unsigned int* indices, size_t index_count);
@@ -744,7 +779,7 @@ static void gl_set_uniform_mat4(const char* name, const float* value)
 
 // ====================================================================
 
-inline void gl_begin_compute(gl_pipeline_t& pipeline)
+inline void gl_begin_compute(gl_pass_t& pass)
 {
     GLint program = 0;
     glGetIntegerv(GL_CURRENT_PROGRAM, &program);
@@ -754,38 +789,38 @@ inline void gl_begin_compute(gl_pipeline_t& pipeline)
         abort();
     }
 
-    if (pipeline.module.handle == 0)
+    if (pass.module.handle == 0)
     {
         fprintf(stderr, "Pipeline module is not created\n");
         abort();
     }
 
-    if (pipeline.module.target != GL_COMPUTE_SHADER)
+    if (pass.module.target != GL_COMPUTE_SHADER)
     {
         fprintf(stderr, "Pipeline module is not compute shader\n");
         abort();
     }
 
-    glUseProgram(pipeline.module.handle);
+    glUseProgram(pass.module.handle);
 }
 
-inline void gl_end_compute(gl_pipeline_t& pipeline)
+inline void gl_end_compute(gl_pass_t& pass)
 {
     GLint program = 0;
     glGetIntegerv(GL_CURRENT_PROGRAM, &program);
-    if (program && program != pipeline.module.handle)
+    if (program && program != pass.module.handle)
     {
         fprintf(stderr, "Pipeline not end\n");
         abort();
     }
 
-    if (pipeline.module.handle == 0)
+    if (pass.module.handle == 0)
     {
         fprintf(stderr, "Pipeline module is not created\n");
         abort();
     }
 
-    if (pipeline.module.target != GL_COMPUTE_SHADER)
+    if (pass.module.target != GL_COMPUTE_SHADER)
     {
         fprintf(stderr, "Pipeline module is not compute shader\n");
         abort();
@@ -799,7 +834,7 @@ static void gl_dispatch_compute(uint32_t groupX, uint32_t groupY, uint32_t group
     glDispatchCompute(std::max(1U, groupX), std::max(1U, groupY), std::max(1U, groupZ));
 }
 
-static void gl_begin_render(gl_pipeline_t& pipeline)
+static void gl_begin_render(gl_pass_t& pass)
 {
     GLint program = 0;
     glGetIntegerv(GL_CURRENT_PROGRAM, &program);
@@ -808,129 +843,184 @@ static void gl_begin_render(gl_pipeline_t& pipeline)
         fprintf(stderr, "Pipeline not end\n");
         abort();
     }
-
-    if (pipeline.module.handle == 0)
+    if (pass.module.handle == 0)
     {
         fprintf(stderr, "Pipeline module is not created\n");
         abort();
     }
-
-    if (pipeline.module.target != GL_VERTEX_SHADER && pipeline.module.target != GL_MESH_SHADER_NV)
+    if (pass.module.target != GL_VERTEX_SHADER && pass.module.target != GL_MESH_SHADER_NV)
     {
         fprintf(stderr, "Pipeline module is not render shader\n");
         abort();
     }
 
-    pipeline.handle = 0;
-    glUseProgram(pipeline.module.handle);
+    pass.handle = 0;
+    glUseProgram(pass.module.handle);
 
-    if (pipeline.color.handle || pipeline.color1.handle || pipeline.color2.handle || pipeline.depth.handle)
+    glDisable(GL_SCISSOR_TEST);
+
+    // Depth State
+
+    if (pass.depth.func == GL_ALWAYS && pass.depth.write == false)
     {
-        glGenFramebuffers(1, &pipeline.handle);
-        glBindFramebuffer(GL_FRAMEBUFFER, pipeline.handle);
+        glDisable(GL_DEPTH_TEST);
+    }
+    else
+    {
+        glEnable(GL_DEPTH_TEST);
+    }
+    glDepthMask(pass.depth.write);
+    glDepthFunc(pass.depth.func);
 
-        uint32_t width = 0, height = 0;
+    // Stencil State
+
+    if (pass.stencil.back.func != GL_ALWAYS || pass.stencil.back.sfail != GL_KEEP || pass.stencil.back.dpfail != GL_KEEP || pass.stencil.back.dppass != GL_KEEP
+        || pass.stencil.front.func != GL_ALWAYS || pass.stencil.front.sfail != GL_KEEP || pass.stencil.front.dpfail != GL_KEEP || pass.stencil.front.dppass != GL_KEEP)
+    {
+        glEnable(GL_STENCIL_TEST);
+    }
+    else
+    {
+        glDisable(GL_STENCIL_TEST);
+    }
+    glStencilMask(pass.stencil.write);
+    glStencilFuncSeparate(GL_BACK, pass.stencil.back.func, 0, pass.stencil.read);
+    glStencilFuncSeparate(GL_FRONT, pass.stencil.front.func, 0, pass.stencil.read);
+    glStencilOpSeparate(GL_BACK, pass.stencil.back.sfail, pass.stencil.back.dpfail, pass.stencil.back.dppass);
+    glStencilOpSeparate(GL_FRONT, pass.stencil.front.sfail, pass.stencil.front.dpfail, pass.stencil.front.dppass);
+
+    // Render State
+
+    bool offscreen = pass.depth.texture.handle;
+    for (size_t i=0; i<std::size(pass.color) && !offscreen; ++i)
+    {
+        if (pass.color[i].texture.handle) offscreen = true;
+    }
+    if (offscreen)
+    {
+        glGenFramebuffers(1, &pass.handle);
+        glBindFramebuffer(GL_FRAMEBUFFER, pass.handle);
+
         int32_t colorCount = 0;
         GLenum colorAttachments[16]{};
-        if (pipeline.color.handle)
+        uint32_t width = 0, height = 0;
+        for (size_t i=0; i<std::size(pass.color); ++i)
         {
-            glBindTexture(GL_TEXTURE_2D, pipeline.color.handle);
-            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, pipeline.color.handle, 0);
-            width = std::max(width, pipeline.color.width);
-            height = std::max(height, pipeline.color.height);
-            colorAttachments[colorCount++] = GL_COLOR_ATTACHMENT0;
-        }
-        if (pipeline.color1.handle)
-        {
-            glBindTexture(GL_TEXTURE_2D, pipeline.color1.handle);
-            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_2D, pipeline.color1.handle, 0);
-            width = std::max(width, pipeline.color1.width);
-            height = std::max(height, pipeline.color1.height);
-            colorAttachments[colorCount++] = GL_COLOR_ATTACHMENT1;
-        }
-        if (pipeline.color2.handle)
-        {
-            glBindTexture(GL_TEXTURE_2D, pipeline.color2.handle);
-            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT2, GL_TEXTURE_2D, pipeline.color2.handle, 0);
-            width = std::max(width, pipeline.color2.width);
-            height = std::max(height, pipeline.color2.height);
-            colorAttachments[colorCount++] = GL_COLOR_ATTACHMENT2;
+            if (pass.color[i].texture.handle)
+            {
+                glBindTexture(GL_TEXTURE_2D, pass.color[i].texture.handle);
+                glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + i, GL_TEXTURE_2D, pass.color[i].texture.handle, 0);
+                colorAttachments[colorCount++] = GL_COLOR_ATTACHMENT0 + i;
+                width = std::max(width, pass.color[i].texture.width);
+                height = std::max(height, pass.color[i].texture.height);
+            }
         }
         if (colorCount) glDrawBuffers(colorCount, colorAttachments);
 
-        if (pipeline.depth.handle)
+        if (pass.depth.texture.handle)
         {
-            glBindTexture(GL_TEXTURE_2D, pipeline.depth.handle);
-            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, pipeline.depth.handle, 0);
-            width = std::max(width, pipeline.depth.width);
-            height = std::max(height, pipeline.depth.height);
+            glBindTexture(GL_TEXTURE_2D, pass.depth.texture.handle);
+            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, pass.depth.texture.handle, 0);
+            width = std::max(width, pass.depth.texture.width);
+            height = std::max(height, pass.depth.texture.height);
         }
+
         if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
         {
             fprintf(stderr, "Framebuffer not complete\n");
             abort();
         }
         gl_set_viewport(0, 0, (int32_t)width, (int32_t)height);
+
+        glDisable(GL_BLEND);
+        for (size_t i=0; i<std::size(pass.color); ++i)
+        {
+            if (pass.color[i].texture.handle)
+            {
+                if (pass.color[i].clear) glColorMask(true, true, true, true);
+                if (pass.color[i].clear) glClearBufferfv(GL_COLOR, (int32_t)i, pass.color[i].value);
+
+                if (pass.color[i].blend_color.opt != GL_ADD || pass.color[i].blend_color.src != GL_ONE || pass.color[i].blend_color.dst != GL_ZERO
+                    || pass.color[i].blend_alpha.opt != GL_ADD || pass.color[i].blend_alpha.src != GL_ONE || pass.color[i].blend_alpha.dst != GL_ZERO) glEnable(GL_BLEND);
+                glBlendEquationSeparatei(i, pass.color[i].blend_color.opt, pass.color[i].blend_alpha.opt);
+                glBlendFuncSeparatei(i, pass.color[i].blend_color.src, pass.color[i].blend_color.dst, pass.color[i].blend_alpha.src, pass.color[i].blend_alpha.dst);
+            }
+        }
+
+        if (pass.depth.texture.handle && (pass.depth.texture.format == GL_DEPTH_COMPONENT || pass.depth.texture.format == GL_DEPTH_STENCIL))
+        {
+            if (pass.depth.clear)
+            {
+                glClearBufferfv(GL_DEPTH, 0, &pass.depth.value);
+            }
+            if (pass.depth.clear && pass.depth.texture.format == GL_DEPTH_STENCIL)
+            {
+                auto stencilValue = (int32_t)pass.stencil.value;
+                glClearBufferiv(GL_STENCIL, 0, &stencilValue);
+            }
+        }
+    }
+    else
+    {
+        glClearColor(pass.screen.color_value[0], pass.screen.color_value[1], pass.screen.color_value[2], pass.screen.color_value[3]);
+        glClearDepth(pass.depth.value);
+        glClearStencil((int32_t)pass.stencil.value);
+
+        auto mask = GL_NONE;
+        if (pass.screen.clear_color) mask |= GL_COLOR_BUFFER_BIT;
+        if (pass.screen.clear_depth) mask |= GL_DEPTH_BUFFER_BIT;
+        if (pass.screen.clear_stencil) mask |= GL_STENCIL_BUFFER_BIT;
+        if (mask) glClear(mask);
+
+        if (pass.screen.blend.opt != GL_ADD || pass.screen.blend.src != GL_ONE || pass.screen.blend.dst != GL_ZERO) glEnable(GL_BLEND);
+        else glDisable(GL_BLEND);
+        glBlendEquation(pass.screen.blend.opt);
+        glBlendFunc(pass.screen.blend.src, pass.screen.blend.dst);
     }
 
-    glClearColor(pipeline.color_value.r, pipeline.color_value.g, pipeline.color_value.b, pipeline.color_value.a);
+    // Primitive State
 
-    glClearDepth(pipeline.depth_value);
-
-    auto clearMask = GL_NONE;
-    if (pipeline.clear_color) clearMask |= GL_COLOR_BUFFER_BIT;
-    if (pipeline.clear_depth) clearMask |= GL_DEPTH_BUFFER_BIT;
-    if (pipeline.clear_stencil) clearMask |= GL_STENCIL_BUFFER_BIT;
-    if (clearMask != GL_NONE) glClear(clearMask);
-
-    if (pipeline.depth_test) glEnable(GL_DEPTH_TEST);
-    else glDisable(GL_DEPTH_TEST);
-
-    if (pipeline.scissor_test) glEnable(GL_SCISSOR_TEST);
-    else glDisable(GL_SCISSOR_TEST);
-
-    glDepthMask(pipeline.depth_write);
-
-    glDepthFunc(pipeline.depth_func);
-
-    glFrontFace(pipeline.front_face);
-    if (pipeline.cull_mode) glCullFace(pipeline.cull_mode);
-    if (pipeline.cull_mode) glEnable(GL_CULL_FACE);
+    glFrontFace(pass.front_face);
+    if (pass.cull_mode) glCullFace(pass.cull_mode);
+    if (pass.cull_mode) glEnable(GL_CULL_FACE);
     else glDisable(GL_CULL_FACE);
 
-    if (pipeline.front_face) glEnable(GL_FRONT_FACE);
+    if (pass.front_face) glEnable(GL_FRONT_FACE);
     else glDisable(GL_FRONT_FACE);
 
-    glPolygonMode(GL_FRONT_AND_BACK, pipeline.fill_mode);
+    glPolygonMode(GL_FRONT_AND_BACK, pass.fill_mode);
 }
 
-static void gl_end_render(gl_pipeline_t& pipeline)
+static void gl_end_render(gl_pass_t& pass)
 {
     GLint program = 0;
     glGetIntegerv(GL_CURRENT_PROGRAM, &program);
-    if (program && program != pipeline.module.handle)
+    if (program && program != pass.module.handle)
     {
         fprintf(stderr, "Pipeline not end\n");
         abort();
     }
-
-    if (pipeline.module.handle == 0)
+    if (pass.module.handle == 0)
     {
         fprintf(stderr, "Pipeline module is not created\n");
         abort();
     }
-
-    if (pipeline.module.target != GL_VERTEX_SHADER && pipeline.module.target != GL_MESH_SHADER_NV)
+    if (pass.module.target != GL_VERTEX_SHADER && pass.module.target != GL_MESH_SHADER_NV)
     {
         fprintf(stderr, "Pipeline module is not render shader\n");
         abort();
     }
 
-    if (pipeline.handle && (pipeline.color.handle || pipeline.depth.handle))
+    bool offscreen = pass.depth.texture.handle;
+    for (size_t i=0; i<std::size(pass.color) && !offscreen; ++i)
+    {
+        if (pass.color[i].texture.handle) offscreen = true;
+    }
+    if (offscreen)
     {
         glBindFramebuffer(GL_FRAMEBUFFER,0);
-        glDeleteFramebuffers(1, &pipeline.handle);
-        pipeline.handle = 0;
+        glDeleteFramebuffers(1, &pass.handle);
+        pass.handle = 0;
     }
 
     glUseProgram(0);
@@ -1122,7 +1212,7 @@ static void gl_draw_screen(int width, int height, gl_texture_t texture)
         }
     )";
     static auto module = gl_create_module_graphics(VS, FS);
-    gl_pipeline_t pass = {.module = module,};
+    gl_pass_t pass = {.module = module,};
     gl_begin_render(pass);
     gl_set_viewport(0, 0, width, height);
     gl_bind_texture(texture, {.binding = 0,});
