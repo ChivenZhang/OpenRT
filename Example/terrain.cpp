@@ -1,5 +1,6 @@
 #define OPENGL_IMPLEMENTATION
-#include "../OpenGL.h"
+#define OPENGLX_IMPLEMENTATION
+#include "../OpenGLX.h"
 #include <SDL3/SDL.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
@@ -51,24 +52,6 @@ int main()
     SDL_DestroyWindow(window);
     SDL_Quit();
     return 0;
-}
-
-#include <opencv2/opencv.hpp>
-gl_texture_t gl_load_texture(const char* filename)
-{
-    cv::Mat image = cv::imread(filename, cv::IMREAD_UNCHANGED);
-    if (image.empty()) {
-        fprintf(stderr, "Failed to load image: %s\n", filename);
-        return {};
-    }
-
-    if (image.depth() != CV_8U) cv::normalize(image, image, 0, 255, cv::NORM_MINMAX, CV_8UC1);
-
-    if (image.channels() == 1) cv::cvtColor(image, image, cv::COLOR_GRAY2RGBA);
-    else if (image.channels() == 3) cv::cvtColor(image, image, cv::COLOR_BGR2RGBA);
-    else if (image.channels() == 4) cv::cvtColor(image, image, cv::COLOR_BGRA2RGBA);
-    else return {};
-    return gl_create_texture_color(image.cols, image.rows, image.data);
 }
 
 void frame(int width, int height)
