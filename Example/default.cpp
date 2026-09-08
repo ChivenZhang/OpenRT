@@ -180,7 +180,7 @@ void frame(int width, int height)
     static auto pass1_color = gl_create_texture_color(width, height, nullptr);
     static auto pass1_depth = gl_create_texture_depth(width, height, nullptr);
 
-    gl_pass_t pass1 = {.module = module, .color = {{.texture = pass1_color, .clear = true, }}, .depth = {.texture = pass1_depth, .clear = true, .write = true, .func = GL_LEQUAL, }, };
+    gl_pass_t pass1 = {.module = module, .colors = {{.texture = pass1_color, .clear = true, }}, .depth = {.texture = pass1_depth, .clear = true, .write = true, .func = GL_LEQUAL, }, };
     gl_begin_meshlet(pass1);
 
     gl_set_uniform_mat4("projMat", &projMat[0][0]);

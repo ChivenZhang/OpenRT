@@ -83,19 +83,7 @@ struct gl_pass_t
     GLuint handle = 0;
     gl_module_t module;
 
-    struct
-    {
-        bool clear_color = false;
-        bool clear_depth = false;
-        bool clear_stencil = false;
-        float color_value[4] = {};
-        float depth_value = 1.0f;
-        uint32_t stencil_value = (uint32_t)-1;
-        struct
-        {
-            GLenum opt = GL_ADD, src = GL_ONE, dst = GL_ZERO;
-        } blend;
-    } screen;
+    // Offscreen Mode
 
     struct gl_color_attach_t
     {
@@ -104,31 +92,59 @@ struct gl_pass_t
         float value[4] = {};
         struct
         {
-            GLenum opt = GL_ADD, src = GL_ONE, dst = GL_ZERO;
-        } blend_color, blend_alpha;
+            GLenum func = GL_ADD, src = GL_ONE, dst = GL_ZERO;
+        } color, alpha;
     };
-    gl_color_attach_t color[2];
-
+    gl_color_attach_t colors[2];
     struct
     {
         gl_texture_t texture;
         bool clear = false;
         bool write = false;
-        GLenum func = GL_ALWAYS;
         float value = 1.0f;
+        GLenum func = GL_ALWAYS;
     } depth;
-
     struct
     {
         bool clear = false;
         uint32_t read = (uint32_t)-1;
         uint32_t write = (uint32_t)-1;
+	    uint32_t value = (uint32_t)-1;
         struct
         {
             GLenum func = GL_ALWAYS, sfail = GL_KEEP, dpfail = GL_KEEP, dppass = GL_KEEP;
         } back, front;
-	    uint32_t value = (uint32_t)-1;
     } stencil;
+
+    // Screen Mode
+
+    struct
+    {
+        struct
+        {
+            bool clear = false;
+            float value[4] = {};
+            struct
+            {
+                GLenum func = GL_ADD, src = GL_ONE, dst = GL_ZERO;
+            } blend;
+        } color;
+        struct
+        {
+            bool clear = false;
+            bool write = false;
+            float value = 1.0f;
+            GLenum func = GL_ALWAYS;
+        } depth;
+        struct
+        {
+            bool clear = false;
+            uint32_t read = (uint32_t)-1;
+            uint32_t write = (uint32_t)-1;
+            uint32_t value = (uint32_t)-1;
+            GLenum func = GL_ALWAYS, sfail = GL_KEEP, dpfail = GL_KEEP, dppass = GL_KEEP;
+        } stencil;
+    } screen;
 
     GLenum cull_mode = GL_BACK;
     GLenum front_face = GL_CCW;
@@ -858,60 +874,30 @@ static void gl_begin_render(gl_pass_t& pass)
 
     glDisable(GL_SCISSOR_TEST);
 
-    // Depth State
-
-    if (pass.depth.func == GL_ALWAYS && pass.depth.write == false)
-    {
-        glDisable(GL_DEPTH_TEST);
-    }
-    else
-    {
-        glEnable(GL_DEPTH_TEST);
-    }
-    glDepthMask(pass.depth.write);
-    glDepthFunc(pass.depth.func);
-
-    // Stencil State
-
-    if (pass.stencil.back.func != GL_ALWAYS || pass.stencil.back.sfail != GL_KEEP || pass.stencil.back.dpfail != GL_KEEP || pass.stencil.back.dppass != GL_KEEP
-        || pass.stencil.front.func != GL_ALWAYS || pass.stencil.front.sfail != GL_KEEP || pass.stencil.front.dpfail != GL_KEEP || pass.stencil.front.dppass != GL_KEEP)
-    {
-        glEnable(GL_STENCIL_TEST);
-    }
-    else
-    {
-        glDisable(GL_STENCIL_TEST);
-    }
-    glStencilMask(pass.stencil.write);
-    glStencilFuncSeparate(GL_BACK, pass.stencil.back.func, 0, pass.stencil.read);
-    glStencilFuncSeparate(GL_FRONT, pass.stencil.front.func, 0, pass.stencil.read);
-    glStencilOpSeparate(GL_BACK, pass.stencil.back.sfail, pass.stencil.back.dpfail, pass.stencil.back.dppass);
-    glStencilOpSeparate(GL_FRONT, pass.stencil.front.sfail, pass.stencil.front.dpfail, pass.stencil.front.dppass);
-
-    // Render State
-
     bool offscreen = pass.depth.texture.handle;
-    for (size_t i=0; i<std::size(pass.color) && !offscreen; ++i)
+    for (size_t i=0; i<std::size(pass.colors) && !offscreen; ++i)
     {
-        if (pass.color[i].texture.handle) offscreen = true;
+        if (pass.colors[i].texture.handle) offscreen = true;
     }
     if (offscreen)
     {
         glGenFramebuffers(1, &pass.handle);
         glBindFramebuffer(GL_FRAMEBUFFER, pass.handle);
 
+        // Render State
+
         int32_t colorCount = 0;
         GLenum colorAttachments[16]{};
         uint32_t width = 0, height = 0;
-        for (size_t i=0; i<std::size(pass.color); ++i)
+        for (size_t i=0; i<std::size(pass.colors); ++i)
         {
-            if (pass.color[i].texture.handle)
+            if (pass.colors[i].texture.handle)
             {
-                glBindTexture(GL_TEXTURE_2D, pass.color[i].texture.handle);
-                glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + i, GL_TEXTURE_2D, pass.color[i].texture.handle, 0);
+                glBindTexture(GL_TEXTURE_2D, pass.colors[i].texture.handle);
+                glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + i, GL_TEXTURE_2D, pass.colors[i].texture.handle, 0);
                 colorAttachments[colorCount++] = GL_COLOR_ATTACHMENT0 + i;
-                width = std::max(width, pass.color[i].texture.width);
-                height = std::max(height, pass.color[i].texture.height);
+                width = std::max(width, pass.colors[i].texture.width);
+                height = std::max(height, pass.colors[i].texture.height);
             }
         }
         if (colorCount) glDrawBuffers(colorCount, colorAttachments);
@@ -932,17 +918,17 @@ static void gl_begin_render(gl_pass_t& pass)
         gl_set_viewport(0, 0, (int32_t)width, (int32_t)height);
 
         glDisable(GL_BLEND);
-        for (size_t i=0; i<std::size(pass.color); ++i)
+        for (size_t i=0; i<std::size(pass.colors); ++i)
         {
-            if (pass.color[i].texture.handle)
+            if (pass.colors[i].texture.handle)
             {
-                if (pass.color[i].clear) glColorMask(true, true, true, true);
-                if (pass.color[i].clear) glClearBufferfv(GL_COLOR, (int32_t)i, pass.color[i].value);
+                if (pass.colors[i].clear) glColorMask(true, true, true, true);
+                if (pass.colors[i].clear) glClearBufferfv(GL_COLOR, (int32_t)i, pass.colors[i].value);
 
-                if (pass.color[i].blend_color.opt != GL_ADD || pass.color[i].blend_color.src != GL_ONE || pass.color[i].blend_color.dst != GL_ZERO
-                    || pass.color[i].blend_alpha.opt != GL_ADD || pass.color[i].blend_alpha.src != GL_ONE || pass.color[i].blend_alpha.dst != GL_ZERO) glEnable(GL_BLEND);
-                glBlendEquationSeparatei(i, pass.color[i].blend_color.opt, pass.color[i].blend_alpha.opt);
-                glBlendFuncSeparatei(i, pass.color[i].blend_color.src, pass.color[i].blend_color.dst, pass.color[i].blend_alpha.src, pass.color[i].blend_alpha.dst);
+                if (pass.colors[i].color.func != GL_ADD || pass.colors[i].color.src != GL_ONE || pass.colors[i].color.dst != GL_ZERO
+                    || pass.colors[i].alpha.func != GL_ADD || pass.colors[i].alpha.src != GL_ONE || pass.colors[i].alpha.dst != GL_ZERO) glEnable(GL_BLEND);
+                glBlendEquationSeparatei(i, pass.colors[i].color.func, pass.colors[i].alpha.func);
+                glBlendFuncSeparatei(i, pass.colors[i].color.src, pass.colors[i].color.dst, pass.colors[i].alpha.src, pass.colors[i].alpha.dst);
             }
         }
 
@@ -958,23 +944,96 @@ static void gl_begin_render(gl_pass_t& pass)
                 glClearBufferiv(GL_STENCIL, 0, &stencilValue);
             }
         }
+
+        // Depth State
+
+        if (pass.depth.func == GL_ALWAYS && pass.depth.write == false)
+        {
+            glDisable(GL_DEPTH_TEST);
+            glDepthMask(GL_TRUE);
+        }
+        else
+        {
+            glEnable(GL_DEPTH_TEST);
+            glDepthMask(pass.depth.write);
+        }
+        glDepthFunc(pass.depth.func);
+
+        // Stencil State
+
+        if (pass.stencil.back.func != GL_ALWAYS || pass.stencil.back.sfail != GL_KEEP || pass.stencil.back.dpfail != GL_KEEP || pass.stencil.back.dppass != GL_KEEP
+            || pass.stencil.front.func != GL_ALWAYS || pass.stencil.front.sfail != GL_KEEP || pass.stencil.front.dpfail != GL_KEEP || pass.stencil.front.dppass != GL_KEEP)
+        {
+            glEnable(GL_STENCIL_TEST);
+        }
+        else
+        {
+            glDisable(GL_STENCIL_TEST);
+        }
+        glStencilMask(pass.stencil.write);
+        glStencilFuncSeparate(GL_BACK, pass.stencil.back.func, 0, pass.stencil.read);
+        glStencilFuncSeparate(GL_FRONT, pass.stencil.front.func, 0, pass.stencil.read);
+        glStencilOpSeparate(GL_BACK, pass.stencil.back.sfail, pass.stencil.back.dpfail, pass.stencil.back.dppass);
+        glStencilOpSeparate(GL_FRONT, pass.stencil.front.sfail, pass.stencil.front.dpfail, pass.stencil.front.dppass);
     }
     else
     {
-        glClearColor(pass.screen.color_value[0], pass.screen.color_value[1], pass.screen.color_value[2], pass.screen.color_value[3]);
-        glClearDepth(pass.screen.depth_value);
-        glClearStencil((int32_t)pass.screen.stencil_value);
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-        auto mask = GL_NONE;
-        if (pass.screen.clear_color) mask |= GL_COLOR_BUFFER_BIT;
-        if (pass.screen.clear_depth) mask |= GL_DEPTH_BUFFER_BIT;
-        if (pass.screen.clear_stencil) mask |= GL_STENCIL_BUFFER_BIT;
-        if (mask) glClear(mask);
+        if (pass.screen.color.clear)
+        {
+            glClearBufferfv(GL_COLOR, 0, pass.screen.color.value);
+        }
+        if (pass.screen.depth.clear)
+        {
+            glClearBufferfv(GL_DEPTH, 0, &pass.screen.depth.value);
+        }
+        if (pass.screen.stencil.clear)
+        {
+            auto stencilValue = (int32_t)pass.screen.stencil.value;
+            glClearBufferiv(GL_STENCIL, 0, &stencilValue);
+        }
 
-        if (pass.screen.blend.opt != GL_ADD || pass.screen.blend.src != GL_ONE || pass.screen.blend.dst != GL_ZERO) glEnable(GL_BLEND);
-        else glDisable(GL_BLEND);
-        glBlendEquation(pass.screen.blend.opt);
-        glBlendFunc(pass.screen.blend.src, pass.screen.blend.dst);
+        // Render State
+
+        if (pass.screen.color.blend.func != GL_ADD || pass.screen.color.blend.src != GL_ONE || pass.screen.color.blend.dst != GL_ZERO)
+        {
+            glEnable(GL_BLEND);
+        }
+        else
+        {
+            glDisable(GL_BLEND);
+        }
+        glBlendEquation(pass.screen.color.blend.func);
+        glBlendFunc(pass.screen.color.blend.src, pass.screen.color.blend.dst);
+
+        // Depth State
+
+        if (pass.screen.depth.func == GL_ALWAYS && pass.screen.depth.write == false)
+        {
+            glDisable(GL_DEPTH_TEST);
+            glDepthMask(GL_TRUE);
+        }
+        else
+        {
+            glEnable(GL_DEPTH_TEST);
+            glDepthMask(pass.screen.depth.write);
+        }
+        glDepthFunc(pass.screen.depth.func);
+
+        // Stencil State
+
+        if (pass.screen.stencil.func != GL_ALWAYS || pass.screen.stencil.sfail != GL_KEEP || pass.screen.stencil.dpfail != GL_KEEP || pass.screen.stencil.dppass != GL_KEEP)
+        {
+            glEnable(GL_STENCIL_TEST);
+        }
+        else
+        {
+            glDisable(GL_STENCIL_TEST);
+        }
+        glStencilMask(pass.screen.stencil.write);
+        glStencilFunc(pass.screen.stencil.func, 0, pass.screen.stencil.read);
+        glStencilOp(pass.screen.stencil.sfail, pass.screen.stencil.dpfail, pass.screen.stencil.dppass);
     }
 
     // Primitive State
@@ -1011,9 +1070,9 @@ static void gl_end_render(gl_pass_t& pass)
     }
 
     bool offscreen = pass.depth.texture.handle;
-    for (size_t i=0; i<std::size(pass.color) && !offscreen; ++i)
+    for (size_t i=0; i<std::size(pass.colors) && !offscreen; ++i)
     {
-        if (pass.color[i].texture.handle) offscreen = true;
+        if (pass.colors[i].texture.handle) offscreen = true;
     }
     if (offscreen)
     {
@@ -1032,6 +1091,7 @@ static void gl_set_viewport(int32_t x, int32_t y, int32_t width, int32_t height)
 
 static void gl_set_scissor(int32_t x, int32_t y, int32_t width, int32_t height)
 {
+    glEnable(GL_SCISSOR_TEST);
     glScissor(x, y, width, height);
 }
 
@@ -1211,7 +1271,7 @@ static void gl_draw_screen(int width, int height, gl_texture_t texture)
         }
     )";
     static auto module = gl_create_module_graphics(VS, FS);
-    gl_pass_t pass = {.module = module,};
+    gl_pass_t pass = {.module = module, .screen = {.color = {.clear = true,}}};
     gl_begin_render(pass);
     gl_set_viewport(0, 0, width, height);
     gl_bind_texture(texture, {.binding = 0,});
