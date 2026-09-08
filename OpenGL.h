@@ -962,8 +962,8 @@ static void gl_begin_render(gl_pass_t& pass)
     else
     {
         glClearColor(pass.screen.color_value[0], pass.screen.color_value[1], pass.screen.color_value[2], pass.screen.color_value[3]);
-        glClearDepth(pass.depth.value);
-        glClearStencil((int32_t)pass.stencil.value);
+        glClearDepth(pass.screen.depth_value);
+        glClearStencil((int32_t)pass.screen.stencil_value);
 
         auto mask = GL_NONE;
         if (pass.screen.clear_color) mask |= GL_COLOR_BUFFER_BIT;
