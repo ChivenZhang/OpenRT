@@ -167,7 +167,7 @@ struct gl_meshlet_t
 
 void gl_hello_world();
 
-gl_buffer_t gl_create_buffer(size_t size, GLenum usage = GL_STATIC_DRAW, GLenum target = GL_ARRAY_BUFFER, const void* data = nullptr);
+gl_buffer_t gl_create_buffer(size_t size, GLenum usage = GL_STATIC_DRAW, const void* data = nullptr);
 void gl_destroy_buffer(gl_buffer_t buffer);
 void gl_bind_buffer(gl_buffer_t buffer, gl_buffer_bind_t desc = {});
 void gl_read_buffer(gl_buffer_t buffer, size_t offset, size_t size, void* data);
@@ -212,7 +212,7 @@ void gl_set_scissor(int32_t x, int32_t y, int32_t width, int32_t height);
 
 inline void (*gl_begin_meshlet)(gl_pass_t& pass) = gl_begin_render;
 inline void (*gl_end_meshlet)(gl_pass_t& pass) = gl_end_render;
-void gl_draw_mesh_task(uint32_t groupX, uint32_t groupY, uint32_t groupZ);
+void gl_draw_mesh_task(uint32_t groupX, uint32_t groupY = 1, uint32_t groupZ = 1);
 
 gl_mesh_t gl_create_mesh(const float* vertices, const float* normals, const float* uvs, size_t vertex_count, const unsigned int* indices, size_t index_count);
 void gl_destroy_mesh(gl_mesh_t& mesh);
@@ -247,22 +247,21 @@ static void gl_hello_world()
 static gl_buffer_t gl_create_buffer(
     size_t size,
     GLenum usage,
-    GLenum target,
     const void* data
 )
 {
     gl_buffer_t result = {};
     glGenBuffers(1, &result.handle);
-    glBindBuffer(target, result.handle);
-    glBufferData(target, (GLsizeiptr)size, data, usage);
-    glBindBuffer(target, 0);
+    glBindBuffer(GL_ARRAY_BUFFER, result.handle);
+    glBufferData(GL_ARRAY_BUFFER, (GLsizeiptr)size, data, usage);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
 
     result.size = size;
-    result.target = target;
+    result.target = GL_ARRAY_BUFFER;
     return result;
 }
 
-static void gl_destroy_buffer(gl_buffer_t buffer)
+static void gl_destroy_buffer(gl_buffer_t& buffer)
 {
     glDeleteBuffers(1, &buffer.handle);
     buffer.handle = 0;

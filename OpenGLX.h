@@ -5,8 +5,10 @@ gl_texture_t gl_load_texture(const char* filename);
 gl_mesh_t gl_create_mesh_cube(float width, float height, float length);
 gl_mesh_t gl_create_mesh_plane(float size, int N = 1);
 gl_mesh_t gl_create_mesh_sphere(float radius, int rings, int slices);
+gl_mesh_t gl_create_mesh_capsule(float radius, float height, int rings, int slices);
 gl_meshlet_t gl_create_meshlet_plane(float size, int N = 1);
 gl_meshlet_t gl_create_meshlet_sphere(float radius, int rings, int slices);
+gl_meshlet_t gl_create_meshlet_capsule(float radius, float height, int rings, int slices);
 
 #ifdef OPENGLX_IMPLEMENTATION
 
@@ -230,6 +232,123 @@ static gl_mesh_t gl_create_mesh_sphere(float radius, int rings, int slices)
     );
 }
 
+static gl_mesh_t gl_create_mesh_capsule(float radius, float height, int rings, int slices)
+{
+    // 半球纬度只用到 90°，所以 rings 参数复用
+    // 上半球：从顶(0)到底(rings)
+    // 下半球：从底(0)到顶(rings)
+    // 圆柱：中间额外一层（或复用半球接缝）
+
+    int halfRings = rings;  // 每个半球的纬度段数
+    int cylinderRings = 2;  // 圆柱段数（可改）
+
+    // 顶点布局：
+    // [0 .. halfRings]           下半球（底→赤道）
+    // [halfRings .. halfRings+cylinderRings]  圆柱
+    // [halfRings+cylinderRings .. ]  上半球（赤道→顶）
+
+    int totalRings = halfRings * 2 + cylinderRings;
+    int vertexCount = (totalRings + 1) * (slices + 1);
+    int indexCount = totalRings * slices * 6;
+
+    std::vector<float> positions(vertexCount * 3);
+    std::vector<float> normals(vertexCount * 3);
+    std::vector<float> uvs(vertexCount * 2);
+    std::vector<unsigned int> indices(indexCount);
+
+    float halfHeight = height * 0.5f;
+    const float PI = 3.14159265f;
+
+    int v = 0;
+
+    // ---- 生成顶点 ----
+    for (int r = 0; r <= totalRings; r++)
+    {
+        float y, ny, theta;
+
+        if (r <= halfRings)
+        {
+            // 下半球：从底(-PI/2)到赤道(0)
+            theta = -PI * 0.5f + (float)r / halfRings * (PI * 0.5f);
+            y = -halfHeight + radius * sinf(theta);
+            ny = sinf(theta);
+        }
+        else if (r <= halfRings + cylinderRings)
+        {
+            // 圆柱段：线性插值
+            float t = (float)(r - halfRings) / cylinderRings;
+            y = -halfHeight + t * height;
+            ny = 0.0f;
+        }
+        else
+        {
+            // 上半球：从赤道(0)到顶(PI/2)
+            int localR = r - (halfRings + cylinderRings);
+            theta = (float)localR / halfRings * (PI * 0.5f);
+            y = halfHeight + radius * sinf(theta);
+            ny = sinf(theta);
+        }
+
+        for (int s = 0; s <= slices; s++)
+        {
+            float phi = - (float)s / slices * 2.0f * PI;
+
+            float nx, nz;
+            if (r <= halfRings || r > halfRings + cylinderRings)
+            {
+                // 球面法线
+                nx = cosf(theta) * cosf(phi);
+                nz = cosf(theta) * sinf(phi);
+            }
+            else
+            {
+                // 圆柱法线
+                nx = cosf(phi);
+                nz = sinf(phi);
+            }
+
+            positions[v * 3 + 0] = nx * radius;
+            positions[v * 3 + 1] = y;
+            positions[v * 3 + 2] = nz * radius;
+
+            normals[v * 3 + 0] = nx;
+            normals[v * 3 + 1] = ny;
+            normals[v * 3 + 2] = nz;
+
+            uvs[v * 2 + 0] = (float)s / slices;
+            uvs[v * 2 + 1] = (float)r / totalRings;
+
+            v++;
+        }
+    }
+
+    // ---- 生成索引（Triangle List） ----
+    int idx = 0;
+    for (int r = 0; r < totalRings; r++)
+    {
+        for (int s = 0; s < slices; s++)
+        {
+            int tl = r * (slices + 1) + s;
+            int tr = tl + 1;
+            int bl = (r + 1) * (slices + 1) + s;
+            int br = bl + 1;
+
+            indices[idx++] = tl;
+            indices[idx++] = bl;
+            indices[idx++] = tr;
+
+            indices[idx++] = tr;
+            indices[idx++] = bl;
+            indices[idx++] = br;
+        }
+    }
+
+    return gl_create_mesh(
+        positions.data(), normals.data(), uvs.data(),
+        vertexCount, indices.data(), indexCount
+    );
+}
+
 // ====================================================================
 
 static gl_meshlet_t gl_create_meshlet_plane(float size, int N)
@@ -361,4 +480,122 @@ static gl_meshlet_t gl_create_meshlet_sphere(float radius, int rings, int slices
         vertex_count, indices.data(), index_count
     );
 }
+
+static gl_meshlet_t gl_create_meshlet_capsule(float radius, float height, int rings, int slices)
+{
+    // 半球纬度只用到 90°，所以 rings 参数复用
+    // 上半球：从顶(0)到底(rings)
+    // 下半球：从底(0)到顶(rings)
+    // 圆柱：中间额外一层（或复用半球接缝）
+
+    int halfRings = rings;  // 每个半球的纬度段数
+    int cylinderRings = 2;  // 圆柱段数（可改）
+
+    // 顶点布局：
+    // [0 .. halfRings]           下半球（底→赤道）
+    // [halfRings .. halfRings+cylinderRings]  圆柱
+    // [halfRings+cylinderRings .. ]  上半球（赤道→顶）
+
+    int totalRings = halfRings * 2 + cylinderRings;
+    int vertexCount = (totalRings + 1) * (slices + 1);
+    int indexCount = totalRings * slices * 6;
+
+    std::vector<float> positions(vertexCount * 4);
+    std::vector<float> normals(vertexCount * 4);
+    std::vector<float> uvs(vertexCount * 2);
+    std::vector<unsigned int> indices(indexCount);
+
+    float halfHeight = height * 0.5f;
+    const float PI = 3.14159265f;
+
+    int v = 0;
+
+    // ---- 生成顶点 ----
+    for (int r = 0; r <= totalRings; r++)
+    {
+        float y, ny, theta;
+
+        if (r <= halfRings)
+        {
+            // 下半球：从底(-PI/2)到赤道(0)
+            theta = -PI * 0.5f + (float)r / halfRings * (PI * 0.5f);
+            y = -halfHeight + radius * sinf(theta);
+            ny = sinf(theta);
+        }
+        else if (r <= halfRings + cylinderRings)
+        {
+            // 圆柱段：线性插值
+            float t = (float)(r - halfRings) / cylinderRings;
+            y = -halfHeight + t * height;
+            ny = 0.0f;
+        }
+        else
+        {
+            // 上半球：从赤道(0)到顶(PI/2)
+            int localR = r - (halfRings + cylinderRings);
+            theta = (float)localR / halfRings * (PI * 0.5f);
+            y = halfHeight + radius * sinf(theta);
+            ny = sinf(theta);
+        }
+
+        for (int s = 0; s <= slices; s++)
+        {
+            float phi = - (float)s / slices * 2.0f * PI;
+
+            float nx, nz;
+            if (r <= halfRings || r > halfRings + cylinderRings)
+            {
+                // 球面法线
+                nx = cosf(theta) * cosf(phi);
+                nz = cosf(theta) * sinf(phi);
+            }
+            else
+            {
+                // 圆柱法线
+                nx = cosf(phi);
+                nz = sinf(phi);
+            }
+
+            positions[v * 4 + 0] = nx * radius;
+            positions[v * 4 + 1] = y;
+            positions[v * 4 + 2] = nz * radius;
+
+            normals[v * 4 + 0] = nx;
+            normals[v * 4 + 1] = ny;
+            normals[v * 4 + 2] = nz;
+
+            uvs[v * 2 + 0] = (float)s / slices;
+            uvs[v * 2 + 1] = (float)r / totalRings;
+
+            v++;
+        }
+    }
+
+    // ---- 生成索引（Triangle List） ----
+    int idx = 0;
+    for (int r = 0; r < totalRings; r++)
+    {
+        for (int s = 0; s < slices; s++)
+        {
+            int tl = r * (slices + 1) + s;
+            int tr = tl + 1;
+            int bl = (r + 1) * (slices + 1) + s;
+            int br = bl + 1;
+
+            indices[idx++] = tl;
+            indices[idx++] = bl;
+            indices[idx++] = tr;
+
+            indices[idx++] = tr;
+            indices[idx++] = bl;
+            indices[idx++] = br;
+        }
+    }
+
+    return gl_create_meshlet(
+        positions.data(), normals.data(), uvs.data(),
+        vertexCount, indices.data(), indexCount
+    );
+}
+
 #endif
