@@ -11,7 +11,7 @@
 /*
    Do this:
       #define OPENGL_IMPLEMENTATION
-   before you include this file in *one* C or C++ file to create the implementation.
+   before you include this file in *one* C / C++ file to create the implementation.
 
    // i.e. it should look like this:
    #include ...
@@ -32,7 +32,7 @@ struct gl_buffer_t
 struct gl_buffer_bind_t
 {
     uint32_t binding = 0;
-    GLenum target = GL_UNIFORM_BUFFER;
+    GLenum target = GL_UNIFORM_BUFFER; // GL_UNIFORM_BUFFER / GL_SHADER_STORAGE_BUFFER
 };
 
 struct gl_texture_t
@@ -47,7 +47,7 @@ struct gl_texture_t
 struct gl_texture_bind_t
 {
     uint32_t binding = 0;
-    GLenum aspect_mode = GL_DEPTH_COMPONENT;
+    GLenum aspect_mode = GL_DEPTH_COMPONENT;    // GL_DEPTH_COMPONENT / GL_STENCIL_INDEX
 };
 
 struct gl_texture_storage_bind_t
@@ -57,7 +57,7 @@ struct gl_texture_storage_bind_t
     uint32_t base_layer = 0;
     uint32_t level_count = 1;
     uint32_t layer_count = 1;
-    GLenum access = GL_WRITE_ONLY;
+    GLenum access = GL_WRITE_ONLY;  // GL_WRITE_ONLY / GL_READ_ONLY / GL_READ_WRITE
 };
 
 struct gl_image_t
@@ -70,6 +70,11 @@ struct gl_image_t
 struct gl_sampler_t
 {
     GLuint handle = 0;
+};
+
+struct gl_sampler_bind_t
+{
+    uint32_t binding = 0;
 };
 
 struct gl_module_t
@@ -85,24 +90,25 @@ struct gl_pass_t
 
     // Offscreen Mode
 
-    struct gl_color_attach_t
+    struct
     {
         gl_texture_t texture;
         bool clear = false;
         float value[4] = {};
         struct
         {
-            GLenum func = GL_ADD, src = GL_ONE, dst = GL_ZERO;
+            GLenum func = GL_ADD;   // GL_ADD / GL_SUBTRACT / GL_REVERSE_SUBTRACT / GL_MIN / GL_MAX
+            GLenum src = GL_ONE;    // GL_ZERO / GL_ONE / GL_SRC_COLOR / GL_ONE_MINUS_SRC_COLOR / GL_DST_COLOR / GL_ONE_MINUS_DST_COLOR / GL_SRC_ALPHA / GL_ONE_MINUS_SRC_ALPHA / GL_DST_ALPHA / GL_ONE_MINUS_DST_ALPHA / GL_CONSTANT_COLOR / GL_ONE_MINUS_CONSTANT_COLOR / GL_CONSTANT_ALPHA / GL_ONE_MINUS_CONSTANT_ALPHA / GL_SRC_ALPHA_SATURATE
+            GLenum dst = GL_ZERO;   // GL_ZERO / GL_ONE / GL_SRC_COLOR / GL_ONE_MINUS_SRC_COLOR / GL_DST_COLOR / GL_ONE_MINUS_DST_COLOR / GL_SRC_ALPHA / GL_ONE_MINUS_SRC_ALPHA / GL_DST_ALPHA / GL_ONE_MINUS_DST_ALPHA / GL_CONSTANT_COLOR / GL_ONE_MINUS_CONSTANT_COLOR / GL_CONSTANT_ALPHA / GL_ONE_MINUS_CONSTANT_ALPHA / GL_SRC_ALPHA_SATURATE
         } color, alpha;
-    };
-    gl_color_attach_t colors[2];
+    } colors[2];
     struct
     {
         gl_texture_t texture;
         bool clear = false;
         bool write = false;
         float value = 1.0f;
-        GLenum func = GL_ALWAYS;
+        GLenum func = GL_ALWAYS;    // GL_NEVER / GL_LESS / GL_EQUAL / GL_LEQUAL / GL_GREATER / GL_NOTEQUAL / GL_GEQUAL / GL_ALWAYS
     } depth;
     struct
     {
@@ -110,9 +116,13 @@ struct gl_pass_t
         uint32_t read = (uint32_t)-1;
         uint32_t write = (uint32_t)-1;
 	    uint32_t value = (uint32_t)-1;
+        int32_t refer = 0;
         struct
         {
-            GLenum func = GL_ALWAYS, sfail = GL_KEEP, dpfail = GL_KEEP, dppass = GL_KEEP;
+            GLenum func = GL_ALWAYS;    // GL_NEVER / GL_LESS / GL_EQUAL / GL_LEQUAL / GL_GREATER / GL_NOTEQUAL / GL_GEQUAL / GL_ALWAYS
+            GLenum sfail = GL_KEEP;     // GL_KEEP / GL_ZERO / GL_REPLACE / GL_INCR / GL_INCR_WRAP / GL_DECR / GL_DECR_WRAP / GL_INVERT
+            GLenum dpfail = GL_KEEP;    // GL_KEEP / GL_ZERO / GL_REPLACE / GL_INCR / GL_INCR_WRAP / GL_DECR / GL_DECR_WRAP / GL_INVERT
+            GLenum dppass = GL_KEEP;    // GL_KEEP / GL_ZERO / GL_REPLACE / GL_INCR / GL_INCR_WRAP / GL_DECR / GL_DECR_WRAP / GL_INVERT
         } back, front;
     } stencil;
 
@@ -126,7 +136,9 @@ struct gl_pass_t
             float value[4] = {};
             struct
             {
-                GLenum func = GL_ADD, src = GL_ONE, dst = GL_ZERO;
+                GLenum func = GL_ADD;   // GL_ADD / GL_SUBTRACT / GL_REVERSE_SUBTRACT / GL_MIN / GL_MAX
+                GLenum src = GL_ONE;    // GL_ZERO / GL_ONE / GL_SRC_COLOR / GL_ONE_MINUS_SRC_COLOR / GL_DST_COLOR / GL_ONE_MINUS_DST_COLOR / GL_SRC_ALPHA / GL_ONE_MINUS_SRC_ALPHA / GL_DST_ALPHA / GL_ONE_MINUS_DST_ALPHA / GL_CONSTANT_COLOR / GL_ONE_MINUS_CONSTANT_COLOR / GL_CONSTANT_ALPHA / GL_ONE_MINUS_CONSTANT_ALPHA / GL_SRC_ALPHA_SATURATE
+                GLenum dst = GL_ZERO;   // GL_ZERO / GL_ONE / GL_SRC_COLOR / GL_ONE_MINUS_SRC_COLOR / GL_DST_COLOR / GL_ONE_MINUS_DST_COLOR / GL_SRC_ALPHA / GL_ONE_MINUS_SRC_ALPHA / GL_DST_ALPHA / GL_ONE_MINUS_DST_ALPHA / GL_CONSTANT_COLOR / GL_ONE_MINUS_CONSTANT_COLOR / GL_CONSTANT_ALPHA / GL_ONE_MINUS_CONSTANT_ALPHA / GL_SRC_ALPHA_SATURATE
             } blend;
         } color;
         struct
@@ -134,7 +146,7 @@ struct gl_pass_t
             bool clear = false;
             bool write = false;
             float value = 1.0f;
-            GLenum func = GL_ALWAYS;
+            GLenum func = GL_ALWAYS;    // GL_NEVER / GL_LESS / GL_EQUAL / GL_LEQUAL / GL_GREATER / GL_NOTEQUAL / GL_GEQUAL / GL_ALWAYS
         } depth;
         struct
         {
@@ -142,13 +154,17 @@ struct gl_pass_t
             uint32_t read = (uint32_t)-1;
             uint32_t write = (uint32_t)-1;
             uint32_t value = (uint32_t)-1;
-            GLenum func = GL_ALWAYS, sfail = GL_KEEP, dpfail = GL_KEEP, dppass = GL_KEEP;
+            int32_t refer = 0;
+            GLenum func = GL_ALWAYS;    // GL_NEVER / GL_LESS / GL_EQUAL / GL_LEQUAL / GL_GREATER / GL_NOTEQUAL / GL_GEQUAL / GL_ALWAYS
+            GLenum sfail = GL_KEEP;     // GL_KEEP / GL_ZERO / GL_REPLACE / GL_INCR / GL_INCR_WRAP / GL_DECR / GL_DECR_WRAP / GL_INVERT
+            GLenum dpfail = GL_KEEP;    // GL_KEEP / GL_ZERO / GL_REPLACE / GL_INCR / GL_INCR_WRAP / GL_DECR / GL_DECR_WRAP / GL_INVERT
+            GLenum dppass = GL_KEEP;    // GL_KEEP / GL_ZERO / GL_REPLACE / GL_INCR / GL_INCR_WRAP / GL_DECR / GL_DECR_WRAP / GL_INVERT
         } stencil;
     } screen;
 
-    GLenum cull_mode = GL_BACK;
-    GLenum front_face = GL_CCW;
-    GLenum fill_mode = GL_FILL;
+    GLenum cull_mode = GL_BACK;     // GL_NONE / GL_FRONT / GL_BACK / GL_FRONT_AND_BACK
+    GLenum front_face = GL_CCW;     // GL_CW / GL_CCW
+    GLenum fill_mode = GL_FILL;     // GL_POINT / GL_LINE / GL_FILL
 };
 
 struct gl_mesh_t
@@ -195,13 +211,12 @@ gl_texture_t gl_create_texture_depth_stencil(int width, int height, const void* 
 void gl_destroy_texture(gl_texture_t& texture);
 void gl_bind_texture(gl_texture_t texture, gl_texture_bind_t desc = {});
 void gl_bind_texture_storage(gl_texture_t texture, gl_texture_storage_bind_t desc = {});
+gl_texture_t gl_load_texture(gl_image_t image);
+gl_image_t gl_load_image(gl_texture_t texture, void* buffer, size_t length);
 
 gl_sampler_t gl_create_sampler(GLenum min_filter, GLenum mag_filter, GLenum wrap_s, GLenum wrap_t, GLenum wrap_r);
 void gl_destroy_sampler(gl_sampler_t& sampler);
-void gl_bind_sampler(gl_sampler_t sampler, GLuint texture_unit);
-
-gl_texture_t gl_image_2_texture(gl_image_t image);
-gl_image_t gl_texture_2_image(gl_texture_t texture, void* buffer, size_t length);
+void gl_bind_sampler(gl_sampler_t sampler, gl_sampler_bind_t desc = {});
 
 gl_module_t gl_create_module_compute(const char* comp_src);
 gl_module_t gl_create_module_graphics(const char* vert_src, const char* frag_src);
@@ -453,6 +468,37 @@ static void gl_bind_texture_storage(gl_texture_t texture, gl_texture_storage_bin
                        (GLint)desc.base_layer, desc.access, texture.internal_format);
 }
 
+static gl_texture_t gl_load_texture(gl_image_t image)
+{
+    return gl_create_texture_color(image.width, image.height, image.pixels);
+}
+
+static gl_image_t gl_load_image(gl_texture_t texture, void* buffer, size_t length)
+{
+    gl_image_t result = {};
+
+    if (texture.target == GL_TEXTURE_2D)
+    {
+        if (length < texture.width * texture.height * sizeof(uint32_t)) return result;
+
+        glBindTexture(texture.target, texture.handle);
+        glGetTexImage(
+            texture.target,
+            0,
+            texture.format,
+            GL_UNSIGNED_BYTE,
+            buffer
+        );
+        glBindTexture(texture.target, 0);
+        result.pixels = buffer;
+    }
+
+    result.width = texture.width;
+    result.height = texture.height;
+    result.format = texture.format;
+    return result;
+}
+
 // ====================================================================
 
 static gl_sampler_t gl_create_sampler(
@@ -484,44 +530,9 @@ static void gl_destroy_sampler(gl_sampler_t& sampler)
     sampler.handle = 0;
 }
 
-static void gl_bind_sampler(
-    gl_sampler_t sampler,
-    GLuint texture_unit)
+static void gl_bind_sampler(gl_sampler_t sampler, gl_sampler_bind_t desc)
 {
-    glBindSampler(texture_unit, sampler.handle);
-}
-
-// ====================================================================
-
-static gl_texture_t gl_image_2_texture(gl_image_t image)
-{
-    return gl_create_texture_color(image.width, image.height, image.pixels);
-}
-
-static gl_image_t gl_texture_2_image(gl_texture_t texture, void* buffer, size_t length)
-{
-    gl_image_t result = {};
-
-    if (texture.target == GL_TEXTURE_2D)
-    {
-        if (length < texture.width * texture.height * sizeof(uint32_t)) return result;
-
-        glBindTexture(texture.target, texture.handle);
-        glGetTexImage(
-            texture.target,
-            0,
-            texture.format,
-            GL_UNSIGNED_BYTE,
-            buffer
-        );
-        glBindTexture(texture.target, 0);
-        result.pixels = buffer;
-    }
-
-    result.width = texture.width;
-    result.height = texture.height;
-    result.format = texture.format;
-    return result;
+    glBindSampler(desc.binding, sampler.handle);
 }
 
 // ====================================================================
@@ -971,8 +982,8 @@ static void gl_begin_render(gl_pass_t& pass)
             glDisable(GL_STENCIL_TEST);
         }
         glStencilMask(pass.stencil.write);
-        glStencilFuncSeparate(GL_BACK, pass.stencil.back.func, 0, pass.stencil.read);
-        glStencilFuncSeparate(GL_FRONT, pass.stencil.front.func, 0, pass.stencil.read);
+        glStencilFuncSeparate(GL_BACK, pass.stencil.back.func, pass.stencil.refer, pass.stencil.read);
+        glStencilFuncSeparate(GL_FRONT, pass.stencil.front.func, pass.stencil.refer, pass.stencil.read);
         glStencilOpSeparate(GL_BACK, pass.stencil.back.sfail, pass.stencil.back.dpfail, pass.stencil.back.dppass);
         glStencilOpSeparate(GL_FRONT, pass.stencil.front.sfail, pass.stencil.front.dpfail, pass.stencil.front.dppass);
     }
@@ -1032,7 +1043,7 @@ static void gl_begin_render(gl_pass_t& pass)
             glDisable(GL_STENCIL_TEST);
         }
         glStencilMask(pass.screen.stencil.write);
-        glStencilFunc(pass.screen.stencil.func, 0, pass.screen.stencil.read);
+        glStencilFunc(pass.screen.stencil.func, pass.screen.stencil.refer, pass.screen.stencil.read);
         glStencilOp(pass.screen.stencil.sfail, pass.screen.stencil.dpfail, pass.screen.stencil.dppass);
     }
 

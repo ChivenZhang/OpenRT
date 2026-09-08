@@ -222,7 +222,7 @@ void frame(int width, int height)
     gl_bind_texture(texture1, {.binding = 1,});
 
     gl_set_viewport(0, 0, width, height);
-    gl_draw_mesh_task(meshlet.index_count / 3, 1, 1);
+    gl_draw_mesh_task(meshlet.index_count / 3);
 
     gl_end_meshlet(pass1);
 
