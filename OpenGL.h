@@ -83,6 +83,11 @@ struct gl_module_t
     GLenum target = GL_NONE;
 };
 
+struct gl_color_t
+{
+    float r = 0, g = 0, b = 0, a = 0;
+};
+
 struct gl_pass_t
 {
     GLuint handle = 0;
@@ -94,7 +99,7 @@ struct gl_pass_t
     {
         gl_texture_t texture;
         bool clear = false;
-        float value[4] = {};
+        gl_color_t value;
         struct
         {
             GLenum func = GL_ADD;   // GL_ADD / GL_SUBTRACT / GL_REVERSE_SUBTRACT / GL_MIN / GL_MAX
@@ -133,7 +138,7 @@ struct gl_pass_t
         struct
         {
             bool clear = false;
-            float value[4] = {};
+            gl_color_t value;
             struct
             {
                 GLenum func = GL_ADD;   // GL_ADD / GL_SUBTRACT / GL_REVERSE_SUBTRACT / GL_MIN / GL_MAX
@@ -253,7 +258,7 @@ gl_meshlet_t gl_create_meshlet(const float* vertices, const float* normals, cons
 void gl_destroy_meshlet(gl_meshlet_t& meshlet);
 
 gl_mesh_t gl_create_mesh_screen();
-void gl_draw_screen(int width, int height, gl_texture_t texture);
+void gl_draw_screen(int width, int height, gl_texture_t texture, gl_color_t color = {});
 
 // ====================================================================
 
@@ -916,7 +921,13 @@ static void gl_begin_render(gl_pass_t& pass)
         if (pass.depth.texture.handle)
         {
             glBindTexture(GL_TEXTURE_2D, pass.depth.texture.handle);
-            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, pass.depth.texture.handle, 0);
+            if (pass.depth.texture.format == GL_DEPTH_COMPONENT) glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, pass.depth.texture.handle, 0);
+            else if (pass.depth.texture.format == GL_DEPTH_STENCIL) glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_TEXTURE_2D, pass.depth.texture.handle, 0);
+            else
+            {
+                fprintf(stderr, "Invalid depth attachment\n");
+                abort();
+            }
             width = std::max(width, pass.depth.texture.width);
             height = std::max(height, pass.depth.texture.height);
         }
@@ -934,7 +945,7 @@ static void gl_begin_render(gl_pass_t& pass)
             if (pass.colors[i].texture.handle)
             {
                 if (pass.colors[i].clear) glColorMask(true, true, true, true);
-                if (pass.colors[i].clear) glClearBufferfv(GL_COLOR, (int32_t)i, pass.colors[i].value);
+                if (pass.colors[i].clear) glClearBufferfv(GL_COLOR, (int32_t)i, &pass.colors[i].value.r);
 
                 if (pass.colors[i].color.func != GL_ADD || pass.colors[i].color.src != GL_ONE || pass.colors[i].color.dst != GL_ZERO
                     || pass.colors[i].alpha.func != GL_ADD || pass.colors[i].alpha.src != GL_ONE || pass.colors[i].alpha.dst != GL_ZERO) glEnable(GL_BLEND);
@@ -993,7 +1004,7 @@ static void gl_begin_render(gl_pass_t& pass)
 
         if (pass.screen.color.clear)
         {
-            glClearBufferfv(GL_COLOR, 0, pass.screen.color.value);
+            glClearBufferfv(GL_COLOR, 0, &pass.screen.color.value.r);
         }
         if (pass.screen.depth.clear)
         {
@@ -1249,7 +1260,7 @@ static gl_mesh_t gl_create_mesh_screen()
     return quad;
 }
 
-static void gl_draw_screen(int width, int height, gl_texture_t texture)
+static void gl_draw_screen(int width, int height, gl_texture_t texture, gl_color_t color)
 {
     constexpr auto VS = R"(
         #version 460
@@ -1282,7 +1293,7 @@ static void gl_draw_screen(int width, int height, gl_texture_t texture)
         }
     )";
     static auto module = gl_create_module_graphics(VS, FS);
-    gl_pass_t pass = {.module = module, .screen = {.color = {.clear = true,}}};
+    gl_pass_t pass = {.module = module, .screen = {.color = {.clear = true, .value = color,}}};
     gl_begin_render(pass);
     gl_set_viewport(0, 0, width, height);
     gl_bind_texture(texture, {.binding = 0,});
