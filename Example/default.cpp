@@ -33,7 +33,7 @@ int main()
         return -1;
     }
 
-    gl_hello_world();
+    gl_load_library();
 
     bool running = true;
     while (running)
@@ -197,7 +197,7 @@ void frame(int width, int height)
     gl_bind_texture(texture0, {.binding = 0,});
 
     gl_set_viewport(0, 0, width, height);
-    gl_draw_mesh_task(meshlet.index_count / 3);
+    gl_draw_meshlet(meshlet.index_count / 3);
 
     gl_end_meshlet(pass1);
 

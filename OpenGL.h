@@ -26,7 +26,6 @@ struct gl_buffer_t
     GLuint handle = 0;
     size_t size = 0;
     GLenum usage = GL_STATIC_DRAW;
-    GLenum target = GL_ARRAY_BUFFER;
 };
 
 struct gl_buffer_bind_t
@@ -118,9 +117,9 @@ struct gl_pass_t
     struct
     {
         bool clear = false;
-        uint32_t read = (uint32_t)-1;
-        uint32_t write = (uint32_t)-1;
-	    uint32_t value = (uint32_t)-1;
+        uint32_t read = 0xFFFFFFFF;     // Read Mask
+        uint32_t write = 0xFFFFFFFF;    // Write Mask
+	    uint32_t value = 0xFFFFFFFF;
         int32_t refer = 0;
         struct
         {
@@ -156,9 +155,9 @@ struct gl_pass_t
         struct
         {
             bool clear = false;
-            uint32_t read = (uint32_t)-1;
-            uint32_t write = (uint32_t)-1;
-            uint32_t value = (uint32_t)-1;
+            uint32_t read = 0xFFFFFFFF;     // Read Mask
+            uint32_t write = 0xFFFFFFFF;    // Write Mask
+            uint32_t value = 0xFFFFFFFF;
             int32_t refer = 0;
             GLenum func = GL_ALWAYS;    // GL_NEVER / GL_LESS / GL_EQUAL / GL_LEQUAL / GL_GREATER / GL_NOTEQUAL / GL_GEQUAL / GL_ALWAYS
             GLenum sfail = GL_KEEP;     // GL_KEEP / GL_ZERO / GL_REPLACE / GL_INCR / GL_INCR_WRAP / GL_DECR / GL_DECR_WRAP / GL_INVERT
@@ -202,26 +201,26 @@ struct gl_meshlet_t
 
 // ====================================================================
 
-void gl_hello_world();
+void gl_load_library();
 
 gl_buffer_t gl_create_buffer(size_t size, GLenum usage = GL_STATIC_DRAW, const void* data = nullptr);
 void gl_destroy_buffer(gl_buffer_t& buffer);
-void gl_bind_buffer(gl_buffer_t buffer, gl_buffer_bind_t desc = {});
-void gl_read_buffer(gl_buffer_t buffer, size_t offset, size_t size, void* data);
-void gl_write_buffer(gl_buffer_t buffer, size_t offset, size_t size, const void* data);
+void gl_bind_buffer(gl_buffer_t const& buffer, gl_buffer_bind_t desc = {});
+void gl_read_buffer(gl_buffer_t const& buffer, size_t offset, size_t size, void* data);
+void gl_write_buffer(gl_buffer_t const& buffer, size_t offset, size_t size, const void* data);
 
 gl_texture_t gl_create_texture_color(uint32_t width, uint32_t height, const void* data);
 gl_texture_t gl_create_texture_depth(int width, int height, const void* data);
 gl_texture_t gl_create_texture_depth_stencil(int width, int height, const void* data);
 void gl_destroy_texture(gl_texture_t& texture);
-void gl_bind_texture(gl_texture_t texture, gl_texture_bind_t desc = {});
-void gl_bind_texture_storage(gl_texture_t texture, gl_texture_storage_bind_t desc = {});
-gl_texture_t gl_load_texture(gl_image_t image);
-gl_image_t gl_load_image(gl_texture_t texture, void* buffer, size_t length);
+void gl_bind_texture(gl_texture_t const& texture, gl_texture_bind_t desc = {});
+void gl_bind_texture_storage(gl_texture_t const& texture, gl_texture_storage_bind_t desc = {});
+gl_texture_t gl_load_texture(gl_image_t const& image);
+gl_image_t gl_load_image(gl_texture_t const& texture, void* buffer, size_t length);
 
 gl_sampler_t gl_create_sampler(GLenum min_filter, GLenum mag_filter, GLenum wrap_s, GLenum wrap_t, GLenum wrap_r);
 void gl_destroy_sampler(gl_sampler_t& sampler);
-void gl_bind_sampler(gl_sampler_t sampler, gl_sampler_bind_t desc = {});
+void gl_bind_sampler(gl_sampler_t const& sampler, gl_sampler_bind_t desc = {});
 
 gl_module_t gl_create_module_compute(const char* comp_src);
 gl_module_t gl_create_module_graphics(const char* vert_src, const char* frag_src);
@@ -248,23 +247,23 @@ void gl_set_scissor(int32_t x, int32_t y, int32_t width, int32_t height);
 
 inline void (*gl_begin_meshlet)(gl_pass_t& pass) = gl_begin_render;
 inline void (*gl_end_meshlet)(gl_pass_t& pass) = gl_end_render;
-void gl_draw_mesh_task(uint32_t groupX, uint32_t groupY = 1, uint32_t groupZ = 1);
+void gl_draw_meshlet(uint32_t groupX, uint32_t groupY = 1, uint32_t groupZ = 1);
 
 gl_mesh_t gl_create_mesh(const float* vertices, const float* normals, const float* uvs, size_t vertex_count, const unsigned int* indices, size_t index_count);
 void gl_destroy_mesh(gl_mesh_t& mesh);
-void gl_draw_mesh(gl_mesh_t mesh);
+void gl_draw_mesh(gl_mesh_t const& mesh);
 
 gl_meshlet_t gl_create_meshlet(const float* vertices, const float* normals, const float* uvs, size_t vertex_count, const unsigned int* indices, size_t index_count);
 void gl_destroy_meshlet(gl_meshlet_t& meshlet);
 
 gl_mesh_t gl_create_mesh_screen();
-void gl_draw_screen(int width, int height, gl_texture_t texture, gl_color_t color = {});
+void gl_draw_screen(int width, int height, gl_texture_t const& texture, gl_color_t const& clear = {});
 
 // ====================================================================
 
 #ifdef OPENGL_IMPLEMENTATION
 
-static void gl_hello_world()
+static void gl_load_library()
 {
     glewExperimental = GL_TRUE;
     GLenum err = glewInit();
@@ -293,7 +292,6 @@ static gl_buffer_t gl_create_buffer(
     glBindBuffer(GL_ARRAY_BUFFER, 0);
 
     result.size = size;
-    result.target = GL_ARRAY_BUFFER;
     return result;
 }
 
@@ -303,7 +301,7 @@ static void gl_destroy_buffer(gl_buffer_t& buffer)
     buffer.handle = 0;
 }
 
-static void gl_bind_buffer(gl_buffer_t buffer, gl_buffer_bind_t desc)
+static void gl_bind_buffer(gl_buffer_t const& buffer, gl_buffer_bind_t desc)
 {
     switch (desc.target)
     {
@@ -318,7 +316,7 @@ static void gl_bind_buffer(gl_buffer_t buffer, gl_buffer_bind_t desc)
 }
 
 static void gl_read_buffer(
-    gl_buffer_t buffer,
+    gl_buffer_t const& buffer,
     size_t offset,
     size_t size,
     void* data)
@@ -338,7 +336,7 @@ static void gl_read_buffer(
 }
 
 static void gl_write_buffer(
-    gl_buffer_t buffer,
+    gl_buffer_t const& buffer,
     size_t offset,
     size_t size,
     const void* data)
@@ -456,7 +454,7 @@ static void gl_destroy_texture(gl_texture_t& texture)
     texture.handle = 0;
 }
 
-static void gl_bind_texture(gl_texture_t texture, gl_texture_bind_t desc)
+static void gl_bind_texture(gl_texture_t const& texture, gl_texture_bind_t desc)
 {
     glActiveTexture(GL_TEXTURE0 + desc.binding);
     glBindTexture(texture.target, texture.handle);
@@ -467,18 +465,18 @@ static void gl_bind_texture(gl_texture_t texture, gl_texture_bind_t desc)
     }
 }
 
-static void gl_bind_texture_storage(gl_texture_t texture, gl_texture_storage_bind_t desc)
+static void gl_bind_texture_storage(gl_texture_t const& texture, gl_texture_storage_bind_t desc)
 {
     glBindImageTexture(desc.binding, texture.handle, (GLint)desc.base_level, 1 < desc.layer_count,
                        (GLint)desc.base_layer, desc.access, texture.internal_format);
 }
 
-static gl_texture_t gl_load_texture(gl_image_t image)
+static gl_texture_t gl_load_texture(gl_image_t const& image)
 {
     return gl_create_texture_color(image.width, image.height, image.pixels);
 }
 
-static gl_image_t gl_load_image(gl_texture_t texture, void* buffer, size_t length)
+static gl_image_t gl_load_image(gl_texture_t const& texture, void* buffer, size_t length)
 {
     gl_image_t result = {};
 
@@ -819,13 +817,11 @@ inline void gl_begin_compute(gl_pass_t& pass)
         fprintf(stderr, "Pipeline not end\n");
         abort();
     }
-
     if (pass.module.handle == 0)
     {
         fprintf(stderr, "Pipeline module is not created\n");
         abort();
     }
-
     if (pass.module.target != GL_COMPUTE_SHADER)
     {
         fprintf(stderr, "Pipeline module is not compute shader\n");
@@ -844,13 +840,11 @@ inline void gl_end_compute(gl_pass_t& pass)
         fprintf(stderr, "Pipeline not end\n");
         abort();
     }
-
     if (pass.module.handle == 0)
     {
         fprintf(stderr, "Pipeline module is not created\n");
         abort();
     }
-
     if (pass.module.target != GL_COMPUTE_SHADER)
     {
         fprintf(stderr, "Pipeline module is not compute shader\n");
@@ -1117,7 +1111,7 @@ static void gl_set_scissor(int32_t x, int32_t y, int32_t width, int32_t height)
     glScissor(x, y, width, height);
 }
 
-static void gl_draw_mesh_task(uint32_t groupX, uint32_t groupY, uint32_t groupZ)
+static void gl_draw_meshlet(uint32_t groupX, uint32_t groupY, uint32_t groupZ)
 {
     glDrawMeshTasksNV(0, std::max(1U, groupX) * std::max(1U, groupY) * std::max(1U, groupZ));
 }
@@ -1187,7 +1181,7 @@ static void gl_destroy_mesh(gl_mesh_t& mesh)
     mesh.handle = 0;
 }
 
-static void gl_draw_mesh(gl_mesh_t mesh)
+static void gl_draw_mesh(gl_mesh_t const& mesh)
 {
     glBindVertexArray(mesh.handle);
     if (mesh.index_count) glDrawElements(mesh.primitive_type, mesh.index_count, mesh.index_type, (void*)0);
@@ -1260,7 +1254,7 @@ static gl_mesh_t gl_create_mesh_screen()
     return quad;
 }
 
-static void gl_draw_screen(int width, int height, gl_texture_t texture, gl_color_t color)
+static void gl_draw_screen(int width, int height, gl_texture_t const& texture, gl_color_t const& clear)
 {
     constexpr auto VS = R"(
         #version 460
@@ -1293,7 +1287,7 @@ static void gl_draw_screen(int width, int height, gl_texture_t texture, gl_color
         }
     )";
     static auto module = gl_create_module_graphics(VS, FS);
-    gl_pass_t pass = {.module = module, .screen = {.color = {.clear = true, .value = color,}}};
+    gl_pass_t pass = {.module = module, .screen = {.color = {.clear = true, .value = clear,}}};
     gl_begin_render(pass);
     gl_set_viewport(0, 0, width, height);
     gl_bind_texture(texture, {.binding = 0,});

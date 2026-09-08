@@ -33,7 +33,7 @@ int main()
         return -1;
     }
 
-    gl_hello_world();
+    gl_load_library();
 
     bool running = true;
     while (running)
@@ -73,6 +73,7 @@ void frame(int width, int height)
 
         layout(binding = 1) uniform sampler2D texture1;
 
+        uniform float height;
         uniform mat4 projMat, viewMat, modelMat;
 
         layout(std430, binding = 0) buffer Vertices
@@ -95,6 +96,87 @@ void frame(int width, int height)
             uint indices[];
         };
 
+        void tessellate(
+            vec3 in_vertex[3], vec2 in_uv[3],
+            out vec3 out_vertex[3], out vec2 out_uv[3])
+        {
+            for(uint i = 0; i < 3; ++i)
+            {
+                out_vertex[i] = 0.5 * (in_vertex[i] + in_vertex[(i+1) % 3]);
+                out_uv[i] = 0.5 * (in_uv[i] + in_uv[(i+1) % 3]);
+            }
+        }
+
+        // LOD 0：直接输出
+        void assembleLOD0(vec3 in_vertex[3], vec2 in_uv[3], inout uint vid, inout uint iid)
+        {
+            for(uint i = 0; i < 3; ++i)
+            {
+                ms_out[vid + i].vertex = in_vertex[i];
+                ms_out[vid + i].normal = normalize(cross(in_vertex[1] - in_vertex[0], in_vertex[2] - in_vertex[0]));
+                ms_out[vid + i].uv = in_uv[i];
+                gl_MeshVerticesNV[vid + i].gl_Position = projMat * viewMat * vec4(in_vertex[i], 1);
+                gl_PrimitiveIndicesNV[iid + i] = vid + i;
+            }
+            vid += 3;
+            iid += 3;
+        }
+
+        // LOD 1：细分一次
+        void assembleLOD1(vec3 in_vertex[3], vec2 in_uv[3], inout uint vid, inout uint iid)
+        {
+            vec3 out_vertex[3];
+            vec2 out_uv[3];
+            tessellate(in_vertex, in_uv, out_vertex, out_uv);
+
+            for(uint i = 0; i < 3; ++i)
+                out_vertex[i].y = texture(texture1, out_uv[i]).r * height;
+
+            // 4个子三角形
+            vec3 v0[3] = vec3[3](in_vertex[0], out_vertex[0], out_vertex[2]);
+            vec2 uv0[3] = vec2[3](in_uv[0], out_uv[0], out_uv[2]);
+            assembleLOD0(v0, uv0, vid, iid);
+
+            vec3 v1[3] = vec3[3](in_vertex[1], out_vertex[1], out_vertex[0]);
+            vec2 uv1[3] = vec2[3](in_uv[1], out_uv[1], out_uv[0]);
+            assembleLOD0(v1, uv1, vid, iid);
+
+            vec3 v2[3] = vec3[3](in_vertex[2], out_vertex[2], out_vertex[1]);
+            vec2 uv2[3] = vec2[3](in_uv[2], out_uv[2], out_uv[1]);
+            assembleLOD0(v2, uv2, vid, iid);
+
+            vec3 v3[3] = vec3[3](out_vertex[0], out_vertex[1], out_vertex[2]);
+            vec2 uv3[3] = vec2[3](out_uv[0], out_uv[1], out_uv[2]);
+            assembleLOD0(v3, uv3, vid, iid);
+        }
+
+        // LOD 2：细分两次
+        void assembleLOD2(vec3 in_vertex[3], vec2 in_uv[3], inout uint vid, inout uint iid)
+        {
+            vec3 out_vertex[3];
+            vec2 out_uv[3];
+            tessellate(in_vertex, in_uv, out_vertex, out_uv);
+
+            for(uint i = 0; i < 3; ++i)
+                out_vertex[i].y = texture(texture1, out_uv[i]).r * height;
+
+            vec3 v0[3] = vec3[3](in_vertex[0], out_vertex[0], out_vertex[2]);
+            vec2 uv0[3] = vec2[3](in_uv[0], out_uv[0], out_uv[2]);
+            assembleLOD1(v0, uv0, vid, iid);
+
+            vec3 v1[3] = vec3[3](in_vertex[1], out_vertex[1], out_vertex[0]);
+            vec2 uv1[3] = vec2[3](in_uv[1], out_uv[1], out_uv[0]);
+            assembleLOD1(v1, uv1, vid, iid);
+
+            vec3 v2[3] = vec3[3](in_vertex[2], out_vertex[2], out_vertex[1]);
+            vec2 uv2[3] = vec2[3](in_uv[2], out_uv[2], out_uv[1]);
+            assembleLOD1(v2, uv2, vid, iid);
+
+            vec3 v3[3] = vec3[3](out_vertex[0], out_vertex[1], out_vertex[2]);
+            vec2 uv3[3] = vec2[3](out_uv[0], out_uv[1], out_uv[2]);
+            assembleLOD1(v3, uv3, vid, iid);
+        }
+
         void main()
         {
             uint meshlet_id = gl_WorkGroupID.x;
@@ -102,36 +184,20 @@ void frame(int width, int height)
             ivec2 isize = textureSize(texture1, 0);
             vec2 size = vec2(float(isize.x), float(isize.y));
 
-            vec3 positions[3];
+            vec3 in_vertex[3];
+            vec2 in_uv[3];
+
+            uint vid = 0, iid = 0;
             for(uint i=0; i<3; ++i)
             {
                 uint index = indices[meshlet_id * 3 + i];
-
-                positions[i] = vec3(modelMat * vec4(vertices[index], 1));
-
-                float height = 0;
-                for(float m=-2; m<=2; ++m)
-                    for(float n=-2; n<=2; ++n) height += texture(texture1, uvs[index] + vec2(m, n) / size).r;
-                height /= 25.0;
-
-                positions[i].y += height * 4;
-
-                ms_out[i].uv = uvs[index];
-
-                ms_out[i].vertex = positions[i];
-
-                gl_MeshVerticesNV[i].gl_Position = projMat * viewMat * vec4(positions[i], 1);
-
-                gl_PrimitiveIndicesNV[i] = i;
+                in_vertex[i] = vec3(modelMat * vec4(vertices[index], 1));
+                in_uv[i] = uvs[index];
+                in_vertex[i].y = texture(texture1, uvs[index]).r * height;
             }
+            assembleLOD2(in_vertex, in_uv, vid, iid);
 
-            for(uint i=0; i<3; ++i)
-            {
-                vec3 normal = normalize(cross(positions[1] - positions[0], positions[2] - positions[0]));
-                ms_out[i].normal = normal;
-            }
-
-            gl_PrimitiveCountNV = 1;
+            gl_PrimitiveCountNV = iid / 3;
         }
     )";
     constexpr auto FS = R"(
@@ -203,14 +269,15 @@ void frame(int width, int height)
     static auto pass1_color = gl_create_texture_color(width, height, nullptr);
     static auto pass1_depth = gl_create_texture_depth(width, height, nullptr);
 
-    gl_pass_t pass1 = {.module = module, .colors = {{.texture = pass1_color, .clear = true, }}, .depth = {.texture = pass1_depth, .clear = true, .write = true, .func = GL_LEQUAL, }, };
+    gl_pass_t pass1 = {.module = module, .colors = {{.texture = pass1_color, .clear = true, }}, .depth = {.texture = pass1_depth, .clear = true, .write = true, .func = GL_LEQUAL, }, .fill_mode = GL_FILL,};
     gl_begin_meshlet(pass1);
 
+    gl_set_uniform_float("height", 1.0f);
     gl_set_uniform_mat4("projMat", &projMat[0][0]);
     gl_set_uniform_mat4("viewMat", &viewMat[0][0]);
     gl_set_uniform_mat4("modelMat", &modelMat[0][0]);
 
-    static auto meshlet = gl_create_meshlet_plane(5, 100);
+    static auto meshlet = gl_create_meshlet_plane(5, 200);
     gl_bind_buffer(meshlet.vertex_vbo, {.binding = 0, .target = GL_SHADER_STORAGE_BUFFER,});
     gl_bind_buffer(meshlet.normal_vbo, {.binding = 1, .target = GL_SHADER_STORAGE_BUFFER,});
     gl_bind_buffer(meshlet.uv_vbo, {.binding = 2, .target = GL_SHADER_STORAGE_BUFFER,});
@@ -222,7 +289,7 @@ void frame(int width, int height)
     gl_bind_texture(texture1, {.binding = 1,});
 
     gl_set_viewport(0, 0, width, height);
-    gl_draw_mesh_task(meshlet.index_count / 3);
+    gl_draw_meshlet(meshlet.index_count / 3);
 
     gl_end_meshlet(pass1);
 
