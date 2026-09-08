@@ -952,7 +952,7 @@ static void gl_begin_render(gl_pass_t& pass)
             {
                 glClearBufferfv(GL_DEPTH, 0, &pass.depth.value);
             }
-            if (pass.depth.clear && pass.depth.texture.format == GL_DEPTH_STENCIL)
+            if (pass.stencil.clear && pass.depth.texture.format == GL_DEPTH_STENCIL)
             {
                 auto stencilValue = (int32_t)pass.stencil.value;
                 glClearBufferiv(GL_STENCIL, 0, &stencilValue);
