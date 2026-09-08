@@ -168,7 +168,7 @@ struct gl_meshlet_t
 void gl_hello_world();
 
 gl_buffer_t gl_create_buffer(size_t size, GLenum usage = GL_STATIC_DRAW, const void* data = nullptr);
-void gl_destroy_buffer(gl_buffer_t buffer);
+void gl_destroy_buffer(gl_buffer_t& buffer);
 void gl_bind_buffer(gl_buffer_t buffer, gl_buffer_bind_t desc = {});
 void gl_read_buffer(gl_buffer_t buffer, size_t offset, size_t size, void* data);
 void gl_write_buffer(gl_buffer_t buffer, size_t offset, size_t size, const void* data);
@@ -1057,7 +1057,7 @@ static gl_mesh_t gl_create_mesh(
 
     if (vertices)
     {
-        result.vertex_vbo = gl_create_buffer(vertex_count * 3 * sizeof(float), GL_STATIC_DRAW, GL_ARRAY_BUFFER, vertices);
+        result.vertex_vbo = gl_create_buffer(vertex_count * 3 * sizeof(float), GL_STATIC_DRAW, vertices);
         glBindBuffer(GL_ARRAY_BUFFER, result.vertex_vbo.handle);
         glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
         glEnableVertexAttribArray(0);
@@ -1065,7 +1065,7 @@ static gl_mesh_t gl_create_mesh(
 
     if (normals)
     {
-        result.normal_vbo = gl_create_buffer(vertex_count * 3 * sizeof(float), GL_STATIC_DRAW, GL_ARRAY_BUFFER, normals);
+        result.normal_vbo = gl_create_buffer(vertex_count * 3 * sizeof(float), GL_STATIC_DRAW, normals);
         glBindBuffer(GL_ARRAY_BUFFER, result.normal_vbo.handle);
         glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
         glEnableVertexAttribArray(1);
@@ -1073,7 +1073,7 @@ static gl_mesh_t gl_create_mesh(
 
     if (uvs)
     {
-        result.uv_vbo = gl_create_buffer(vertex_count * 2 * sizeof(float), GL_STATIC_DRAW, GL_ARRAY_BUFFER, uvs);
+        result.uv_vbo = gl_create_buffer(vertex_count * 2 * sizeof(float), GL_STATIC_DRAW, uvs);
         glBindBuffer(GL_ARRAY_BUFFER, result.uv_vbo.handle);
         glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(float), (void*)0);
         glEnableVertexAttribArray(2);
@@ -1081,7 +1081,7 @@ static gl_mesh_t gl_create_mesh(
 
     if (indices)
     {
-        result.index_vbo = gl_create_buffer(index_count * sizeof(uint32_t), GL_STATIC_DRAW, GL_ELEMENT_ARRAY_BUFFER, indices);
+        result.index_vbo = gl_create_buffer(index_count * sizeof(uint32_t), GL_STATIC_DRAW, indices);
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, result.index_vbo.handle);
     }
 
@@ -1127,22 +1127,22 @@ static gl_meshlet_t gl_create_meshlet(
 
     if (vertices)
     {
-        result.vertex_vbo = gl_create_buffer(vertex_count * 4 * sizeof(float), GL_STATIC_DRAW, GL_ARRAY_BUFFER, vertices);
+        result.vertex_vbo = gl_create_buffer(vertex_count * 4 * sizeof(float), GL_STATIC_DRAW, vertices);
     }
 
     if (normals)
     {
-        result.normal_vbo = gl_create_buffer(vertex_count * 4 * sizeof(float), GL_STATIC_DRAW, GL_ARRAY_BUFFER, normals);
+        result.normal_vbo = gl_create_buffer(vertex_count * 4 * sizeof(float), GL_STATIC_DRAW, normals);
     }
 
     if (uvs)
     {
-        result.uv_vbo = gl_create_buffer(vertex_count * 2 * sizeof(float), GL_STATIC_DRAW, GL_ARRAY_BUFFER, uvs);
+        result.uv_vbo = gl_create_buffer(vertex_count * 2 * sizeof(float), GL_STATIC_DRAW, uvs);
     }
 
     if (indices)
     {
-        result.index_vbo = gl_create_buffer(index_count * sizeof(uint32_t), GL_STATIC_DRAW, GL_ARRAY_BUFFER, indices);
+        result.index_vbo = gl_create_buffer(index_count * sizeof(uint32_t), GL_STATIC_DRAW, indices);
     }
 
     result.vertex_count = (GLsizei)vertex_count;
