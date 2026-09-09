@@ -9,36 +9,20 @@ void frame(int width, int height);
 
 int main()
 {
-    if (!SDL_Init(SDL_INIT_VIDEO)) {
-        fprintf(stderr, "SDL_Init failed: %s\n", SDL_GetError());
-        return -1;
-    }
-
+    SDL_Init(SDL_INIT_VIDEO);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 6);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
-
-    SDL_Window* window = SDL_CreateWindow("Terrain Demo", 1000, 600, SDL_WINDOW_OPENGL);
-    if (!window) {
-        fprintf(stderr, "Window creation failed: %s\n", SDL_GetError());
-        SDL_Quit();
-        return -1;
-    }
-
-    SDL_GLContext glContext = SDL_GL_CreateContext(window);
-    if (!glContext) {
-        fprintf(stderr, "GL context creation failed: %s\n", SDL_GetError());
-        SDL_DestroyWindow(window);
-        SDL_Quit();
-        return -1;
-    }
+    auto window = SDL_CreateWindow( "Terrain Demo", 1000, 600, SDL_WINDOW_OPENGL);
+    auto context = SDL_GL_CreateContext(window);
+    SDL_GL_MakeCurrent(window, context);
 
     gl_load_library();
 
+    SDL_Event event;
     bool running = true;
     while (running)
     {
-        SDL_Event event;
         while (SDL_PollEvent(&event)) if (event.type == SDL_EVENT_QUIT) running = false;
 
         int w, h;
@@ -48,7 +32,7 @@ int main()
         SDL_GL_SwapWindow(window);
     }
 
-    SDL_GL_DestroyContext(glContext);
+    SDL_GL_DestroyContext(context);
     SDL_DestroyWindow(window);
     SDL_Quit();
     return 0;
@@ -61,7 +45,7 @@ void frame(int width, int height)
         #extension GL_NV_mesh_shader : require
 
         layout(local_size_x = 1) in;
-        layout(max_vertices=64, max_primitives=126) out;
+        layout(max_vertices=256, max_primitives=126) out;
         layout(triangles) out;
 
         out PerVertexData
@@ -177,6 +161,33 @@ void frame(int width, int height)
             assembleLOD1(v3, uv3, vid, iid);
         }
 
+        // LOD 3：细分三次
+        void assembleLOD3(vec3 in_vertex[3], vec2 in_uv[3], inout uint vid, inout uint iid)
+        {
+            vec3 out_vertex[3];
+            vec2 out_uv[3];
+            tessellate(in_vertex, in_uv, out_vertex, out_uv);
+
+            for(uint i = 0; i < 3; ++i)
+                out_vertex[i].y = texture(texture1, out_uv[i]).r * height;
+
+            vec3 v0[3] = vec3[3](in_vertex[0], out_vertex[0], out_vertex[2]);
+            vec2 uv0[3] = vec2[3](in_uv[0], out_uv[0], out_uv[2]);
+            assembleLOD2(v0, uv0, vid, iid);
+
+            vec3 v1[3] = vec3[3](in_vertex[1], out_vertex[1], out_vertex[0]);
+            vec2 uv1[3] = vec2[3](in_uv[1], out_uv[1], out_uv[0]);
+            assembleLOD2(v1, uv1, vid, iid);
+
+            vec3 v2[3] = vec3[3](in_vertex[2], out_vertex[2], out_vertex[1]);
+            vec2 uv2[3] = vec2[3](in_uv[2], out_uv[2], out_uv[1]);
+            assembleLOD2(v2, uv2, vid, iid);
+
+            vec3 v3[3] = vec3[3](out_vertex[0], out_vertex[1], out_vertex[2]);
+            vec2 uv3[3] = vec2[3](out_uv[0], out_uv[1], out_uv[2]);
+            assembleLOD2(v3, uv3, vid, iid);
+        }
+
         void main()
         {
             uint meshlet_id = gl_WorkGroupID.x;
@@ -195,7 +206,7 @@ void frame(int width, int height)
                 in_uv[i] = uvs[index];
                 in_vertex[i].y = texture(texture1, uvs[index]).r * height;
             }
-            assembleLOD2(in_vertex, in_uv, vid, iid);
+            assembleLOD3(in_vertex, in_uv, vid, iid);
 
             gl_PrimitiveCountNV = iid / 3;
         }
@@ -272,12 +283,12 @@ void frame(int width, int height)
     gl_pass_t pass1 = {.module = module, .colors = {{.texture = pass1_color, .clear = true, }}, .depth = {.texture = pass1_depth, .clear = true, .write = true, .func = GL_LEQUAL, }, .fill_mode = GL_FILL,};
     gl_begin_meshlet(pass1);
 
-    gl_set_uniform_float("height", 1.0f);
+    gl_set_uniform_float("height", 2.5f);
     gl_set_uniform_mat4("projMat", &projMat[0][0]);
     gl_set_uniform_mat4("viewMat", &viewMat[0][0]);
     gl_set_uniform_mat4("modelMat", &modelMat[0][0]);
 
-    static auto meshlet = gl_create_meshlet_plane(5, 200);
+    static auto meshlet = gl_create_meshlet_plane(5, 100);
     gl_bind_buffer(meshlet.vertex_vbo, {.binding = 0, .target = GL_SHADER_STORAGE_BUFFER,});
     gl_bind_buffer(meshlet.normal_vbo, {.binding = 1, .target = GL_SHADER_STORAGE_BUFFER,});
     gl_bind_buffer(meshlet.uv_vbo, {.binding = 2, .target = GL_SHADER_STORAGE_BUFFER,});

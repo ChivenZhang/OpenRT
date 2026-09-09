@@ -21,11 +21,77 @@ static gl_texture_t gl_load_texture(const char* filename)
         fprintf(stderr, "Failed to load image: %s\n", filename);
         return {};
     }
-    if (image.channels() == 1) cv::cvtColor(image, image, cv::COLOR_GRAY2RGBA);
-    else if (image.channels() == 3) cv::cvtColor(image, image, cv::COLOR_BGR2RGBA);
-    else if (image.channels() == 4) cv::cvtColor(image, image, cv::COLOR_BGRA2RGBA);
-    else return {};
-    return gl_create_texture_color(image.cols, image.rows, image.data);
+
+    // 将 BGR/BGRA 转换为 RGB/RGBA（仅对整数类型有效）
+    if (image.depth() == CV_8U || image.depth() == CV_16U) {
+        if (image.channels() == 3) {
+            cv::cvtColor(image, image, cv::COLOR_BGR2RGB);
+        }
+        else if (image.channels() == 4) {
+            cv::cvtColor(image, image, cv::COLOR_BGRA2RGBA);
+        }
+    }
+    // float 类型（EXR/HDR）通常是 RGB/RGBA 顺序，不需要转换
+
+    gl_texture_create_t info = {};
+    info.width = (uint32_t)image.cols;
+    info.height = (uint32_t)image.rows;
+    info.target = GL_TEXTURE_2D;
+    info.data = image.data;
+
+    // 根据通道数和数据类型选择格式
+    switch (image.channels())
+    {
+        case 1:
+            info.format = GL_RED;
+            switch (image.depth())
+            {
+                case CV_8U:  info.internal_format = GL_R8;   info.type = GL_UNSIGNED_BYTE; break;
+                case CV_16U: info.internal_format = GL_R16;  info.type = GL_UNSIGNED_SHORT; break;
+                case CV_32F: info.internal_format = GL_R32F; info.type = GL_FLOAT; break;
+                default: fprintf(stderr, "Unsupported depth: %d\n", image.depth()); return {};
+            }
+            break;
+
+        case 2:
+            info.format = GL_RG;
+            switch (image.depth())
+            {
+                case CV_8U:  info.internal_format = GL_RG8;   info.type = GL_UNSIGNED_BYTE; break;
+                case CV_16U: info.internal_format = GL_RG16;  info.type = GL_UNSIGNED_SHORT; break;
+                case CV_32F: info.internal_format = GL_RG32F; info.type = GL_FLOAT; break;
+                default: fprintf(stderr, "Unsupported depth: %d\n", image.depth()); return {};
+            }
+            break;
+
+        case 3:
+            info.format = GL_RGB;
+            switch (image.depth())
+            {
+                case CV_8U:  info.internal_format = GL_RGB8;   info.type = GL_UNSIGNED_BYTE; break;
+                case CV_16U: info.internal_format = GL_RGB16;  info.type = GL_UNSIGNED_SHORT; break;
+                case CV_32F: info.internal_format = GL_RGB32F; info.type = GL_FLOAT; break;
+                default: fprintf(stderr, "Unsupported depth: %d\n", image.depth()); return {};
+            }
+            break;
+
+        case 4:
+            info.format = GL_RGBA;
+            switch (image.depth())
+            {
+                case CV_8U:  info.internal_format = GL_RGBA8;   info.type = GL_UNSIGNED_BYTE; break;
+                case CV_16U: info.internal_format = GL_RGBA16;  info.type = GL_UNSIGNED_SHORT; break;
+                case CV_32F: info.internal_format = GL_RGBA32F; info.type = GL_FLOAT; break;
+                default: fprintf(stderr, "Unsupported depth: %d\n", image.depth()); return {};
+            }
+            break;
+
+        default:
+            fprintf(stderr, "Unsupported channel count: %d\n", image.channels());
+            return {};
+    }
+
+    return gl_create_texture(info);
 }
 
 #include <vector>

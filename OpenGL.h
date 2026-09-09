@@ -2,11 +2,11 @@
 #include <iostream>
 #include <GL/glew.h>
 
-#define GL_PI       3.14159265358979323846   // pi
-#define GL_PI_2     1.57079632679489661923   // pi/2
-#define GL_PI_4     0.785398163397448309616  // pi/4
-#define GL_1_PI     0.318309886183790671538  // 1/pi
-#define GL_2_PI     0.636619772367581343076  // 2/pi
+#define GL_PI 3.14159265358979323846 // pi
+#define GL_PI_2 1.57079632679489661923 // pi/2
+#define GL_PI_4 0.785398163397448309616 // pi/4
+#define GL_1_PI 0.318309886183790671538 // 1/pi
+#define GL_2_PI 0.636619772367581343076 // 2/pi
 
 /*
    Do this:
@@ -42,12 +42,31 @@ struct gl_texture_t
     GLenum target = GL_TEXTURE_2D;
     GLenum format = GL_RGBA;
     GLenum internal_format = GL_RGBA;
+    GLenum type = GL_UNSIGNED_BYTE;
+    bool mipmaps = false;
+};
+
+struct gl_texture_create_t
+{
+    uint32_t width = 0;
+    uint32_t height = 0;
+    GLenum target = GL_TEXTURE_2D;
+    GLenum format = GL_RGBA;                // 数据格式
+    GLenum internal_format = GL_RGBA8;      // 内部存储格式
+    GLenum type = GL_UNSIGNED_BYTE;         // 数据类型
+    GLenum wrap_s = GL_REPEAT;
+    GLenum wrap_t = GL_REPEAT;
+    GLenum wrap_r = GL_REPEAT;              // 3D 纹理使用
+    GLenum min_filter = GL_NEAREST_MIPMAP_LINEAR;
+    GLenum mag_filter = GL_LINEAR;
+    GLfloat border[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+    const void* data = nullptr;
 };
 
 struct gl_texture_bind_t
 {
     uint32_t binding = 0;
-    GLenum aspect_mode = GL_DEPTH_COMPONENT;    // GL_DEPTH_COMPONENT / GL_STENCIL_INDEX
+    GLenum aspect_mode = GL_DEPTH_COMPONENT; // GL_DEPTH_COMPONENT / GL_STENCIL_INDEX
 };
 
 struct gl_texture_storage_bind_t
@@ -57,7 +76,7 @@ struct gl_texture_storage_bind_t
     uint32_t base_layer = 0;
     uint32_t level_count = 1;
     uint32_t layer_count = 1;
-    GLenum access = GL_WRITE_ONLY;  // GL_WRITE_ONLY / GL_READ_ONLY / GL_READ_WRITE
+    GLenum access = GL_WRITE_ONLY; // GL_WRITE_ONLY / GL_READ_ONLY / GL_READ_WRITE
 };
 
 struct gl_image_t
@@ -102,9 +121,9 @@ struct gl_pass_t
         gl_color_t value;
         struct
         {
-            GLenum func = GL_ADD;   // GL_ADD / GL_SUBTRACT / GL_REVERSE_SUBTRACT / GL_MIN / GL_MAX
-            GLenum src = GL_ONE;    // GL_ZERO / GL_ONE / GL_SRC_COLOR / GL_ONE_MINUS_SRC_COLOR / GL_DST_COLOR / GL_ONE_MINUS_DST_COLOR / GL_SRC_ALPHA / GL_ONE_MINUS_SRC_ALPHA / GL_DST_ALPHA / GL_ONE_MINUS_DST_ALPHA / GL_CONSTANT_COLOR / GL_ONE_MINUS_CONSTANT_COLOR / GL_CONSTANT_ALPHA / GL_ONE_MINUS_CONSTANT_ALPHA / GL_SRC_ALPHA_SATURATE
-            GLenum dst = GL_ZERO;   // GL_ZERO / GL_ONE / GL_SRC_COLOR / GL_ONE_MINUS_SRC_COLOR / GL_DST_COLOR / GL_ONE_MINUS_DST_COLOR / GL_SRC_ALPHA / GL_ONE_MINUS_SRC_ALPHA / GL_DST_ALPHA / GL_ONE_MINUS_DST_ALPHA / GL_CONSTANT_COLOR / GL_ONE_MINUS_CONSTANT_COLOR / GL_CONSTANT_ALPHA / GL_ONE_MINUS_CONSTANT_ALPHA / GL_SRC_ALPHA_SATURATE
+            GLenum func = GL_ADD; // GL_ADD / GL_SUBTRACT / GL_REVERSE_SUBTRACT / GL_MIN / GL_MAX
+            GLenum src = GL_ONE; // GL_ZERO / GL_ONE / GL_SRC_COLOR / GL_ONE_MINUS_SRC_COLOR / GL_DST_COLOR / GL_ONE_MINUS_DST_COLOR / GL_SRC_ALPHA / GL_ONE_MINUS_SRC_ALPHA / GL_DST_ALPHA / GL_ONE_MINUS_DST_ALPHA / GL_CONSTANT_COLOR / GL_ONE_MINUS_CONSTANT_COLOR / GL_CONSTANT_ALPHA / GL_ONE_MINUS_CONSTANT_ALPHA / GL_SRC_ALPHA_SATURATE
+            GLenum dst = GL_ZERO; // GL_ZERO / GL_ONE / GL_SRC_COLOR / GL_ONE_MINUS_SRC_COLOR / GL_DST_COLOR / GL_ONE_MINUS_DST_COLOR / GL_SRC_ALPHA / GL_ONE_MINUS_SRC_ALPHA / GL_DST_ALPHA / GL_ONE_MINUS_DST_ALPHA / GL_CONSTANT_COLOR / GL_ONE_MINUS_CONSTANT_COLOR / GL_CONSTANT_ALPHA / GL_ONE_MINUS_CONSTANT_ALPHA / GL_SRC_ALPHA_SATURATE
         } color, alpha;
     } colors[2];
     struct
@@ -116,21 +135,21 @@ struct gl_pass_t
         float bias = 0.0f;
         float biasSlope = 0.0f;
         float biasClamp = 0.0f;
-        GLenum func = GL_ALWAYS;    // GL_NEVER / GL_LESS / GL_EQUAL / GL_LEQUAL / GL_GREATER / GL_NOTEQUAL / GL_GEQUAL / GL_ALWAYS
+        GLenum func = GL_ALWAYS; // GL_NEVER / GL_LESS / GL_EQUAL / GL_LEQUAL / GL_GREATER / GL_NOTEQUAL / GL_GEQUAL / GL_ALWAYS
     } depth;
     struct
     {
         bool clear = false;
         uint32_t read = (uint32_t)-1;
         uint32_t write = (uint32_t)-1;
-	    int32_t value = -1;
+        int32_t value = -1;
         int32_t refer = 0;
         struct
         {
-            GLenum func = GL_ALWAYS;    // GL_NEVER / GL_LESS / GL_EQUAL / GL_LEQUAL / GL_GREATER / GL_NOTEQUAL / GL_GEQUAL / GL_ALWAYS
-            GLenum sfail = GL_KEEP;     // GL_KEEP / GL_ZERO / GL_REPLACE / GL_INCR / GL_INCR_WRAP / GL_DECR / GL_DECR_WRAP / GL_INVERT
-            GLenum dpfail = GL_KEEP;    // GL_KEEP / GL_ZERO / GL_REPLACE / GL_INCR / GL_INCR_WRAP / GL_DECR / GL_DECR_WRAP / GL_INVERT
-            GLenum dppass = GL_KEEP;    // GL_KEEP / GL_ZERO / GL_REPLACE / GL_INCR / GL_INCR_WRAP / GL_DECR / GL_DECR_WRAP / GL_INVERT
+            GLenum func = GL_ALWAYS; // GL_NEVER / GL_LESS / GL_EQUAL / GL_LEQUAL / GL_GREATER / GL_NOTEQUAL / GL_GEQUAL / GL_ALWAYS
+            GLenum sfail = GL_KEEP; // GL_KEEP / GL_ZERO / GL_REPLACE / GL_INCR / GL_INCR_WRAP / GL_DECR / GL_DECR_WRAP / GL_INVERT
+            GLenum dpfail = GL_KEEP; // GL_KEEP / GL_ZERO / GL_REPLACE / GL_INCR / GL_INCR_WRAP / GL_DECR / GL_DECR_WRAP / GL_INVERT
+            GLenum dppass = GL_KEEP; // GL_KEEP / GL_ZERO / GL_REPLACE / GL_INCR / GL_INCR_WRAP / GL_DECR / GL_DECR_WRAP / GL_INVERT
         } back, front;
     } stencil;
 
@@ -144,9 +163,9 @@ struct gl_pass_t
             gl_color_t value;
             struct
             {
-                GLenum func = GL_ADD;   // GL_ADD / GL_SUBTRACT / GL_REVERSE_SUBTRACT / GL_MIN / GL_MAX
-                GLenum src = GL_ONE;    // GL_ZERO / GL_ONE / GL_SRC_COLOR / GL_ONE_MINUS_SRC_COLOR / GL_DST_COLOR / GL_ONE_MINUS_DST_COLOR / GL_SRC_ALPHA / GL_ONE_MINUS_SRC_ALPHA / GL_DST_ALPHA / GL_ONE_MINUS_DST_ALPHA / GL_CONSTANT_COLOR / GL_ONE_MINUS_CONSTANT_COLOR / GL_CONSTANT_ALPHA / GL_ONE_MINUS_CONSTANT_ALPHA / GL_SRC_ALPHA_SATURATE
-                GLenum dst = GL_ZERO;   // GL_ZERO / GL_ONE / GL_SRC_COLOR / GL_ONE_MINUS_SRC_COLOR / GL_DST_COLOR / GL_ONE_MINUS_DST_COLOR / GL_SRC_ALPHA / GL_ONE_MINUS_SRC_ALPHA / GL_DST_ALPHA / GL_ONE_MINUS_DST_ALPHA / GL_CONSTANT_COLOR / GL_ONE_MINUS_CONSTANT_COLOR / GL_CONSTANT_ALPHA / GL_ONE_MINUS_CONSTANT_ALPHA / GL_SRC_ALPHA_SATURATE
+                GLenum func = GL_ADD; // GL_ADD / GL_SUBTRACT / GL_REVERSE_SUBTRACT / GL_MIN / GL_MAX
+                GLenum src = GL_ONE; // GL_ZERO / GL_ONE / GL_SRC_COLOR / GL_ONE_MINUS_SRC_COLOR / GL_DST_COLOR / GL_ONE_MINUS_DST_COLOR / GL_SRC_ALPHA / GL_ONE_MINUS_SRC_ALPHA / GL_DST_ALPHA / GL_ONE_MINUS_DST_ALPHA / GL_CONSTANT_COLOR / GL_ONE_MINUS_CONSTANT_COLOR / GL_CONSTANT_ALPHA / GL_ONE_MINUS_CONSTANT_ALPHA / GL_SRC_ALPHA_SATURATE
+                GLenum dst = GL_ZERO; // GL_ZERO / GL_ONE / GL_SRC_COLOR / GL_ONE_MINUS_SRC_COLOR / GL_DST_COLOR / GL_ONE_MINUS_DST_COLOR / GL_SRC_ALPHA / GL_ONE_MINUS_SRC_ALPHA / GL_DST_ALPHA / GL_ONE_MINUS_DST_ALPHA / GL_CONSTANT_COLOR / GL_ONE_MINUS_CONSTANT_COLOR / GL_CONSTANT_ALPHA / GL_ONE_MINUS_CONSTANT_ALPHA / GL_SRC_ALPHA_SATURATE
             } blend;
         } color;
         struct
@@ -157,7 +176,7 @@ struct gl_pass_t
             float bias = 0.0f;
             float biasSlope = 0.0f;
             float biasClamp = 0.0f;
-            GLenum func = GL_ALWAYS;    // GL_NEVER / GL_LESS / GL_EQUAL / GL_LEQUAL / GL_GREATER / GL_NOTEQUAL / GL_GEQUAL / GL_ALWAYS
+            GLenum func = GL_ALWAYS; // GL_NEVER / GL_LESS / GL_EQUAL / GL_LEQUAL / GL_GREATER / GL_NOTEQUAL / GL_GEQUAL / GL_ALWAYS
         } depth;
         struct
         {
@@ -166,16 +185,16 @@ struct gl_pass_t
             uint32_t write = (uint32_t)-1;
             int32_t value = -1;
             int32_t refer = 0;
-            GLenum func = GL_ALWAYS;    // GL_NEVER / GL_LESS / GL_EQUAL / GL_LEQUAL / GL_GREATER / GL_NOTEQUAL / GL_GEQUAL / GL_ALWAYS
-            GLenum sfail = GL_KEEP;     // GL_KEEP / GL_ZERO / GL_REPLACE / GL_INCR / GL_INCR_WRAP / GL_DECR / GL_DECR_WRAP / GL_INVERT
-            GLenum dpfail = GL_KEEP;    // GL_KEEP / GL_ZERO / GL_REPLACE / GL_INCR / GL_INCR_WRAP / GL_DECR / GL_DECR_WRAP / GL_INVERT
-            GLenum dppass = GL_KEEP;    // GL_KEEP / GL_ZERO / GL_REPLACE / GL_INCR / GL_INCR_WRAP / GL_DECR / GL_DECR_WRAP / GL_INVERT
+            GLenum func = GL_ALWAYS; // GL_NEVER / GL_LESS / GL_EQUAL / GL_LEQUAL / GL_GREATER / GL_NOTEQUAL / GL_GEQUAL / GL_ALWAYS
+            GLenum sfail = GL_KEEP; // GL_KEEP / GL_ZERO / GL_REPLACE / GL_INCR / GL_INCR_WRAP / GL_DECR / GL_DECR_WRAP / GL_INVERT
+            GLenum dpfail = GL_KEEP; // GL_KEEP / GL_ZERO / GL_REPLACE / GL_INCR / GL_INCR_WRAP / GL_DECR / GL_DECR_WRAP / GL_INVERT
+            GLenum dppass = GL_KEEP; // GL_KEEP / GL_ZERO / GL_REPLACE / GL_INCR / GL_INCR_WRAP / GL_DECR / GL_DECR_WRAP / GL_INVERT
         } stencil;
     } screen;
 
-    GLenum cull_mode = GL_BACK;     // GL_NONE / GL_FRONT / GL_BACK / GL_FRONT_AND_BACK
-    GLenum front_face = GL_CCW;     // GL_CW / GL_CCW
-    GLenum fill_mode = GL_FILL;     // GL_POINT / GL_LINE / GL_FILL
+    GLenum cull_mode = GL_BACK; // GL_NONE / GL_FRONT / GL_BACK / GL_FRONT_AND_BACK
+    GLenum front_face = GL_CCW; // GL_CW / GL_CCW
+    GLenum fill_mode = GL_FILL; // GL_POINT / GL_LINE / GL_FILL
 };
 
 struct gl_mesh_t
@@ -208,89 +227,344 @@ struct gl_meshlet_t
 
 // ====================================================================
 
-void gl_hello_world();
+/* @brief Load the OpenGL function pointers and initialize the extension library. */
+void gl_load_library();
 
+/*
+ * @brief Create a buffer object with the given size, usage hint, and optional initial data.
+ * @param size  Size of the buffer in bytes.
+ * @param usage Usage hint for the buffer (e.g. GL_STATIC_DRAW).
+ * @param data  Optional pointer to initial data, or nullptr.
+ */
 gl_buffer_t gl_create_buffer(size_t size, GLenum usage = GL_STATIC_DRAW, const void* data = nullptr);
+/*
+ * @brief Delete a buffer object and reset its handle to zero.
+ * @param buffer The buffer object to delete.
+ */
 void gl_destroy_buffer(gl_buffer_t& buffer);
+/*
+ * @brief Bind a buffer to an indexed binding point of the given target.
+ * @param buffer The buffer object to bind.
+ * @param desc   Binding descriptor specifying the target and binding index.
+ */
 void gl_bind_buffer(gl_buffer_t buffer, gl_buffer_bind_t desc = {});
+/*
+ * @brief Read a range of bytes from a buffer into host memory.
+ * @param buffer The buffer object to read from.
+ * @param offset Byte offset from the start of the buffer.
+ * @param size   Number of bytes to read.
+ * @param data   Pointer to the destination host memory.
+ */
 void gl_read_buffer(gl_buffer_t buffer, size_t offset, size_t size, void* data);
+/*
+ * @brief Write a range of bytes from host memory into a buffer.
+ * @param buffer The buffer object to write into.
+ * @param offset Byte offset from the start of the buffer.
+ * @param size   Number of bytes to write.
+ * @param data   Pointer to the source host memory.
+ */
 void gl_write_buffer(gl_buffer_t buffer, size_t offset, size_t size, const void* data);
 
+/*
+ * @brief Create a texture with optional initial info data.
+ * @param info   Texture creation data.
+ */
+gl_texture_t gl_create_texture(gl_texture_create_t const& info);
+
+/*
+ * @brief Create an RGBA color texture with optional initial pixel data.
+ * @param width  Texture width in pixels.
+ * @param height Texture height in pixels.
+ * @param data   Optional pointer to initial pixel data, or nullptr.
+ */
 gl_texture_t gl_create_texture_color(uint32_t width, uint32_t height, const void* data);
-gl_texture_t gl_create_texture_depth(int width, int height, const void* data);
-gl_texture_t gl_create_texture_depth_stencil(int width, int height, const void* data);
+/*
+ * @brief Create a depth texture with optional initial depth data.
+ * @param width  Texture width in pixels.
+ * @param height Texture height in pixels.
+ * @param data   Optional pointer to initial depth data, or nullptr.
+ */
+gl_texture_t gl_create_texture_depth(uint32_t width, uint32_t height, const void* data);
+/*
+ * @brief Create a combined depth-stencil texture with optional initial data.
+ * @param width  Texture width in pixels.
+ * @param height Texture height in pixels.
+ * @param data   Optional pointer to initial depth-stencil data, or nullptr.
+ */
+gl_texture_t gl_create_texture_depth_stencil(uint32_t width, uint32_t height, const void* data);
+/*
+ * @brief Delete a texture and reset its handle to zero.
+ * @param texture The texture to delete.
+ */
 void gl_destroy_texture(gl_texture_t& texture);
+/*
+ * @brief Bind a texture to a texture unit.
+ * @param texture The texture to bind.
+ * @param desc    Binding descriptor specifying the texture unit and aspect mode.
+ */
 void gl_bind_texture(gl_texture_t texture, gl_texture_bind_t desc = {});
+/*
+ * @brief Bind a texture to an image unit for shader read/write access.
+ * @param texture The texture to bind.
+ * @param desc    Binding descriptor specifying the image unit, levels, layers, and access mode.
+ */
 void gl_bind_texture_storage(gl_texture_t texture, gl_texture_storage_bind_t desc = {});
+/*
+ * @brief Upload an image to the GPU and return the resulting texture.
+ * @param image The image to upload.
+ * @return The created texture.
+ */
 gl_texture_t gl_load_texture(gl_image_t image);
+/*
+ * @brief Download a texture into a host memory buffer and return it as an image.
+ * @param texture The texture to download.
+ * @param buffer  Destination host memory buffer.
+ * @param length  Size of the destination buffer in bytes.
+ * @return The image referencing the downloaded data.
+ */
 gl_image_t gl_load_image(gl_texture_t texture, void* buffer, size_t length);
 
+/*
+ * @brief Create a sampler object with the specified filters and wrap modes.
+ * @param min_filter Minification filter (e.g. GL_LINEAR_MIPMAP_LINEAR).
+ * @param mag_filter Magnification filter (e.g. GL_LINEAR).
+ * @param wrap_s     Wrap mode for the S axis (e.g. GL_REPEAT).
+ * @param wrap_t     Wrap mode for the T axis (e.g. GL_REPEAT).
+ * @param wrap_r     Wrap mode for the R axis (e.g. GL_REPEAT).
+ * @return The created sampler.
+ */
 gl_sampler_t gl_create_sampler(GLenum min_filter, GLenum mag_filter, GLenum wrap_s, GLenum wrap_t, GLenum wrap_r);
+/*
+ * @brief Delete a sampler object and reset its handle to zero.
+ * @param sampler The sampler to delete.
+ */
 void gl_destroy_sampler(gl_sampler_t& sampler);
+/*
+ * @brief Bind a sampler object to a texture unit.
+ * @param sampler The sampler to bind.
+ * @param desc    Binding descriptor specifying the texture unit.
+ */
 void gl_bind_sampler(gl_sampler_t sampler, gl_sampler_bind_t desc = {});
 
+/*
+ * @brief Create a compute module from a compute shader source string.
+ * @param comp_src Compute shader source code.
+ * @return The created module.
+ */
 gl_module_t gl_create_module_compute(const char* comp_src);
+/*
+ * @brief Create a render module from vertex and fragment shader source strings.
+ * @param vert_src Vertex shader source code, or nullptr.
+ * @param frag_src Fragment shader source code, or nullptr.
+ * @return The created module.
+ */
 gl_module_t gl_create_module_render(const char* vert_src, const char* frag_src);
+/*
+ * @brief Create a meshlet module from task, mesh, and fragment shader source strings.
+ * @param task_src Task shader source code, or nullptr.
+ * @param mesh_src Mesh shader source code.
+ * @param frag_src Fragment shader source code.
+ * @return The created module.
+ */
 gl_module_t gl_create_module_meshlet(const char* task_src, const char* mesh_src, const char* frag_src);
+/*
+ * @brief Delete a shader module (program) and reset its handle to zero.
+ * @param module The module to delete.
+ */
 void gl_destroy_module(gl_module_t& module);
 
+/*
+ * @brief Set an integer uniform of the currently bound program.
+ * @param name  Uniform name.
+ * @param value Integer value to set.
+ */
 void gl_set_uniform_int(const char* name, int32_t value);
+/*
+ * @brief Set an unsigned integer uniform of the currently bound program.
+ * @param name  Uniform name.
+ * @param value Unsigned integer value to set.
+ */
 void gl_set_uniform_uint(const char* name, uint32_t value);
+/*
+ * @brief Set a float uniform of the currently bound program.
+ * @param name  Uniform name.
+ * @param value Float value to set.
+ */
 void gl_set_uniform_float(const char* name, float value);
+/*
+ * @brief Set a vec2 uniform of the currently bound program.
+ * @param name  Uniform name.
+ * @param value Pointer to the 2-component float vector.
+ */
 void gl_set_uniform_vec2(const char* name, const float* value);
+/*
+ * @brief Set a vec3 uniform of the currently bound program.
+ * @param name  Uniform name.
+ * @param value Pointer to the 3-component float vector.
+ */
 void gl_set_uniform_vec3(const char* name, const float* value);
+/*
+ * @brief Set a vec4 uniform of the currently bound program.
+ * @param name  Uniform name.
+ * @param value Pointer to the 4-component float vector.
+ */
 void gl_set_uniform_vec4(const char* name, const float* value);
+/*
+ * @brief Set a mat3 uniform of the currently bound program.
+ * @param name  Uniform name.
+ * @param value Pointer to the 3x3 matrix in column-major order.
+ */
 void gl_set_uniform_mat3(const char* name, const float* value);
+/*
+ * @brief Set a mat4 uniform of the currently bound program.
+ * @param name  Uniform name.
+ * @param value Pointer to the 4x4 matrix in column-major order.
+ */
 void gl_set_uniform_mat4(const char* name, const float* value);
 
+/*
+ * @brief Begin a compute pass.
+ * @param pass The compute pass descriptor.
+ */
 void gl_begin_compute(gl_pass_t& pass);
+/*
+ * @brief End a compute pass.
+ * @param pass The compute pass descriptor.
+ */
 void gl_end_compute(gl_pass_t& pass);
+/*
+ * @brief Dispatch a compute workload with the given work-group counts.
+ * @param groupX Number of work groups in the X dimension.
+ * @param groupY Number of work groups in the Y dimension.
+ * @param groupZ Number of work groups in the Z dimension.
+ */
 void gl_dispatch_compute(uint32_t groupX, uint32_t groupY, uint32_t groupZ);
 
+/*
+ * @brief Begin a render pass.
+ * @param pass The render pass descriptor.
+ */
 void gl_begin_render(gl_pass_t& pass);
+/*
+ * @brief End a render pass.
+ * @param pass The render pass descriptor.
+ */
 void gl_end_render(gl_pass_t& pass);
+/*
+ * @brief Set the viewport rectangle.
+ * @param x      Lower-left corner X coordinate.
+ * @param y      Lower-left corner Y coordinate.
+ * @param width  Viewport width in pixels.
+ * @param height Viewport height in pixels.
+ */
 void gl_set_viewport(int32_t x, int32_t y, int32_t width, int32_t height);
+/*
+ * @brief Enable the scissor test and set the scissor rectangle.
+ * @param x      Lower-left corner X coordinate.
+ * @param y      Lower-left corner Y coordinate.
+ * @param width  Scissor rectangle width in pixels.
+ * @param height Scissor rectangle height in pixels.
+ */
 void gl_set_scissor(int32_t x, int32_t y, int32_t width, int32_t height);
 
+/*
+ * @brief Begin a meshlet (mesh shader) pass.
+ * @param pass The meshlet pass descriptor.
+ */
 inline void (*gl_begin_meshlet)(gl_pass_t& pass) = gl_begin_render;
+/*
+ * @brief End a meshlet (mesh shader) pass.
+ * @param pass The meshlet pass descriptor.
+ */
 inline void (*gl_end_meshlet)(gl_pass_t& pass) = gl_end_render;
-void gl_draw_mesh_task(uint32_t groupX, uint32_t groupY = 1, uint32_t groupZ = 1);
+/*
+ * @brief Draw meshlets with the given work-group counts.
+ * @param groupX Number of work groups in the X dimension.
+ * @param groupY Number of work groups in the Y dimension.
+ * @param groupZ Number of work groups in the Z dimension.
+ */
+void gl_draw_meshlet(uint32_t groupX, uint32_t groupY = 1, uint32_t groupZ = 1);
 
-gl_mesh_t gl_create_mesh(const float* vertices, const float* normals, const float* uvs, size_t vertex_count, const unsigned int* indices, size_t index_count);
+/*
+ * @brief Create a mesh from vertex, normal, UV, and index data.
+ * @param vertices     Pointer to vertex positions (vec3), or nullptr.
+ * @param normals      Pointer to vertex normals (vec3), or nullptr.
+ * @param uvs          Pointer to texture coordinates (vec2), or nullptr.
+ * @param vertex_count Number of vertices.
+ * @param indices      Pointer to index data, or nullptr.
+ * @param index_count  Number of indices.
+ * @return The created mesh.
+ */
+gl_mesh_t gl_create_mesh(const float* vertices, const float* normals, const float* uvs, size_t vertex_count,
+                         const unsigned int* indices, size_t index_count);
+/*
+ * @brief Delete a mesh and its associated buffers.
+ * @param mesh The mesh to delete.
+ */
 void gl_destroy_mesh(gl_mesh_t& mesh);
+/*
+ * @brief Draw a mesh.
+ * @param mesh The mesh to draw.
+ */
 void gl_draw_mesh(gl_mesh_t mesh);
 
-gl_meshlet_t gl_create_meshlet(const float* vertices, const float* normals, const float* uvs, size_t vertex_count, const unsigned int* indices, size_t index_count);
+/*
+ * @brief Create a meshlet from vertex, normal, UV, and index data.
+ * @param vertices     Pointer to vertex positions (vec4), or nullptr.
+ * @param normals      Pointer to vertex normals (vec4), or nullptr.
+ * @param uvs          Pointer to texture coordinates, or nullptr.
+ * @param vertex_count Number of vertices.
+ * @param indices      Pointer to index data, or nullptr.
+ * @param index_count  Number of indices.
+ * @return The created meshlet.
+ */
+gl_meshlet_t gl_create_meshlet(const float* vertices, const float* normals, const float* uvs, size_t vertex_count,
+                               const unsigned int* indices, size_t index_count);
+/*
+ * @brief Delete a meshlet and its associated buffers.
+ * @param meshlet The meshlet to delete.
+ */
 void gl_destroy_meshlet(gl_meshlet_t& meshlet);
 
+/* @brief Create a fullscreen triangle mesh for screen-space drawing. */
 gl_mesh_t gl_create_mesh_screen();
+/*
+ * @brief Draw a texture to the screen.
+ * @param width   Screen width in pixels.
+ * @param height  Screen height in pixels.
+ * @param texture The texture to draw.
+ * @param color   Optional clear color.
+ */
 void gl_draw_screen(int width, int height, gl_texture_t texture, gl_color_t color = {});
 
 // ====================================================================
 
 #ifdef OPENGL_IMPLEMENTATION
 
-static void gl_hello_world()
+static void gl_load_library()
 {
     glewExperimental = GL_TRUE;
     GLenum err = glewInit();
-    if (err != GLEW_OK) {
+    if (err != GLEW_OK)
+    {
         fprintf(stderr, "GLEW init failed: %s\n", (const char*)glewGetErrorString(err));
         abort();
     }
-    printf("OpenGL Version: %s\n", glGetString(GL_VERSION));
-    printf("GLSL Version: %s\n", glGetString(GL_SHADING_LANGUAGE_VERSION));
-    printf("OpenGL Renderer: %s\n", glGetString(GL_RENDERER));
-    printf("OpenGL Vendor: %s\n", glGetString(GL_VENDOR));
+    fprintf(stdout, "OpenGL Version: %s\n", glGetString(GL_VERSION));
+    fprintf(stdout, "GLSL Version: %s\n", glGetString(GL_SHADING_LANGUAGE_VERSION));
+    fprintf(stdout, "OpenGL Renderer: %s\n", glGetString(GL_RENDERER));
+    fprintf(stdout, "OpenGL Vendor: %s\n", glGetString(GL_VENDOR));
+    GLint maxMeshOutputPrimitives = 0;
+    glGetIntegerv(GL_MAX_MESH_OUTPUT_PRIMITIVES_NV, &maxMeshOutputPrimitives);
+    GLint maxMeshOutputVertices = 0;
+    glGetIntegerv(GL_MAX_MESH_OUTPUT_VERTICES_NV, &maxMeshOutputVertices);
+    fprintf(stdout, "Mesh Output Primitives %d\n", maxMeshOutputPrimitives);
+    fprintf(stdout, "Mesh Output Vertices %d\n", maxMeshOutputVertices);
 }
 
 // ====================================================================
 
-static gl_buffer_t gl_create_buffer(
-    size_t size,
-    GLenum usage,
-    const void* data
-)
+static gl_buffer_t gl_create_buffer(size_t size, GLenum usage, const void* data)
 {
     gl_buffer_t result = {};
     glGenBuffers(1, &result.handle);
@@ -313,7 +587,8 @@ static void gl_bind_buffer(gl_buffer_t buffer, gl_buffer_bind_t desc)
 {
     switch (desc.target)
     {
-    default: break;
+    default:
+        break;
     case GL_UNIFORM_BUFFER:
         glBindBufferBase(GL_UNIFORM_BUFFER, desc.binding, buffer.handle);
         break;
@@ -323,35 +598,28 @@ static void gl_bind_buffer(gl_buffer_t buffer, gl_buffer_bind_t desc)
     }
 }
 
-static void gl_read_buffer(
-    gl_buffer_t buffer,
-    size_t offset,
-    size_t size,
-    void* data)
+static void gl_read_buffer(gl_buffer_t buffer, size_t offset, size_t size, void* data)
 {
-    if (!buffer.handle) return;
-    if (!data || size == 0) return;
-    if ((GLsizeiptr)(offset + size) > buffer.size) return; // 越界保护
+    if (!buffer.handle)
+        return;
+    if (!data || size == 0)
+        return;
+    if ((GLsizeiptr)(offset + size) > buffer.size)
+        return; // 越界保护
 
     glBindBuffer(GL_ARRAY_BUFFER, buffer.handle);
-    glGetBufferSubData(
-        GL_ARRAY_BUFFER,
-        (GLintptr)offset,
-        (GLsizeiptr)size,
-        data
-    );
+    glGetBufferSubData(GL_ARRAY_BUFFER, (GLintptr)offset, (GLsizeiptr)size, data);
     glBindBuffer(GL_ARRAY_BUFFER, 0);
 }
 
-static void gl_write_buffer(
-    gl_buffer_t buffer,
-    size_t offset,
-    size_t size,
-    const void* data)
+static void gl_write_buffer(gl_buffer_t buffer, size_t offset, size_t size, const void* data)
 {
-    if (!buffer.handle) return;
-    if (!data || size == 0) return;
-    if (offset + size > buffer.size) return;
+    if (!buffer.handle)
+        return;
+    if (!data || size == 0)
+        return;
+    if (offset + size > buffer.size)
+        return;
 
     glBindBuffer(GL_ARRAY_BUFFER, buffer.handle);
     glBufferSubData(GL_ARRAY_BUFFER, (GLintptr)offset, (GLsizeiptr)size, data);
@@ -360,100 +628,150 @@ static void gl_write_buffer(
 
 // ====================================================================
 
-static gl_texture_t gl_create_texture_color(
-    uint32_t width,
-    uint32_t height,
-    const void* data)
+static gl_texture_t gl_create_texture(gl_texture_create_t const& info)
 {
     gl_texture_t result = {};
+
+    // 生成并绑定纹理
     glGenTextures(1, &result.handle);
-    glBindTexture(GL_TEXTURE_2D, result.handle);
+    glBindTexture(info.target, result.handle);
 
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
-    glGenerateMipmap(GL_TEXTURE_2D);
+    // 上传纹理数据
+    if (info.target == GL_TEXTURE_2D)
+    {
+        glTexImage2D(info.target, 0, info.internal_format, info.width, info.height, 0, info.format, info.type, info.data);
+    }
+    else if (info.target == GL_TEXTURE_3D)
+    {
+        glTexImage3D(info.target, 0, info.internal_format, info.width, info.height, 1, 0, info.format, info.type, info.data);
+    }
+    else
+    {
+        fprintf(stderr, "Unsupported texture target");
+        abort();
+    }
 
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    // 处理空数据情况
+    if (info.data == nullptr)
+    {
+        if (info.format == GL_DEPTH_COMPONENT)
+        {
+            GLfloat clearValue = 1.0f;
+            glClearTexImage(result.handle, 0, info.format, info.type, &clearValue);
+        }
+        else if (info.format == GL_DEPTH_STENCIL)
+        {
+            if (info.internal_format == GL_DEPTH24_STENCIL8)
+            {
+                GLuint clearValue = 0xFFFFFF00u; // 深度 24 位全 1 (= 1.0)，模板 8 位 = 0
+                glClearTexImage(result.handle, 0, info.format, info.type, &clearValue);
+            }
+            else if (info.internal_format == GL_DEPTH32F_STENCIL8)
+            {
+                struct Float32Uint24_8 {
+                    float depth;
+                    uint32_t stencil;
+                } clearValue = {1.0f, 0};
+                glClearTexImage(result.handle, 0, GL_DEPTH_STENCIL, GL_FLOAT_32_UNSIGNED_INT_24_8_REV, &clearValue);
+            }
+            else
+            {
+                fprintf(stderr, "Unsupported depth stencil format");
+                abort();
+            }
+        }
+        else
+        {
+            GLubyte clearValue[4] = {0, 0, 0, 0};
+            glClearTexImage(result.handle, 0, info.format, info.type, clearValue);
+        }
+    }
 
-    GLubyte clearColor[4] = { 0, 0, 0, 0 };
-    if (data == nullptr) glClearTexImage(result.handle, 0, GL_RGBA, GL_UNSIGNED_BYTE, clearColor);
+    // 生成 mipmap
+    if (info.min_filter == GL_NEAREST_MIPMAP_NEAREST || info.min_filter == GL_LINEAR_MIPMAP_NEAREST || info.min_filter == GL_NEAREST_MIPMAP_LINEAR || info.min_filter == GL_LINEAR_MIPMAP_LINEAR)
+    {
+        glGenerateMipmap(info.target);
+        result.mipmaps = true;
+    }
 
-    result.width = width;
-    result.height = height;
-    result.target = GL_TEXTURE_2D;
-    result.format = GL_RGBA;
-    result.internal_format = GL_RGBA;
+    // 设置纹理参数
+    glTexParameteri(info.target, GL_TEXTURE_WRAP_S, info.wrap_s);
+    glTexParameteri(info.target, GL_TEXTURE_WRAP_T, info.wrap_t);
+    glTexParameteri(info.target, GL_TEXTURE_MIN_FILTER, info.min_filter);
+    glTexParameteri(info.target, GL_TEXTURE_MAG_FILTER, info.mag_filter);
+    // 设置边框颜色（当 wrap 模式为 CLAMP_TO_BORDER 时使用）
+    if (info.wrap_s == GL_CLAMP_TO_BORDER || info.wrap_t == GL_CLAMP_TO_BORDER || info.wrap_r == GL_CLAMP_TO_BORDER)
+    {
+        glTexParameterfv(info.target, GL_TEXTURE_BORDER_COLOR, info.border);
+    }
+
+    glBindTexture(info.target, 0);
+
+    result.width = info.width;
+    result.height = info.height;
+    result.target = info.target;
+    result.format = info.format;
+    result.internal_format = info.internal_format;
+    result.type = info.type;
     return result;
 }
 
-static gl_texture_t gl_create_texture_depth(
-    int width,
-    int height,
-    const void* data)
+static gl_texture_t gl_create_texture_color(uint32_t width, uint32_t height, const void* data)
 {
-    gl_texture_t result = {};
-    glGenTextures(1, &result.handle);
-    glBindTexture(GL_TEXTURE_2D, result.handle);
-
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, width, height, 0, GL_DEPTH_COMPONENT, GL_FLOAT, data);
-
-    // 过滤方式（Shadow Map 推荐 NEAREST）
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-
-    // 边缘模式（阴影常用 CLAMP_TO_BORDER）
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
-
-    // 超出 [0,1] 的深度视为 1.0（无阴影）
-    float borderColor[] = {1.0f, 1.0f, 1.0f, 1.0f};
-    glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, borderColor);
-
-    GLfloat clearDepth = 1.0f;
-    if (data == nullptr) glClearTexImage(result.handle, 0, GL_DEPTH_COMPONENT, GL_FLOAT, &clearDepth);
-
-    result.width = width;
-    result.height = height;
-    result.target = GL_TEXTURE_2D;
-    result.format = GL_DEPTH_COMPONENT;
-    result.internal_format = GL_DEPTH_COMPONENT;
-    return result;
+    gl_texture_create_t info
+    {
+        .width = width,
+        .height = height,
+        .target = GL_TEXTURE_2D,
+        .format = GL_RGBA,
+        .internal_format = GL_RGBA,
+        .type = GL_UNSIGNED_BYTE,
+        .wrap_s = GL_REPEAT,
+        .wrap_t = GL_REPEAT,
+        .min_filter = GL_LINEAR_MIPMAP_LINEAR,
+        .mag_filter = GL_LINEAR,
+        .data = data,
+    };
+    return gl_create_texture(info);
 }
 
-static gl_texture_t gl_create_texture_depth_stencil(
-    int width,
-    int height,
-    const void* data)
+static gl_texture_t gl_create_texture_depth(uint32_t width, uint32_t height, const void* data)
 {
-    gl_texture_t result = {};
-    glGenTextures(1, &result.handle);
-    glBindTexture(GL_TEXTURE_2D, result.handle);
+    gl_texture_create_t info
+    {
+        .width = width,
+        .height = height,
+        .target = GL_TEXTURE_2D,
+        .format = GL_DEPTH_COMPONENT,
+        .internal_format = GL_DEPTH_COMPONENT32F,
+        .type = GL_FLOAT,
+        .wrap_s = GL_CLAMP_TO_BORDER,
+        .wrap_t = GL_CLAMP_TO_BORDER,
+        .min_filter = GL_NEAREST,
+        .mag_filter = GL_NEAREST,
+        .border = {1.0f, 1.0f, 1.0f, 1.0f},
+        .data = data,
+    };
+    return gl_create_texture(info);
+}
 
-    // 使用 GL_DEPTH24_STENCIL8 格式（24位深度 + 8位模板）
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH24_STENCIL8, width, height, 0, GL_DEPTH_STENCIL, GL_UNSIGNED_INT_24_8, data);
-
-    // 过滤方式（通常使用 NEAREST）
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-
-    // 边缘模式
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-
-    // 设置深度比较模式（可选，用于阴影映射）
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_MODE, GL_NONE);
-
-    GLuint clearValue = 0xFFFFFF00u; // 深度 24 位全 1 (= 1.0)，模板 8 位 = 0
-    if (data == nullptr) glClearTexSubImage(result.handle, 0, 0, 0, 0, width, height, 1, GL_DEPTH_STENCIL, GL_UNSIGNED_INT_24_8, &clearValue );
-
-    result.width = width;
-    result.height = height;
-    result.target = GL_TEXTURE_2D;
-    result.format = GL_DEPTH_STENCIL;
-    result.internal_format = GL_DEPTH24_STENCIL8;
-    return result;
+static gl_texture_t gl_create_texture_depth_stencil(uint32_t width, uint32_t height, const void* data)
+{
+    gl_texture_create_t info
+    {
+        .width = width,
+        .height = height,
+        .target = GL_TEXTURE_2D,
+        .format = GL_DEPTH_STENCIL,
+        .internal_format = GL_DEPTH24_STENCIL8,
+        .type = GL_UNSIGNED_INT_24_8,
+        .wrap_s = GL_CLAMP_TO_EDGE,
+        .wrap_t = GL_CLAMP_TO_EDGE,
+        .min_filter = GL_NEAREST,
+        .mag_filter = GL_NEAREST,
+        .data = data,
+    };
+    return gl_create_texture(info);
 }
 
 static void gl_destroy_texture(gl_texture_t& texture)
@@ -490,34 +808,28 @@ static gl_image_t gl_load_image(gl_texture_t texture, void* buffer, size_t lengt
 
     if (texture.target == GL_TEXTURE_2D)
     {
-        if (length < texture.width * texture.height * sizeof(uint32_t)) return result;
+        if (length < texture.width * texture.height * sizeof(uint32_t))
+            return result;
 
         glBindTexture(texture.target, texture.handle);
-        glGetTexImage(
-            texture.target,
-            0,
-            texture.format,
-            GL_UNSIGNED_BYTE,
-            buffer
-        );
+        glGetTexImage(texture.target, 0, texture.format, GL_UNSIGNED_BYTE, buffer);
         glBindTexture(texture.target, 0);
         result.pixels = buffer;
+        result.width = texture.width;
+        result.height = texture.height;
+        result.format = texture.format;
     }
 
-    result.width = texture.width;
-    result.height = texture.height;
-    result.format = texture.format;
     return result;
 }
 
 // ====================================================================
 
-static gl_sampler_t gl_create_sampler(
-    GLenum min_filter,      // 缩小过滤方式，如 GL_LINEAR_MIPMAP_LINEAR
-    GLenum mag_filter,      // 放大过滤方式，如 GL_LINEAR
-    GLenum wrap_s,          // S 轴环绕方式，如 GL_REPEAT
-    GLenum wrap_t,          // T 轴环绕方式，如 GL_REPEAT
-    GLenum wrap_r)          // R 轴环绕方式，如 GL_REPEAT
+static gl_sampler_t gl_create_sampler(GLenum min_filter, // 缩小过滤方式，如 GL_LINEAR_MIPMAP_LINEAR
+                                      GLenum mag_filter, // 放大过滤方式，如 GL_LINEAR
+                                      GLenum wrap_s, // S 轴环绕方式，如 GL_REPEAT
+                                      GLenum wrap_t, // T 轴环绕方式，如 GL_REPEAT
+                                      GLenum wrap_r) // R 轴环绕方式，如 GL_REPEAT
 {
     gl_sampler_t result = {};
 
@@ -585,9 +897,7 @@ static gl_module_t gl_create_module_compute(const char* comp_src)
     return result;
 }
 
-static gl_module_t gl_create_module_render(
-    const char* vert_src,
-    const char* frag_src)
+static gl_module_t gl_create_module_render(const char* vert_src, const char* frag_src)
 {
     gl_module_t result = {};
 
@@ -652,10 +962,7 @@ static gl_module_t gl_create_module_render(
     return result;
 }
 
-static gl_module_t gl_create_module_meshlet(
-    const char* task_src,
-    const char* mesh_src,
-    const char* frag_src)
+static gl_module_t gl_create_module_meshlet(const char* task_src, const char* mesh_src, const char* frag_src)
 {
     gl_module_t result = {};
 
@@ -706,7 +1013,8 @@ static gl_module_t gl_create_module_meshlet(
 
     // ---- Program ----
     result.handle = glCreateProgram();
-    if (ts) glAttachShader(result.handle, ts);
+    if (ts)
+        glAttachShader(result.handle, ts);
     glAttachShader(result.handle, ms);
     glAttachShader(result.handle, fs);
     glLinkProgram(result.handle);
@@ -720,7 +1028,8 @@ static gl_module_t gl_create_module_meshlet(
         abort();
     }
 
-    if (ts) glDeleteShader(ts);
+    if (ts)
+        glDeleteShader(ts);
     glDeleteShader(ms);
     glDeleteShader(fs);
 
@@ -897,9 +1206,10 @@ static void gl_begin_render(gl_pass_t& pass)
     glDisable(GL_SCISSOR_TEST);
 
     bool offscreen = pass.depth.texture.handle;
-    for (size_t i=0; i<std::size(pass.colors) && !offscreen; ++i)
+    for (size_t i = 0; i < std::size(pass.colors) && !offscreen; ++i)
     {
-        if (pass.colors[i].texture.handle) offscreen = true;
+        if (pass.colors[i].texture.handle)
+            offscreen = true;
     }
     if (offscreen)
     {
@@ -911,24 +1221,30 @@ static void gl_begin_render(gl_pass_t& pass)
         int32_t colorCount = 0;
         GLenum colorAttachments[16]{};
         uint32_t width = 0, height = 0;
-        for (size_t i=0; i<std::size(pass.colors); ++i)
+        for (size_t i = 0; i < std::size(pass.colors); ++i)
         {
             if (pass.colors[i].texture.handle)
             {
                 glBindTexture(GL_TEXTURE_2D, pass.colors[i].texture.handle);
-                glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + i, GL_TEXTURE_2D, pass.colors[i].texture.handle, 0);
+                glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + i, GL_TEXTURE_2D,
+                                       pass.colors[i].texture.handle, 0);
                 colorAttachments[colorCount++] = GL_COLOR_ATTACHMENT0 + i;
                 width = std::max(width, pass.colors[i].texture.width);
                 height = std::max(height, pass.colors[i].texture.height);
             }
         }
-        if (colorCount) glDrawBuffers(colorCount, colorAttachments);
+        if (colorCount)
+            glDrawBuffers(colorCount, colorAttachments);
 
         if (pass.depth.texture.handle)
         {
             glBindTexture(GL_TEXTURE_2D, pass.depth.texture.handle);
-            if (pass.depth.texture.format == GL_DEPTH_COMPONENT) glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, pass.depth.texture.handle, 0);
-            else if (pass.depth.texture.format == GL_DEPTH_STENCIL) glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_TEXTURE_2D, pass.depth.texture.handle, 0);
+            if (pass.depth.texture.format == GL_DEPTH_COMPONENT)
+                glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, pass.depth.texture.handle,
+                                       0);
+            else if (pass.depth.texture.format == GL_DEPTH_STENCIL)
+                glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_TEXTURE_2D,
+                                       pass.depth.texture.handle, 0);
             else
             {
                 fprintf(stderr, "Invalid depth attachment\n");
@@ -946,21 +1262,27 @@ static void gl_begin_render(gl_pass_t& pass)
         gl_set_viewport(0, 0, (int32_t)width, (int32_t)height);
 
         glDisable(GL_BLEND);
-        for (size_t i=0; i<std::size(pass.colors); ++i)
+        for (size_t i = 0; i < std::size(pass.colors); ++i)
         {
             if (pass.colors[i].texture.handle)
             {
-                if (pass.colors[i].clear) glColorMask(true, true, true, true);
-                if (pass.colors[i].clear) glClearBufferfv(GL_COLOR, (int32_t)i, &pass.colors[i].value.r);
+                if (pass.colors[i].clear)
+                    glColorMask(true, true, true, true);
+                if (pass.colors[i].clear)
+                    glClearBufferfv(GL_COLOR, (int32_t)i, &pass.colors[i].value.r);
 
-                if (pass.colors[i].color.func != GL_ADD || pass.colors[i].color.src != GL_ONE || pass.colors[i].color.dst != GL_ZERO
-                    || pass.colors[i].alpha.func != GL_ADD || pass.colors[i].alpha.src != GL_ONE || pass.colors[i].alpha.dst != GL_ZERO) glEnable(GL_BLEND);
+                if (pass.colors[i].color.func != GL_ADD || pass.colors[i].color.src != GL_ONE ||
+                    pass.colors[i].color.dst != GL_ZERO || pass.colors[i].alpha.func != GL_ADD ||
+                    pass.colors[i].alpha.src != GL_ONE || pass.colors[i].alpha.dst != GL_ZERO)
+                    glEnable(GL_BLEND);
                 glBlendEquationSeparatei(i, pass.colors[i].color.func, pass.colors[i].alpha.func);
-                glBlendFuncSeparatei(i, pass.colors[i].color.src, pass.colors[i].color.dst, pass.colors[i].alpha.src, pass.colors[i].alpha.dst);
+                glBlendFuncSeparatei(i, pass.colors[i].color.src, pass.colors[i].color.dst, pass.colors[i].alpha.src,
+                                     pass.colors[i].alpha.dst);
             }
         }
 
-        if (pass.depth.texture.handle && (pass.depth.texture.format == GL_DEPTH_COMPONENT || pass.depth.texture.format == GL_DEPTH_STENCIL))
+        if (pass.depth.texture.handle &&
+            (pass.depth.texture.format == GL_DEPTH_COMPONENT || pass.depth.texture.format == GL_DEPTH_STENCIL))
         {
             if (pass.depth.clear)
             {
@@ -993,14 +1315,15 @@ static void gl_begin_render(gl_pass_t& pass)
         else
         {
             glEnable(GL_POLYGON_OFFSET_FILL);
-            if (glPolygonOffsetClamp == nullptr) glPolygonOffset(pass.depth.biasSlope, pass.depth.bias);
-            else glPolygonOffsetClamp(pass.depth.biasSlope, pass.depth.bias, pass.depth.biasClamp);
+            glPolygonOffsetClamp(pass.depth.biasSlope, pass.depth.bias, pass.depth.biasClamp);
         }
 
         // Stencil State
 
-        if (pass.stencil.back.func != GL_ALWAYS || pass.stencil.back.sfail != GL_KEEP || pass.stencil.back.dpfail != GL_KEEP || pass.stencil.back.dppass != GL_KEEP
-            || pass.stencil.front.func != GL_ALWAYS || pass.stencil.front.sfail != GL_KEEP || pass.stencil.front.dpfail != GL_KEEP || pass.stencil.front.dppass != GL_KEEP)
+        if (pass.stencil.back.func != GL_ALWAYS || pass.stencil.back.sfail != GL_KEEP ||
+            pass.stencil.back.dpfail != GL_KEEP || pass.stencil.back.dppass != GL_KEEP ||
+            pass.stencil.front.func != GL_ALWAYS || pass.stencil.front.sfail != GL_KEEP ||
+            pass.stencil.front.dpfail != GL_KEEP || pass.stencil.front.dppass != GL_KEEP)
         {
             glEnable(GL_STENCIL_TEST);
         }
@@ -1033,7 +1356,8 @@ static void gl_begin_render(gl_pass_t& pass)
 
         // Render State
 
-        if (pass.screen.color.blend.func != GL_ADD || pass.screen.color.blend.src != GL_ONE || pass.screen.color.blend.dst != GL_ZERO)
+        if (pass.screen.color.blend.func != GL_ADD || pass.screen.color.blend.src != GL_ONE ||
+            pass.screen.color.blend.dst != GL_ZERO)
         {
             glEnable(GL_BLEND);
         }
@@ -1065,13 +1389,13 @@ static void gl_begin_render(gl_pass_t& pass)
         else
         {
             glEnable(GL_POLYGON_OFFSET_FILL);
-            if (glPolygonOffsetClamp == nullptr) glPolygonOffset(pass.screen.depth.biasSlope, pass.screen.depth.bias);
-            else glPolygonOffsetClamp(pass.screen.depth.biasSlope, pass.screen.depth.bias, pass.screen.depth.biasClamp);
+            glPolygonOffsetClamp(pass.screen.depth.biasSlope, pass.screen.depth.bias, pass.screen.depth.biasClamp);
         }
 
         // Stencil State
 
-        if (pass.screen.stencil.func != GL_ALWAYS || pass.screen.stencil.sfail != GL_KEEP || pass.screen.stencil.dpfail != GL_KEEP || pass.screen.stencil.dppass != GL_KEEP)
+        if (pass.screen.stencil.func != GL_ALWAYS || pass.screen.stencil.sfail != GL_KEEP ||
+            pass.screen.stencil.dpfail != GL_KEEP || pass.screen.stencil.dppass != GL_KEEP)
         {
             glEnable(GL_STENCIL_TEST);
         }
@@ -1087,12 +1411,17 @@ static void gl_begin_render(gl_pass_t& pass)
     // Primitive State
 
     glFrontFace(pass.front_face);
-    if (pass.cull_mode) glCullFace(pass.cull_mode);
-    if (pass.cull_mode) glEnable(GL_CULL_FACE);
-    else glDisable(GL_CULL_FACE);
+    if (pass.cull_mode)
+        glCullFace(pass.cull_mode);
+    if (pass.cull_mode)
+        glEnable(GL_CULL_FACE);
+    else
+        glDisable(GL_CULL_FACE);
 
-    if (pass.front_face) glEnable(GL_FRONT_FACE);
-    else glDisable(GL_FRONT_FACE);
+    if (pass.front_face)
+        glEnable(GL_FRONT_FACE);
+    else
+        glDisable(GL_FRONT_FACE);
 
     glPolygonMode(GL_FRONT_AND_BACK, pass.fill_mode);
 }
@@ -1118,13 +1447,14 @@ static void gl_end_render(gl_pass_t& pass)
     }
 
     bool offscreen = pass.depth.texture.handle;
-    for (size_t i=0; i<std::size(pass.colors) && !offscreen; ++i)
+    for (size_t i = 0; i < std::size(pass.colors) && !offscreen; ++i)
     {
-        if (pass.colors[i].texture.handle) offscreen = true;
+        if (pass.colors[i].texture.handle)
+            offscreen = true;
     }
     if (offscreen)
     {
-        glBindFramebuffer(GL_FRAMEBUFFER,0);
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
         glDeleteFramebuffers(1, &pass.handle);
         pass.handle = 0;
     }
@@ -1143,20 +1473,17 @@ static void gl_set_scissor(int32_t x, int32_t y, int32_t width, int32_t height)
     glScissor(x, y, width, height);
 }
 
-static void gl_draw_mesh_task(uint32_t groupX, uint32_t groupY, uint32_t groupZ)
+static void gl_draw_meshlet(uint32_t groupX, uint32_t groupY, uint32_t groupZ)
 {
     glDrawMeshTasksNV(0, std::max(1U, groupX) * std::max(1U, groupY) * std::max(1U, groupZ));
 }
 
 // ====================================================================
 
-static gl_mesh_t gl_create_mesh(
-    const float* vertices,   // vec3
-    const float* normals,   // vec3
-    const float* uvs,       // vec2
-    size_t vertex_count,
-    const unsigned int* indices,
-    size_t index_count)
+static gl_mesh_t gl_create_mesh(const float* vertices, // vec3
+                                const float* normals, // vec3
+                                const float* uvs, // vec2
+                                size_t vertex_count, const unsigned int* indices, size_t index_count)
 {
     gl_mesh_t result = {};
 
@@ -1216,20 +1543,19 @@ static void gl_destroy_mesh(gl_mesh_t& mesh)
 static void gl_draw_mesh(gl_mesh_t mesh)
 {
     glBindVertexArray(mesh.handle);
-    if (mesh.index_count) glDrawElements(mesh.primitive_type, mesh.index_count, mesh.index_type, (void*)0);
-    else glDrawArrays(mesh.primitive_type, 0, mesh.vertex_count);
+    if (mesh.index_count)
+        glDrawElements(mesh.primitive_type, mesh.index_count, mesh.index_type, (void*)0);
+    else
+        glDrawArrays(mesh.primitive_type, 0, mesh.vertex_count);
     glBindVertexArray(0);
 }
 
 // ====================================================================
 
-static gl_meshlet_t gl_create_meshlet(
-    const float* vertices,   // vec4
-    const float* normals,   // vec4
-    const float* uvs,
-    size_t vertex_count,
-    const unsigned int* indices,
-    size_t index_count)
+static gl_meshlet_t gl_create_meshlet(const float* vertices, // vec4
+                                      const float* normals, // vec4
+                                      const float* uvs, size_t vertex_count, const unsigned int* indices,
+                                      size_t index_count)
 {
     gl_meshlet_t result = {};
 
@@ -1273,14 +1599,23 @@ static void gl_destroy_meshlet(gl_meshlet_t& meshlet)
 static gl_mesh_t gl_create_mesh_screen()
 {
     static const float points[] = {
-        -1.0f, -1.0f, 0.0f,
-        3.0f, -1.0f, 0.0f,
-        -1.0f, 3.0f, 0.0f,
+        -1.0f,
+        -1.0f,
+        0.0f,
+        3.0f,
+        -1.0f,
+        0.0f,
+        -1.0f,
+        3.0f,
+        0.0f,
     };
     static const float uvs[] = {
-        0.0f, 0.0f,
-        2.0f, 0.0f,
-        0.0f, 2.0f,
+        0.0f,
+        0.0f,
+        2.0f,
+        0.0f,
+        0.0f,
+        2.0f,
     };
     static auto quad = gl_create_mesh(points, nullptr, uvs, 3, nullptr, 0);
     return quad;
@@ -1319,10 +1654,16 @@ static void gl_draw_screen(int width, int height, gl_texture_t texture, gl_color
         }
     )";
     static auto module = gl_create_module_render(VS, FS);
-    gl_pass_t pass = {.module = module, .screen = {.color = {.clear = true, .value = color,}}};
+    gl_pass_t pass = {.module = module,
+                      .screen = {.color = {
+                                     .clear = true,
+                                     .value = color,
+                                 }}};
     gl_begin_render(pass);
     gl_set_viewport(0, 0, width, height);
-    gl_bind_texture(texture, {.binding = 0,});
+    gl_bind_texture(texture, {
+                                 .binding = 0,
+                             });
     gl_draw_mesh(gl_create_mesh_screen());
     gl_end_render(pass);
 }

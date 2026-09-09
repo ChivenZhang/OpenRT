@@ -9,36 +9,20 @@ void frame(int width, int height);
 
 int main()
 {
-    if (!SDL_Init(SDL_INIT_VIDEO)) {
-        fprintf(stderr, "SDL_Init failed: %s\n", SDL_GetError());
-        return -1;
-    }
-
+    SDL_Init(SDL_INIT_VIDEO);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 6);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
-
-    SDL_Window* window = SDL_CreateWindow("OpenGL Demo", 1000, 600, SDL_WINDOW_OPENGL);
-    if (!window) {
-        fprintf(stderr, "Window creation failed: %s\n", SDL_GetError());
-        SDL_Quit();
-        return -1;
-    }
-
-    SDL_GLContext glContext = SDL_GL_CreateContext(window);
-    if (!glContext) {
-        fprintf(stderr, "GL context creation failed: %s\n", SDL_GetError());
-        SDL_DestroyWindow(window);
-        SDL_Quit();
-        return -1;
-    }
+    auto window = SDL_CreateWindow( "OpenGL Demo", 1000, 600, SDL_WINDOW_OPENGL);
+    auto context = SDL_GL_CreateContext(window);
+    SDL_GL_MakeCurrent(window, context);
 
     gl_load_library();
 
+    SDL_Event event;
     bool running = true;
     while (running)
     {
-        SDL_Event event;
         while (SDL_PollEvent(&event)) if (event.type == SDL_EVENT_QUIT) running = false;
 
         int w, h;
@@ -48,7 +32,7 @@ int main()
         SDL_GL_SwapWindow(window);
     }
 
-    SDL_GL_DestroyContext(glContext);
+    SDL_GL_DestroyContext(context);
     SDL_DestroyWindow(window);
     SDL_Quit();
     return 0;
@@ -148,7 +132,7 @@ void frame(int width, int height)
     gl_set_uniform_mat4("viewMat", &viewMat[0][0]);
     gl_set_uniform_mat4("modelMat", &modelMat[0][0]);
 
-    static auto meshlet = gl_create_mesh_footprint(2, 2, 0.5, true); // gl_create_meshlet_sphere(2, 64, 32);
+    static auto meshlet = gl_create_mesh_sphere(2, 64, 32);
     gl_bind_buffer(meshlet.vertex_vbo, {.binding = 0, .target = GL_SHADER_STORAGE_BUFFER,});
     gl_bind_buffer(meshlet.normal_vbo, {.binding = 1, .target = GL_SHADER_STORAGE_BUFFER,});
     gl_bind_buffer(meshlet.uv_vbo, {.binding = 2, .target = GL_SHADER_STORAGE_BUFFER,});
