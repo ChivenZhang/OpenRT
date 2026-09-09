@@ -249,8 +249,8 @@ static gl_mesh_t gl_create_mesh_footprint(
     std::vector<float> uvs(vert_count * 2);
     std::vector<unsigned int> indices;
 
-    float y_top =  thickness * 0.5f;
-    float y_bot = -thickness * 0.5f;
+    float y_top =  thickness;
+    float y_bot = 0;
 
     // 辅助函数：设置顶点
     auto set_vertex = [&](int idx, float x, float y, float z,
@@ -308,8 +308,8 @@ static gl_mesh_t gl_create_mesh_footprint(
         int a = top_start + i;
         int b = top_start + ((i + 1) % N);
         indices.push_back(top_center);
-        indices.push_back(a);
         indices.push_back(b);
+        indices.push_back(a);
     }
 
     // ========== 底面 Triangle Fan（反向绕序） ==========
@@ -318,8 +318,8 @@ static gl_mesh_t gl_create_mesh_footprint(
         int a = bot_start + i;
         int b = bot_start + ((i + 1) % N);
         indices.push_back(bot_center);
-        indices.push_back(b);
         indices.push_back(a);
+        indices.push_back(b);
     }
 
     // ========== 侧面 ==========

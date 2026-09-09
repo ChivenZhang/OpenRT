@@ -56,71 +56,32 @@ int main()
 
 void frame(int width, int height)
 {
-    constexpr auto MS = R"(
+    constexpr auto VS = R"(
         #version 460
-        #extension GL_NV_mesh_shader : require
+        layout(location = 0) in vec3 in_vertex;
+        layout(location = 1) in vec3 in_normal;
+        layout(location = 2) in vec2 in_uv;
+        out vec3 vertex;
+        out vec3 normal;
+        out vec2 uv;
 
-        layout(local_size_x = 3) in;
-        layout(max_vertices=64, max_primitives=126) out;
-        layout(triangles) out;
-
-        out PerVertexData
-        {
-            vec3 vertex;
-            vec3 normal;
-            vec2 uv;
-        }  ms_out[];
-
-        uniform mat4 projMat, viewMat, modelMat;
-
-        layout(std430, binding = 0) buffer Vertices
-        {
-            vec3 vertices[];
-        };
-
-        layout(std430, binding = 1) buffer Normals
-        {
-            vec3 normals[];
-        };
-
-        layout(std430, binding = 2) buffer UVs
-        {
-            vec2 uvs[];
-        };
-
-        layout(std430, binding = 3) buffer Indices
-        {
-            uint indices[];
-        };
+        uniform mat4 projMat;
+        uniform mat4 viewMat;
+        uniform mat4 modelMat;
 
         void main()
         {
-            uint meshlet_id = gl_WorkGroupID.x;
-
-            uint thread_id = gl_LocalInvocationID.x;
-
-            uint index = indices[meshlet_id * 3 + thread_id];
-
-            ms_out[thread_id].vertex = vec3(modelMat * vec4(vertices[index], 1));
-            ms_out[thread_id].normal = vec3(modelMat * vec4(normals[index], 0));
-            ms_out[thread_id].uv = uvs[index];
-
-            gl_MeshVerticesNV[thread_id].gl_Position = projMat * viewMat * modelMat * vec4(vertices[index], 1);
-
-            gl_PrimitiveIndicesNV[thread_id] = thread_id;
-
-            gl_PrimitiveCountNV = 1;
+            vertex = vec3(modelMat * vec4(in_vertex, 1));
+            normal = vec3(modelMat * vec4(in_normal, 0));
+            uv = in_uv;
+            gl_Position = projMat * viewMat * vec4(vertex, 1.0);
         }
     )";
     constexpr auto FS = R"(
         #version 460
-
-        in PerVertexData
-        {
-            vec3 vertex;
-            vec3 normal;
-            vec2 uv;
-        }  fs_in;
+        in vec3 vertex;
+        in vec3 normal;
+        in vec2 uv;
         out vec4 final;
 
         layout(binding = 0) uniform sampler2D texture0;
@@ -142,13 +103,13 @@ void frame(int width, int height)
         void main()
         {
             // 归一化法线
-            vec3 N = normalize(fs_in.normal);
+            vec3 N = normalize(normal);
 
             // 计算光照方向
-            vec3 L = normalize(LIGHT_POSITION - fs_in.vertex);
+            vec3 L = normalize(LIGHT_POSITION - vertex);
 
             // 计算观察方向
-            vec3 V = normalize(CAMERA_POSITION - fs_in.vertex);
+            vec3 V = normalize(CAMERA_POSITION - vertex);
 
             // 计算半程向量（Blinn-Phong 的核心）
             vec3 H = normalize(L + V);
@@ -158,7 +119,7 @@ void frame(int width, int height)
 
             // ===== 漫反射 =====
             float diff = max(dot(N, L), 0.0);
-            vec3 diffuse = diff * DIFFUSE_COLOR * texture(texture0, fs_in.uv).rgb;
+            vec3 diffuse = diff * DIFFUSE_COLOR * texture(texture0, uv).rgb;
 
             // ===== 镜面反射（Blinn-Phong）=====
             float spec = pow(max(dot(N, H), 0.0), SHININESS);
@@ -176,18 +137,18 @@ void frame(int width, int height)
     auto viewMat = glm::lookAt(glm::vec3(0, 2, 5), glm::vec3(0, 0, 0), glm::vec3(0, 1, 0));
     auto modelMat = glm::rotate(glm::mat4(1.0f), (float)SDL_GetTicks() / 2000.0f, glm::vec3(0, 1, 0));
 
-    static auto module = gl_create_module_meshlet(nullptr, MS, FS);
+    static auto module = gl_create_module_render(VS, FS);
     static auto pass1_color = gl_create_texture_color(width, height, nullptr);
     static auto pass1_depth = gl_create_texture_depth(width, height, nullptr);
 
     gl_pass_t pass1 = {.module = module, .colors = {{.texture = pass1_color, .clear = true, }}, .depth = {.texture = pass1_depth, .clear = true, .write = true, .func = GL_LEQUAL, }, };
-    gl_begin_meshlet(pass1);
+    gl_begin_render(pass1);
 
     gl_set_uniform_mat4("projMat", &projMat[0][0]);
     gl_set_uniform_mat4("viewMat", &viewMat[0][0]);
     gl_set_uniform_mat4("modelMat", &modelMat[0][0]);
 
-    static auto meshlet = gl_create_meshlet_sphere(2, 64, 32);
+    static auto meshlet = gl_create_mesh_footprint(2, 2, 0.5, true); // gl_create_meshlet_sphere(2, 64, 32);
     gl_bind_buffer(meshlet.vertex_vbo, {.binding = 0, .target = GL_SHADER_STORAGE_BUFFER,});
     gl_bind_buffer(meshlet.normal_vbo, {.binding = 1, .target = GL_SHADER_STORAGE_BUFFER,});
     gl_bind_buffer(meshlet.uv_vbo, {.binding = 2, .target = GL_SHADER_STORAGE_BUFFER,});
@@ -196,10 +157,9 @@ void frame(int width, int height)
     static auto texture0 = gl_load_texture("../../Earth.png");
     gl_bind_texture(texture0, {.binding = 0,});
 
-    gl_set_viewport(0, 0, width, height);
-    gl_draw_meshlet(meshlet.index_count / 3);
+    gl_draw_mesh(meshlet);
 
-    gl_end_meshlet(pass1);
+    gl_end_render(pass1);
 
     gl_draw_screen(width, height, pass1_color);
 }
