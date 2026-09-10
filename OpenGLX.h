@@ -162,6 +162,7 @@ static gl_mesh_t gl_create_mesh_plane(float size, int N)
         index_count
     );
 }
+
 static gl_mesh_t gl_create_mesh_cube(float width, float height, float length)
 {
     static const float v[24 * 3] = {
@@ -608,6 +609,188 @@ static gl_mesh_t gl_create_mesh_capsule(float radius, float height, int rings, i
     return gl_create_mesh(
         positions.data(), normals.data(), uvs.data(),
         vertexCount, indices.data(), indexCount
+    );
+}
+
+// ====================================================================
+
+static gl_mesh_t gl_create_mesh_quad(float width, float height)
+{
+    const size_t vertex_count = 4;
+    const size_t index_count  = 6;
+
+    std::vector<float> positions(vertex_count * 3);
+    std::vector<float> normals(vertex_count * 3);
+    std::vector<float> uvs(vertex_count * 2);
+    std::vector<unsigned int> indices(index_count);
+
+    float w = width * 0.5f;
+    float h = height * 0.5f;
+
+    // 四个顶点（XY 平面）
+    float verts[4][2] = {
+        {-w, -h},
+        { w, -h},
+        { w,  h},
+        {-w,  h}
+    };
+
+    float uv[4][2] = {
+        {0, 0},
+        {1, 0},
+        {1, 1},
+        {0, 1}
+    };
+
+    for (int i = 0; i < 4; i++)
+    {
+        positions[i * 3 + 0] = verts[i][0];
+        positions[i * 3 + 1] = verts[i][1];
+        positions[i * 3 + 2] = 0.0f;
+
+        normals[i * 3 + 0] = 0.0f;
+        normals[i * 3 + 1] = 0.0f;
+        normals[i * 3 + 2] = 1.0f;
+
+        uvs[i * 2 + 0] = uv[i][0];
+        uvs[i * 2 + 1] = uv[i][1];
+    }
+
+    // 两个三角形
+    indices[0] = 0; indices[1] = 1; indices[2] = 2;
+    indices[3] = 0; indices[4] = 2; indices[5] = 3;
+
+    return gl_create_mesh(
+        positions.data(),
+        normals.data(),
+        uvs.data(),
+        vertex_count,
+        indices.data(),
+        index_count
+    );
+}
+
+static gl_mesh_t gl_create_mesh_circle(float radius, int segments)
+{
+    size_t vertex_count = segments + 1; // 中心点 + 边缘点
+    size_t index_count  = segments * 3;
+
+    std::vector<float> positions(vertex_count * 3);
+    std::vector<float> normals(vertex_count * 3);
+    std::vector<float> uvs(vertex_count * 2);
+    std::vector<unsigned int> indices(index_count);
+
+    // 中心点
+    positions[0] = 0.0f; positions[1] = 0.0f; positions[2] = 0.0f;
+    normals[0] = 0; normals[1] = 0; normals[2] = 1;
+    uvs[0] = 0.5f; uvs[1] = 0.5f;
+
+    float angle_step = 2.0f * GL_PI / segments;
+
+    for (int i = 0; i < segments; i++)
+    {
+        float a = i * angle_step;
+        float x = cosf(a) * radius;
+        float y = sinf(a) * radius;
+
+        size_t vi = i + 1;
+
+        positions[vi * 3 + 0] = x;
+        positions[vi * 3 + 1] = y;
+        positions[vi * 3 + 2] = 0.0f;
+
+        normals[vi * 3 + 0] = 0;
+        normals[vi * 3 + 1] = 0;
+        normals[vi * 3 + 2] = 1;
+
+        uvs[vi * 2 + 0] = (x / radius) * 0.5f + 0.5f;
+        uvs[vi * 2 + 1] = (y / radius) * 0.5f + 0.5f;
+    }
+
+    for (int i = 0; i < segments; i++)
+    {
+        indices[i * 3 + 0] = 0;
+        indices[i * 3 + 1] = i + 1;
+        indices[i * 3 + 2] = i + 2 > segments ? 1 : i + 2;
+    }
+
+    return gl_create_mesh(
+        positions.data(),
+        normals.data(),
+        uvs.data(),
+        vertex_count,
+        indices.data(),
+        index_count
+    );
+}
+
+static gl_mesh_t gl_create_mesh_ring(
+    float inner_radius,
+    float outer_radius,
+    int segments)
+{
+    size_t vertex_count = segments * 2;
+    size_t index_count  = segments * 6;
+
+    std::vector<float> positions(vertex_count * 3);
+    std::vector<float> normals(vertex_count * 3);
+    std::vector<float> uvs(vertex_count * 2);
+    std::vector<unsigned int> indices(index_count);
+
+    float angle_step = 2.0f * GL_PI / segments;
+
+    for (int i = 0; i < segments; i++)
+    {
+        float a = i * angle_step;
+        float cosA = cosf(a);
+        float sinA = sinf(a);
+
+        size_t i0 = i * 2;
+        size_t i1 = i * 2 + 1;
+
+        // 内圈
+        positions[i0 * 3 + 0] = cosA * inner_radius;
+        positions[i0 * 3 + 1] = sinA * inner_radius;
+        positions[i0 * 3 + 2] = 0.0f;
+
+        // 外圈
+        positions[i1 * 3 + 0] = cosA * outer_radius;
+        positions[i1 * 3 + 1] = sinA * outer_radius;
+        positions[i1 * 3 + 2] = 0.0f;
+
+        normals[i0 * 3 + 2] = 1;
+        normals[i1 * 3 + 2] = 1;
+
+        uvs[i0 * 2 + 0] = (cosA + 1) * 0.5f;
+        uvs[i0 * 2 + 1] = (sinA + 1) * 0.5f;
+        uvs[i1 * 2 + 0] = (cosA + 1) * 0.5f;
+        uvs[i1 * 2 + 1] = (sinA + 1) * 0.5f;
+    }
+
+    for (int i = 0; i < segments; i++)
+    {
+        unsigned int i0 = i * 2;
+        unsigned int i1 = i * 2 + 1;
+        unsigned int i2 = ((i + 1) % segments) * 2;
+        unsigned int i3 = ((i + 1) % segments) * 2 + 1;
+
+        size_t idx = i * 6;
+        indices[idx++] = i0;
+        indices[idx++] = i2;
+        indices[idx++] = i1;
+
+        indices[idx++] = i2;
+        indices[idx++] = i3;
+        indices[idx++] = i1;
+    }
+
+    return gl_create_mesh(
+        positions.data(),
+        normals.data(),
+        uvs.data(),
+        vertex_count,
+        indices.data(),
+        index_count
     );
 }
 
