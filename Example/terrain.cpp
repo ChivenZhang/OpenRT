@@ -58,7 +58,7 @@ void frame(int width, int height)
         layout(binding = 1) uniform sampler2D texture1;
 
         uniform float height;
-        uniform mat4 projMat, viewMat, modelMat;
+        uniform mat4 projMat, viewMat, meshMat;
 
         layout(std430, binding = 0) buffer Vertices
         {
@@ -202,7 +202,7 @@ void frame(int width, int height)
             for(uint i=0; i<3; ++i)
             {
                 uint index = indices[meshlet_id * 3 + i];
-                in_vertex[i] = vec3(modelMat * vec4(vertices[index], 1));
+                in_vertex[i] = vec3(meshMat * vec4(vertices[index], 1));
                 in_uv[i] = uvs[index];
                 in_vertex[i].y = texture(texture1, uvs[index]).r * height;
             }
@@ -274,35 +274,29 @@ void frame(int width, int height)
 
     auto projMat = glm::perspective(glm::radians(60.0f), (float)width / (float)height, 0.1f, 100.0f);
     auto viewMat = glm::lookAt(glm::vec3(0, 2, 5), glm::vec3(0, 0, 0), glm::vec3(0, 1, 0));
-    auto modelMat = glm::rotate(glm::mat4(1.0f), (float)SDL_GetTicks() / 2000.0f, glm::vec3(0, 1, 0));
+    auto meshMat = glm::rotate(glm::mat4(1.0f), (float)SDL_GetTicks() / 2000.0f, glm::vec3(0, 1, 0));
 
-    static auto module = gl_create_module_meshlet(nullptr, MS, FS);
+    static auto module = gl_create_module_render(nullptr, MS, FS);
     static auto pass_color = gl_create_texture_color(width, height, nullptr);
     static auto pass_depth = gl_create_texture_depth(width, height, nullptr);
     {
         gl_pass_t pass = {.module = module, .colors = {{.texture = pass_color, .clear = true,}}, .depth = {.texture = pass_depth, .clear = true, .write = true, .func = GL_LEQUAL,}, .fill_mode = GL_FILL,};
-        gl_begin_meshlet(pass);
+        gl_begin_render(pass);
 
         gl_push_const_float("height", 2.5f);
         gl_push_const_mat4("projMat", &projMat[0][0]);
         gl_push_const_mat4("viewMat", &viewMat[0][0]);
-        gl_push_const_mat4("modelMat", &modelMat[0][0]);
-
-        static auto meshlet = gl_create_meshlet_plane(5, 100);
-        gl_bind_buffer(meshlet.vertex_vbo, {.binding = 0, .target = GL_SHADER_STORAGE_BUFFER,});
-        gl_bind_buffer(meshlet.normal_vbo, {.binding = 1, .target = GL_SHADER_STORAGE_BUFFER,});
-        gl_bind_buffer(meshlet.uv_vbo, {.binding = 2, .target = GL_SHADER_STORAGE_BUFFER,});
-        gl_bind_buffer(meshlet.index_vbo, {.binding = 3, .target = GL_SHADER_STORAGE_BUFFER,});
+        gl_push_const_mat4("meshMat", &meshMat[0][0]);
 
         static auto texture0 = gl_load_texture("../../DiffuseTerrain.png");
         static auto texture1 = gl_load_texture("../../HeightTerrain.png");
         gl_bind_texture(texture0, {.binding = 0,});
         gl_bind_texture(texture1, {.binding = 1,});
 
-        gl_set_viewport(0, 0, width, height);
-        gl_draw_meshlet(meshlet.index_count / 3);
+        static auto meshlet = gl_create_meshlet_plane(5, 100);
+        gl_draw_meshlet(meshlet);
 
-        gl_end_meshlet(pass);
+        gl_end_render(pass);
     }
 
     gl_draw_screen(width, height, pass_color);

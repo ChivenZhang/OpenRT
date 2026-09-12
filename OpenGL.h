@@ -2,24 +2,25 @@
 #include <iostream>
 #include <GL/glew.h>
 
-#define GL_PI 3.14159265358979323846 // pi
-#define GL_PI_2 1.57079632679489661923 // pi/2
-#define GL_PI_4 0.785398163397448309616 // pi/4
-#define GL_1_PI 0.318309886183790671538 // 1/pi
-#define GL_2_PI 0.636619772367581343076 // 2/pi
+/* ====================================================================
 
-/*
    Do this:
       #define OPENGL_IMPLEMENTATION
    before you include this file in *one* C / C++ file to create the implementation.
 
-   // i.e. it should look like this:
+   i.e. it should look like this:
+   #include ...
    #include ...
    #define OPENGL_IMPLEMENTATION
    #include "OpenGL.h"
- */
 
-// ====================================================================
+==================================================================== */
+
+#define GL_PI 3.14159265358979323846    // pi
+#define GL_PI_2 1.57079632679489661923  // pi/2
+#define GL_PI_4 0.785398163397448309616 // pi/4
+#define GL_1_PI 0.318309886183790671538 // 1/pi
+#define GL_2_PI 0.636619772367581343076 // 2/pi
 
 struct gl_buffer_t
 {
@@ -379,7 +380,7 @@ gl_module_t gl_create_module_render(const char* vert_src, const char* frag_src);
  * @param frag_src Fragment shader source code.
  * @return The created module.
  */
-gl_module_t gl_create_module_meshlet(const char* task_src, const char* mesh_src, const char* frag_src);
+gl_module_t gl_create_module_render(const char* task_src, const char* mesh_src, const char* frag_src);
 /*
  * @brief Delete a shader module (program) and reset its handle to zero.
  * @param module The module to delete.
@@ -479,17 +480,6 @@ void gl_set_viewport(int32_t x, int32_t y, int32_t width, int32_t height);
  * @param height Scissor rectangle height in pixels.
  */
 void gl_set_scissor(int32_t x, int32_t y, int32_t width, int32_t height);
-
-/*
- * @brief Begin a meshlet (mesh shader) pass.
- * @param pass The meshlet pass descriptor.
- */
-inline void (*gl_begin_meshlet)(gl_pass_t& pass) = gl_begin_render;
-/*
- * @brief End a meshlet (mesh shader) pass.
- * @param pass The meshlet pass descriptor.
- */
-inline void (*gl_end_meshlet)(gl_pass_t& pass) = gl_end_render;
 /*
  * @brief Draw meshlets with the given work-group counts.
  * @param groupX Number of work groups in the X dimension.
@@ -538,6 +528,11 @@ gl_meshlet_t gl_create_meshlet(const float* vertices, const float* normals, cons
  * @param meshlet The meshlet to delete.
  */
 void gl_destroy_meshlet(gl_meshlet_t& meshlet);
+/*
+ * @brief Draw a meshlet.
+ * @param mesh The meshlet to draw.
+ */
+void gl_draw_meshlet(gl_meshlet_t const& meshlet);
 
 /* @brief Create a fullscreen triangle mesh for screen-space drawing. */
 gl_mesh_t gl_create_mesh_screen();
@@ -971,7 +966,7 @@ static gl_module_t gl_create_module_render(const char* vert_src, const char* fra
     return result;
 }
 
-static gl_module_t gl_create_module_meshlet(const char* task_src, const char* mesh_src, const char* frag_src)
+static gl_module_t gl_create_module_render(const char* task_src, const char* mesh_src, const char* frag_src)
 {
     gl_module_t result = {};
 
@@ -1134,7 +1129,9 @@ static void gl_push_const_mat4(const char* name, const float* value)
 
 // ====================================================================
 
-inline void gl_begin_compute(gl_pass_t& pass)
+static thread_local gl_pass_t* GL_CURRENT_PIPELINE = nullptr;
+
+static void gl_begin_compute(gl_pass_t& pass)
 {
     GLint program = 0;
     glGetIntegerv(GL_CURRENT_PROGRAM, &program);
@@ -1143,23 +1140,22 @@ inline void gl_begin_compute(gl_pass_t& pass)
         fprintf(stderr, "Pipeline not end\n");
         abort();
     }
-
     if (pass.module.handle == 0)
     {
         fprintf(stderr, "Pipeline module is not created\n");
         abort();
     }
-
     if (pass.module.target != GL_COMPUTE_SHADER)
     {
         fprintf(stderr, "Pipeline module is not compute shader\n");
         abort();
     }
+    GL_CURRENT_PIPELINE = &pass;
 
     glUseProgram(pass.module.handle);
 }
 
-inline void gl_end_compute(gl_pass_t& pass)
+static void gl_end_compute(gl_pass_t& pass)
 {
     GLint program = 0;
     glGetIntegerv(GL_CURRENT_PROGRAM, &program);
@@ -1168,18 +1164,22 @@ inline void gl_end_compute(gl_pass_t& pass)
         fprintf(stderr, "Pipeline not end\n");
         abort();
     }
-
     if (pass.module.handle == 0)
     {
         fprintf(stderr, "Pipeline module is not created\n");
         abort();
     }
-
     if (pass.module.target != GL_COMPUTE_SHADER)
     {
         fprintf(stderr, "Pipeline module is not compute shader\n");
         abort();
     }
+    if (GL_CURRENT_PIPELINE != &pass)
+    {
+        fprintf(stderr, "Pipeline not end\n");
+        abort();
+    }
+    GL_CURRENT_PIPELINE = nullptr;
 
     glUseProgram(0);
 }
@@ -1208,6 +1208,7 @@ static void gl_begin_render(gl_pass_t& pass)
         fprintf(stderr, "Pipeline module is not render shader\n");
         abort();
     }
+    GL_CURRENT_PIPELINE = &pass;
 
     pass.handle = 0;
     glUseProgram(pass.module.handle);
@@ -1452,6 +1453,12 @@ static void gl_end_render(gl_pass_t& pass)
         fprintf(stderr, "Pipeline module is not render shader\n");
         abort();
     }
+    if (GL_CURRENT_PIPELINE != &pass)
+    {
+        fprintf(stderr, "Pipeline not end\n");
+        abort();
+    }
+    GL_CURRENT_PIPELINE = nullptr;
 
     bool offscreen = pass.depth.texture.handle;
     for (size_t i = 0; i < std::size(pass.colors) && !offscreen; ++i)
@@ -1601,6 +1608,15 @@ static void gl_destroy_meshlet(gl_meshlet_t& meshlet)
     gl_destroy_buffer(meshlet.index_vbo);
 }
 
+static void gl_draw_meshlet(gl_meshlet_t const& meshlet)
+{
+    gl_bind_buffer(meshlet.vertex_vbo, {.binding = 0, .target = GL_SHADER_STORAGE_BUFFER,});
+    gl_bind_buffer(meshlet.normal_vbo, {.binding = 1, .target = GL_SHADER_STORAGE_BUFFER,});
+    gl_bind_buffer(meshlet.uv_vbo, {.binding = 2, .target = GL_SHADER_STORAGE_BUFFER,});
+    gl_bind_buffer(meshlet.index_vbo, {.binding = 3, .target = GL_SHADER_STORAGE_BUFFER,});
+    glDrawMeshTasksNV(0, meshlet.index_count / 3);
+}
+
 // ====================================================================
 
 static gl_mesh_t gl_create_mesh_screen()
@@ -1652,16 +1668,10 @@ static void gl_draw_screen(int width, int height, gl_texture_t texture, gl_color
         }
     )";
     static auto module = gl_create_module_render(VS, FS);
-    gl_pass_t pass = {.module = module,
-                      .screen = {.color = {
-                                     .clear = true,
-                                     .value = color,
-                                 }}};
+    gl_pass_t pass = {.module = module, .screen = {.color = { .clear = true, .value = color, }}};
     gl_begin_render(pass);
     gl_set_viewport(0, 0, width, height);
-    gl_bind_texture(texture, {
-                                 .binding = 0,
-                             });
+    gl_bind_texture(texture, { .binding = 0, });
     gl_draw_mesh(gl_create_mesh_screen());
     gl_end_render(pass);
 }

@@ -2,8 +2,6 @@
 #define OPENGLX_IMPLEMENTATION
 #include "../OpenGLX.h"
 #include <SDL3/SDL.h>
-#include <glm/glm.hpp>
-#include <glm/gtc/matrix_transform.hpp>
 
 void frame(int width, int height);
 
@@ -16,6 +14,8 @@ int main()
     auto window = SDL_CreateWindow( "OpenGL Demo", 1000, 600, SDL_WINDOW_OPENGL);
     auto context = SDL_GL_CreateContext(window);
     SDL_GL_MakeCurrent(window, context);
+
+// ====================================================================
 
     gl_load_library();
 
@@ -32,11 +32,16 @@ int main()
         SDL_GL_SwapWindow(window);
     }
 
+// ====================================================================
+
     SDL_GL_DestroyContext(context);
     SDL_DestroyWindow(window);
     SDL_Quit();
     return 0;
 }
+
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
 
 void frame(int width, int height)
 {
@@ -51,12 +56,12 @@ void frame(int width, int height)
 
         uniform mat4 projMat;
         uniform mat4 viewMat;
-        uniform mat4 modelMat;
+        uniform mat4 meshMat;
 
         void main()
         {
-            vertex = vec3(modelMat * vec4(in_vertex, 1));
-            normal = vec3(modelMat * vec4(in_normal, 0));
+            vertex = vec3(meshMat * vec4(in_vertex, 1));
+            normal = vec3(meshMat * vec4(in_normal, 0));
             uv = in_uv;
             gl_Position = projMat * viewMat * vec4(vertex, 1.0);
         }
@@ -119,7 +124,7 @@ void frame(int width, int height)
 
     auto projMat = glm::perspective(glm::radians(60.0f), (float)width / (float)height, 0.1f, 100.0f);
     auto viewMat = glm::lookAt(glm::vec3(0, 2, 5), glm::vec3(0, 0, 0), glm::vec3(0, 1, 0));
-    auto modelMat = glm::rotate(glm::mat4(1.0f), (float)SDL_GetTicks() / 2000.0f, glm::vec3(0, 1, 0));
+    auto meshMat = glm::rotate(glm::mat4(1.0f), (float)SDL_GetTicks() / 2000.0f, glm::vec3(0, 1, 0));
 
     static auto module = gl_create_module_render(VS, FS);
     static auto pass_color = gl_create_texture_color(width, height, nullptr);
@@ -130,7 +135,7 @@ void frame(int width, int height)
 
         gl_push_const_mat4("projMat", &projMat[0][0]);
         gl_push_const_mat4("viewMat", &viewMat[0][0]);
-        gl_push_const_mat4("modelMat", &modelMat[0][0]);
+        gl_push_const_mat4("meshMat", &meshMat[0][0]);
 
         static auto texture0 = gl_load_texture("../../Earth.png");
         gl_bind_texture(texture0, {.binding = 0,});
