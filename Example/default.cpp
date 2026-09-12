@@ -122,28 +122,24 @@ void frame(int width, int height)
     auto modelMat = glm::rotate(glm::mat4(1.0f), (float)SDL_GetTicks() / 2000.0f, glm::vec3(0, 1, 0));
 
     static auto module = gl_create_module_render(VS, FS);
-    static auto pass1_color = gl_create_texture_color(width, height, nullptr);
-    static auto pass1_depth = gl_create_texture_depth(width, height, nullptr);
+    static auto pass_color = gl_create_texture_color(width, height, nullptr);
+    static auto pass_depth = gl_create_texture_depth(width, height, nullptr);
+    {
+        gl_pass_t pass = {.module = module, .colors = {{.texture = pass_color, .clear = true,}}, .depth = {.texture = pass_depth, .clear = true, .write = true, .func = GL_LEQUAL,},};
+        gl_begin_render(pass);
 
-    gl_pass_t pass1 = {.module = module, .colors = {{.texture = pass1_color, .clear = true, }}, .depth = {.texture = pass1_depth, .clear = true, .write = true, .func = GL_LEQUAL, }, };
-    gl_begin_render(pass1);
+        gl_push_const_mat4("projMat", &projMat[0][0]);
+        gl_push_const_mat4("viewMat", &viewMat[0][0]);
+        gl_push_const_mat4("modelMat", &modelMat[0][0]);
 
-    gl_set_uniform_mat4("projMat", &projMat[0][0]);
-    gl_set_uniform_mat4("viewMat", &viewMat[0][0]);
-    gl_set_uniform_mat4("modelMat", &modelMat[0][0]);
+        static auto texture0 = gl_load_texture("../../Earth.png");
+        gl_bind_texture(texture0, {.binding = 0,});
 
-    static auto meshlet = gl_create_mesh_sphere(2, 64, 32);
-    gl_bind_buffer(meshlet.vertex_vbo, {.binding = 0, .target = GL_SHADER_STORAGE_BUFFER,});
-    gl_bind_buffer(meshlet.normal_vbo, {.binding = 1, .target = GL_SHADER_STORAGE_BUFFER,});
-    gl_bind_buffer(meshlet.uv_vbo, {.binding = 2, .target = GL_SHADER_STORAGE_BUFFER,});
-    gl_bind_buffer(meshlet.index_vbo, {.binding = 3, .target = GL_SHADER_STORAGE_BUFFER,});
+        static auto meshlet = gl_create_mesh_sphere(2, 64, 32);
+        gl_draw_mesh(meshlet);
 
-    static auto texture0 = gl_load_texture("../../Earth.png");
-    gl_bind_texture(texture0, {.binding = 0,});
+        gl_end_render(pass);
+    }
 
-    gl_draw_mesh(meshlet);
-
-    gl_end_render(pass1);
-
-    gl_draw_screen(width, height, pass1_color);
+    gl_draw_screen(width, height, pass_color);
 }

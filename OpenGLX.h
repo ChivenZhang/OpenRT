@@ -1,7 +1,7 @@
 #pragma once
 #include "OpenGL.h"
 
-gl_texture_t gl_load_texture(const char* filename);
+gl_texture_t gl_load_texture(const char* filename, bool flip = false);
 gl_mesh_t gl_create_mesh_cube(float width, float height, float length);
 gl_mesh_t gl_create_mesh_plane(float size, int N = 1);
 gl_mesh_t gl_create_mesh_sphere(float radius, int rings, int slices);
@@ -14,12 +14,16 @@ gl_meshlet_t gl_create_meshlet_capsule(float radius, float height, int rings, in
 #ifdef OPENGLX_IMPLEMENTATION
 
 #include <opencv2/opencv.hpp>
-static gl_texture_t gl_load_texture(const char* filename)
+static gl_texture_t gl_load_texture(const char* filename, bool flip)
 {
     cv::Mat image = cv::imread(filename, cv::IMREAD_UNCHANGED);
     if (image.empty()) {
         fprintf(stderr, "Failed to load image: %s\n", filename);
         return {};
+    }
+
+    if (flip) {
+        cv::flip(image, image, 0);
     }
 
     // 将 BGR/BGRA 转换为 RGB/RGBA（仅对整数类型有效）

@@ -29,6 +29,13 @@ struct gl_buffer_t
     GLenum target = GL_ARRAY_BUFFER;
 };
 
+struct gl_buffer_create_t
+{
+    size_t size = 0;                    // 缓冲区大小（字节）
+    GLenum usage = GL_STATIC_DRAW;      // GL_STREAM_DRAW / GL_STREAM_READ / GL_STREAM_COPY / GL_STATIC_DRAW / GL_STATIC_READ / GL_STATIC_COPY / GL_DYNAMIC_DRAW / GL_DYNAMIC_READ / GL_DYNAMIC_COPY
+    const void* data = nullptr;         // 初始数据指针，可为 nullptr
+};
+
 struct gl_buffer_bind_t
 {
     uint32_t binding = 0;
@@ -54,11 +61,11 @@ struct gl_texture_create_t
     GLenum format = GL_RGBA;                // 数据格式
     GLenum internal_format = GL_RGBA8;      // 内部存储格式
     GLenum type = GL_UNSIGNED_BYTE;         // 数据类型
-    GLenum wrap_s = GL_REPEAT;
-    GLenum wrap_t = GL_REPEAT;
-    GLenum wrap_r = GL_REPEAT;              // 3D 纹理使用
-    GLenum min_filter = GL_NEAREST_MIPMAP_LINEAR;
-    GLenum mag_filter = GL_LINEAR;
+    GLenum min_filter = GL_LINEAR_MIPMAP_LINEAR;  // GL_NEAREST / GL_LINEAR / GL_NEAREST_MIPMAP_NEAREST / GL_LINEAR_MIPMAP_NEAREST / GL_NEAREST_MIPMAP_LINEAR / GL_LINEAR_MIPMAP_LINEAR
+    GLenum mag_filter = GL_LINEAR;                // GL_NEAREST / GL_LINEAR
+    GLenum wrap_s = GL_REPEAT;                    // GL_REPEAT / GL_MIRRORED_REPEAT / GL_CLAMP_TO_EDGE / GL_CLAMP_TO_BORDER / GL_MIRROR_CLAMP_TO_EDGE
+    GLenum wrap_t = GL_REPEAT;                    // GL_REPEAT / GL_MIRRORED_REPEAT / GL_CLAMP_TO_EDGE / GL_CLAMP_TO_BORDER / GL_MIRROR_CLAMP_TO_EDGE
+    GLenum wrap_r = GL_REPEAT;                    // GL_REPEAT / GL_MIRRORED_REPEAT / GL_CLAMP_TO_EDGE / GL_CLAMP_TO_BORDER / GL_MIRROR_CLAMP_TO_EDGE
     GLfloat border[4] = {0.0f, 0.0f, 0.0f, 0.0f};
     const void* data = nullptr;
 };
@@ -89,6 +96,15 @@ struct gl_image_t
 struct gl_sampler_t
 {
     GLuint handle = 0;
+};
+
+struct gl_sampler_create_t
+{
+    GLenum min_filter = GL_LINEAR_MIPMAP_LINEAR;  // GL_NEAREST / GL_LINEAR / GL_NEAREST_MIPMAP_NEAREST / GL_LINEAR_MIPMAP_NEAREST / GL_NEAREST_MIPMAP_LINEAR / GL_LINEAR_MIPMAP_LINEAR
+    GLenum mag_filter = GL_LINEAR;                // GL_NEAREST / GL_LINEAR
+    GLenum wrap_s = GL_REPEAT;                    // GL_REPEAT / GL_MIRRORED_REPEAT / GL_CLAMP_TO_EDGE / GL_CLAMP_TO_BORDER / GL_MIRROR_CLAMP_TO_EDGE
+    GLenum wrap_t = GL_REPEAT;                    // GL_REPEAT / GL_MIRRORED_REPEAT / GL_CLAMP_TO_EDGE / GL_CLAMP_TO_BORDER / GL_MIRROR_CLAMP_TO_EDGE
+    GLenum wrap_r = GL_REPEAT;                    // GL_REPEAT / GL_MIRRORED_REPEAT / GL_CLAMP_TO_EDGE / GL_CLAMP_TO_BORDER / GL_MIRROR_CLAMP_TO_EDGE
 };
 
 struct gl_sampler_bind_t
@@ -231,12 +247,12 @@ struct gl_meshlet_t
 void gl_load_library();
 
 /*
- * @brief Create a buffer object with the given size, usage hint, and optional initial data.
- * @param size  Size of the buffer in bytes.
- * @param usage Usage hint for the buffer (e.g. GL_STATIC_DRAW).
- * @param data  Optional pointer to initial data, or nullptr.
+* @brief Create a buffer object with the given size, usage hint, and optional initial data.
+ * @param info Buffer creation data.
+ * @return The created buffer.
  */
-gl_buffer_t gl_create_buffer(size_t size, GLenum usage = GL_STATIC_DRAW, const void* data = nullptr);
+gl_buffer_t gl_create_buffer(gl_buffer_create_t const& info);
+
 /*
  * @brief Delete a buffer object and reset its handle to zero.
  * @param buffer The buffer object to delete.
@@ -267,7 +283,8 @@ void gl_write_buffer(gl_buffer_t buffer, size_t offset, size_t size, const void*
 
 /*
  * @brief Create a texture with optional initial info data.
- * @param info   Texture creation data.
+ * @param info Texture creation data.
+ * @return The created texture.
  */
 gl_texture_t gl_create_texture(gl_texture_create_t const& info);
 
@@ -326,14 +343,10 @@ gl_image_t gl_load_image(gl_texture_t texture, void* buffer, size_t length);
 
 /*
  * @brief Create a sampler object with the specified filters and wrap modes.
- * @param min_filter Minification filter (e.g. GL_LINEAR_MIPMAP_LINEAR).
- * @param mag_filter Magnification filter (e.g. GL_LINEAR).
- * @param wrap_s     Wrap mode for the S axis (e.g. GL_REPEAT).
- * @param wrap_t     Wrap mode for the T axis (e.g. GL_REPEAT).
- * @param wrap_r     Wrap mode for the R axis (e.g. GL_REPEAT).
+ * @param info Sampler creation data.
  * @return The created sampler.
  */
-gl_sampler_t gl_create_sampler(GLenum min_filter, GLenum mag_filter, GLenum wrap_s, GLenum wrap_t, GLenum wrap_r);
+gl_sampler_t gl_create_sampler(gl_sampler_create_t const& info);
 /*
  * @brief Delete a sampler object and reset its handle to zero.
  * @param sampler The sampler to delete.
@@ -378,49 +391,49 @@ void gl_destroy_module(gl_module_t& module);
  * @param name  Uniform name.
  * @param value Integer value to set.
  */
-void gl_set_uniform_int(const char* name, int32_t value);
+void gl_push_const_int(const char* name, int32_t value);
 /*
  * @brief Set an unsigned integer uniform of the currently bound program.
  * @param name  Uniform name.
  * @param value Unsigned integer value to set.
  */
-void gl_set_uniform_uint(const char* name, uint32_t value);
+void gl_push_const_uint(const char* name, uint32_t value);
 /*
  * @brief Set a float uniform of the currently bound program.
  * @param name  Uniform name.
  * @param value Float value to set.
  */
-void gl_set_uniform_float(const char* name, float value);
+void gl_push_const_float(const char* name, float value);
 /*
  * @brief Set a vec2 uniform of the currently bound program.
  * @param name  Uniform name.
  * @param value Pointer to the 2-component float vector.
  */
-void gl_set_uniform_vec2(const char* name, const float* value);
+void gl_push_const_vec2(const char* name, const float* value);
 /*
  * @brief Set a vec3 uniform of the currently bound program.
  * @param name  Uniform name.
  * @param value Pointer to the 3-component float vector.
  */
-void gl_set_uniform_vec3(const char* name, const float* value);
+void gl_push_const_vec3(const char* name, const float* value);
 /*
  * @brief Set a vec4 uniform of the currently bound program.
  * @param name  Uniform name.
  * @param value Pointer to the 4-component float vector.
  */
-void gl_set_uniform_vec4(const char* name, const float* value);
+void gl_push_const_vec4(const char* name, const float* value);
 /*
  * @brief Set a mat3 uniform of the currently bound program.
  * @param name  Uniform name.
  * @param value Pointer to the 3x3 matrix in column-major order.
  */
-void gl_set_uniform_mat3(const char* name, const float* value);
+void gl_push_const_mat3(const char* name, const float* value);
 /*
  * @brief Set a mat4 uniform of the currently bound program.
  * @param name  Uniform name.
  * @param value Pointer to the 4x4 matrix in column-major order.
  */
-void gl_set_uniform_mat4(const char* name, const float* value);
+void gl_push_const_mat4(const char* name, const float* value);
 
 /*
  * @brief Begin a compute pass.
@@ -506,7 +519,7 @@ void gl_destroy_mesh(gl_mesh_t& mesh);
  * @brief Draw a mesh.
  * @param mesh The mesh to draw.
  */
-void gl_draw_mesh(gl_mesh_t mesh);
+void gl_draw_mesh(gl_mesh_t const& mesh);
 
 /*
  * @brief Create a meshlet from vertex, normal, UV, and index data.
@@ -564,15 +577,15 @@ static void gl_load_library()
 
 // ====================================================================
 
-static gl_buffer_t gl_create_buffer(size_t size, GLenum usage, const void* data)
+static gl_buffer_t gl_create_buffer(gl_buffer_create_t const& info)
 {
     gl_buffer_t result = {};
     glGenBuffers(1, &result.handle);
     glBindBuffer(GL_ARRAY_BUFFER, result.handle);
-    glBufferData(GL_ARRAY_BUFFER, (GLsizeiptr)size, data, usage);
+    glBufferData(GL_ARRAY_BUFFER, (GLsizeiptr)info.size, info.data, info.usage);
     glBindBuffer(GL_ARRAY_BUFFER, 0);
 
-    result.size = size;
+    result.size = info.size;
     result.target = GL_ARRAY_BUFFER;
     return result;
 }
@@ -726,10 +739,10 @@ static gl_texture_t gl_create_texture_color(uint32_t width, uint32_t height, con
         .format = GL_RGBA,
         .internal_format = GL_RGBA,
         .type = GL_UNSIGNED_BYTE,
-        .wrap_s = GL_REPEAT,
-        .wrap_t = GL_REPEAT,
         .min_filter = GL_LINEAR_MIPMAP_LINEAR,
         .mag_filter = GL_LINEAR,
+        .wrap_s = GL_REPEAT,
+        .wrap_t = GL_REPEAT,
         .data = data,
     };
     return gl_create_texture(info);
@@ -745,10 +758,10 @@ static gl_texture_t gl_create_texture_depth(uint32_t width, uint32_t height, con
         .format = GL_DEPTH_COMPONENT,
         .internal_format = GL_DEPTH_COMPONENT32F,
         .type = GL_FLOAT,
-        .wrap_s = GL_CLAMP_TO_BORDER,
-        .wrap_t = GL_CLAMP_TO_BORDER,
         .min_filter = GL_NEAREST,
         .mag_filter = GL_NEAREST,
+        .wrap_s = GL_CLAMP_TO_BORDER,
+        .wrap_t = GL_CLAMP_TO_BORDER,
         .border = {1.0f, 1.0f, 1.0f, 1.0f},
         .data = data,
     };
@@ -765,10 +778,10 @@ static gl_texture_t gl_create_texture_depth_stencil(uint32_t width, uint32_t hei
         .format = GL_DEPTH_STENCIL,
         .internal_format = GL_DEPTH24_STENCIL8,
         .type = GL_UNSIGNED_INT_24_8,
-        .wrap_s = GL_CLAMP_TO_EDGE,
-        .wrap_t = GL_CLAMP_TO_EDGE,
         .min_filter = GL_NEAREST,
         .mag_filter = GL_NEAREST,
+        .wrap_s = GL_CLAMP_TO_EDGE,
+        .wrap_t = GL_CLAMP_TO_EDGE,
         .data = data,
     };
     return gl_create_texture(info);
@@ -825,24 +838,20 @@ static gl_image_t gl_load_image(gl_texture_t texture, void* buffer, size_t lengt
 
 // ====================================================================
 
-static gl_sampler_t gl_create_sampler(GLenum min_filter, // 缩小过滤方式，如 GL_LINEAR_MIPMAP_LINEAR
-                                      GLenum mag_filter, // 放大过滤方式，如 GL_LINEAR
-                                      GLenum wrap_s, // S 轴环绕方式，如 GL_REPEAT
-                                      GLenum wrap_t, // T 轴环绕方式，如 GL_REPEAT
-                                      GLenum wrap_r) // R 轴环绕方式，如 GL_REPEAT
+static gl_sampler_t gl_create_sampler(gl_sampler_create_t const& info)
 {
     gl_sampler_t result = {};
 
     glGenSamplers(1, &result.handle);
 
     // 设置过滤方式
-    glSamplerParameteri(result.handle, GL_TEXTURE_MIN_FILTER, min_filter);
-    glSamplerParameteri(result.handle, GL_TEXTURE_MAG_FILTER, mag_filter);
+    glSamplerParameteri(result.handle, GL_TEXTURE_MIN_FILTER, info.min_filter);
+    glSamplerParameteri(result.handle, GL_TEXTURE_MAG_FILTER, info.mag_filter);
 
     // 设置环绕方式
-    glSamplerParameteri(result.handle, GL_TEXTURE_WRAP_S, wrap_s);
-    glSamplerParameteri(result.handle, GL_TEXTURE_WRAP_T, wrap_t);
-    glSamplerParameteri(result.handle, GL_TEXTURE_WRAP_R, wrap_r);
+    glSamplerParameteri(result.handle, GL_TEXTURE_WRAP_S, info.wrap_s);
+    glSamplerParameteri(result.handle, GL_TEXTURE_WRAP_T, info.wrap_t);
+    glSamplerParameteri(result.handle, GL_TEXTURE_WRAP_R, info.wrap_r);
 
     return result;
 }
@@ -1043,84 +1052,84 @@ static void gl_destroy_module(gl_module_t& module)
     module.handle = 0;
 }
 
-static void gl_set_uniform_int(const char* name, int32_t value)
+static void gl_push_const_int(const char* name, int32_t value)
 {
     GLint program = 0;
     glGetIntegerv(GL_CURRENT_PROGRAM, &program);
 
-    GLint loc = glGetUniformLocation(program, name);
-    if (loc >= 0)
-        glUniform1i(loc, value);
+    GLint location = glGetUniformLocation(program, name);
+    if (location >= 0)
+        glUniform1i(location, value);
 }
 
-static void gl_set_uniform_uint(const char* name, uint32_t value)
+static void gl_push_const_uint(const char* name, uint32_t value)
 {
     GLint program = 0;
     glGetIntegerv(GL_CURRENT_PROGRAM, &program);
 
-    GLint loc = glGetUniformLocation(program, name);
-    if (loc >= 0)
-        glUniform1ui(loc, value);
+    GLint location = glGetUniformLocation(program, name);
+    if (location >= 0)
+        glUniform1ui(location, value);
 }
 
-static void gl_set_uniform_float(const char* name, float value)
+static void gl_push_const_float(const char* name, float value)
 {
     GLint program = 0;
     glGetIntegerv(GL_CURRENT_PROGRAM, &program);
 
-    GLint loc = glGetUniformLocation(program, name);
-    if (loc >= 0)
-        glUniform1f(loc, value);
+    GLint location = glGetUniformLocation(program, name);
+    if (location >= 0)
+        glUniform1f(location, value);
 }
 
-static void gl_set_uniform_vec2(const char* name, const float* value)
+static void gl_push_const_vec2(const char* name, const float* value)
 {
     GLint program = 0;
     glGetIntegerv(GL_CURRENT_PROGRAM, &program);
 
-    GLint loc = glGetUniformLocation(program, name);
-    if (loc >= 0)
-        glUniform2fv(loc, 1, value);
+    GLint location = glGetUniformLocation(program, name);
+    if (location >= 0)
+        glUniform2fv(location, 1, value);
 }
 
-static void gl_set_uniform_vec3(const char* name, const float* value)
+static void gl_push_const_vec3(const char* name, const float* value)
 {
     GLint program = 0;
     glGetIntegerv(GL_CURRENT_PROGRAM, &program);
 
-    GLint loc = glGetUniformLocation(program, name);
-    if (loc >= 0)
-        glUniform3fv(loc, 1, value);
+    GLint location = glGetUniformLocation(program, name);
+    if (location >= 0)
+        glUniform3fv(location, 1, value);
 }
 
-static void gl_set_uniform_vec4(const char* name, const float* value)
+static void gl_push_const_vec4(const char* name, const float* value)
 {
     GLint program = 0;
     glGetIntegerv(GL_CURRENT_PROGRAM, &program);
 
-    GLint loc = glGetUniformLocation(program, name);
-    if (loc >= 0)
-        glUniform4fv(loc, 1, value);
+    GLint location = glGetUniformLocation(program, name);
+    if (location >= 0)
+        glUniform4fv(location, 1, value);
 }
 
-static void gl_set_uniform_mat3(const char* name, const float* value)
+static void gl_push_const_mat3(const char* name, const float* value)
 {
     GLint program = 0;
     glGetIntegerv(GL_CURRENT_PROGRAM, &program);
 
-    GLint loc = glGetUniformLocation(program, name);
-    if (loc >= 0)
-        glUniformMatrix3fv(loc, 1, GL_FALSE, value);
+    GLint location = glGetUniformLocation(program, name);
+    if (location >= 0)
+        glUniformMatrix3fv(location, 1, GL_FALSE, value);
 }
 
-static void gl_set_uniform_mat4(const char* name, const float* value)
+static void gl_push_const_mat4(const char* name, const float* value)
 {
     GLint program = 0;
     glGetIntegerv(GL_CURRENT_PROGRAM, &program);
 
-    GLint loc = glGetUniformLocation(program, name);
-    if (loc >= 0)
-        glUniformMatrix4fv(loc, 1, GL_FALSE, value);
+    GLint location = glGetUniformLocation(program, name);
+    if (location >= 0)
+        glUniformMatrix4fv(location, 1, GL_FALSE, value);
 }
 
 // ====================================================================
@@ -1233,8 +1242,7 @@ static void gl_begin_render(gl_pass_t& pass)
                 height = std::max(height, pass.colors[i].texture.height);
             }
         }
-        if (colorCount)
-            glDrawBuffers(colorCount, colorAttachments);
+        if (colorCount) glDrawBuffers(colorCount, colorAttachments);
 
         if (pass.depth.texture.handle)
         {
@@ -1276,8 +1284,7 @@ static void gl_begin_render(gl_pass_t& pass)
                     pass.colors[i].alpha.src != GL_ONE || pass.colors[i].alpha.dst != GL_ZERO)
                     glEnable(GL_BLEND);
                 glBlendEquationSeparatei(i, pass.colors[i].color.func, pass.colors[i].alpha.func);
-                glBlendFuncSeparatei(i, pass.colors[i].color.src, pass.colors[i].color.dst, pass.colors[i].alpha.src,
-                                     pass.colors[i].alpha.dst);
+                glBlendFuncSeparatei(i, pass.colors[i].color.src, pass.colors[i].color.dst, pass.colors[i].alpha.src, pass.colors[i].alpha.dst);
             }
         }
 
@@ -1492,7 +1499,7 @@ static gl_mesh_t gl_create_mesh(const float* vertices, // vec3
 
     if (vertices)
     {
-        result.vertex_vbo = gl_create_buffer(vertex_count * 3 * sizeof(float), GL_STATIC_DRAW, vertices);
+        result.vertex_vbo = gl_create_buffer({.size = vertex_count * 3 * sizeof(float), .usage = GL_STATIC_DRAW, .data = vertices,});
         glBindBuffer(GL_ARRAY_BUFFER, result.vertex_vbo.handle);
         glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
         glEnableVertexAttribArray(0);
@@ -1500,7 +1507,7 @@ static gl_mesh_t gl_create_mesh(const float* vertices, // vec3
 
     if (normals)
     {
-        result.normal_vbo = gl_create_buffer(vertex_count * 3 * sizeof(float), GL_STATIC_DRAW, normals);
+        result.normal_vbo = gl_create_buffer({.size = vertex_count * 3 * sizeof(float), .usage = GL_STATIC_DRAW, .data = normals,});
         glBindBuffer(GL_ARRAY_BUFFER, result.normal_vbo.handle);
         glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
         glEnableVertexAttribArray(1);
@@ -1508,7 +1515,7 @@ static gl_mesh_t gl_create_mesh(const float* vertices, // vec3
 
     if (uvs)
     {
-        result.uv_vbo = gl_create_buffer(vertex_count * 2 * sizeof(float), GL_STATIC_DRAW, uvs);
+        result.uv_vbo = gl_create_buffer({.size = vertex_count * 2 * sizeof(float), .usage = GL_STATIC_DRAW, .data = uvs,});
         glBindBuffer(GL_ARRAY_BUFFER, result.uv_vbo.handle);
         glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(float), (void*)0);
         glEnableVertexAttribArray(2);
@@ -1516,7 +1523,7 @@ static gl_mesh_t gl_create_mesh(const float* vertices, // vec3
 
     if (indices)
     {
-        result.index_vbo = gl_create_buffer(index_count * sizeof(uint32_t), GL_STATIC_DRAW, indices);
+        result.index_vbo = gl_create_buffer({.size = index_count * sizeof(uint32_t), .usage = GL_STATIC_DRAW, .data = indices,});
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, result.index_vbo.handle);
     }
 
@@ -1540,7 +1547,7 @@ static void gl_destroy_mesh(gl_mesh_t& mesh)
     mesh.handle = 0;
 }
 
-static void gl_draw_mesh(gl_mesh_t mesh)
+static void gl_draw_mesh(gl_mesh_t const& mesh)
 {
     glBindVertexArray(mesh.handle);
     if (mesh.index_count)
@@ -1561,22 +1568,22 @@ static gl_meshlet_t gl_create_meshlet(const float* vertices, // vec4
 
     if (vertices)
     {
-        result.vertex_vbo = gl_create_buffer(vertex_count * 4 * sizeof(float), GL_STATIC_DRAW, vertices);
+        result.vertex_vbo = gl_create_buffer({.size = vertex_count * 4 * sizeof(float), .usage = GL_STATIC_DRAW, .data = vertices,});
     }
 
     if (normals)
     {
-        result.normal_vbo = gl_create_buffer(vertex_count * 4 * sizeof(float), GL_STATIC_DRAW, normals);
+        result.normal_vbo = gl_create_buffer({.size = vertex_count * 4 * sizeof(float), .usage = GL_STATIC_DRAW, .data = normals,});
     }
 
     if (uvs)
     {
-        result.uv_vbo = gl_create_buffer(vertex_count * 2 * sizeof(float), GL_STATIC_DRAW, uvs);
+        result.uv_vbo = gl_create_buffer({.size = vertex_count * 2 * sizeof(float), .usage = GL_STATIC_DRAW, .data = uvs,});
     }
 
     if (indices)
     {
-        result.index_vbo = gl_create_buffer(index_count * sizeof(uint32_t), GL_STATIC_DRAW, indices);
+        result.index_vbo = gl_create_buffer({.size = index_count * sizeof(uint32_t), .usage = GL_STATIC_DRAW, .data = indices,});
     }
 
     result.vertex_count = (GLsizei)vertex_count;
@@ -1599,23 +1606,14 @@ static void gl_destroy_meshlet(gl_meshlet_t& meshlet)
 static gl_mesh_t gl_create_mesh_screen()
 {
     static const float points[] = {
-        -1.0f,
-        -1.0f,
-        0.0f,
-        3.0f,
-        -1.0f,
-        0.0f,
-        -1.0f,
-        3.0f,
-        0.0f,
+        -1.0f, -1.0f, 0.0f,
+        3.0f, -1.0f, 0.0f,
+        -1.0f, 3.0f, 0.0f,
     };
     static const float uvs[] = {
-        0.0f,
-        0.0f,
-        2.0f,
-        0.0f,
-        0.0f,
-        2.0f,
+        0.0f, 0.0f,
+        2.0f, 0.0f,
+        0.0f, 2.0f,
     };
     static auto quad = gl_create_mesh(points, nullptr, uvs, 3, nullptr, 0);
     return quad;
