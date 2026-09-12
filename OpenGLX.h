@@ -37,7 +37,7 @@ static gl_texture_t gl_load_texture(const char* filename, bool flip)
     }
     // float 类型（EXR/HDR）通常是 RGB/RGBA 顺序，不需要转换
 
-    gl_texture_create_t info = {};
+    gl_texture_desc_t info = {};
     info.width = (uint32_t)image.cols;
     info.height = (uint32_t)image.rows;
     info.target = GL_TEXTURE_2D;

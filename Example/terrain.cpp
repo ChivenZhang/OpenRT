@@ -1,4 +1,3 @@
-#define OPENGL_IMPLEMENTATION
 #define OPENGLX_IMPLEMENTATION
 #include "../OpenGLX.h"
 #include <SDL3/SDL.h>
@@ -276,7 +275,7 @@ void frame(int width, int height)
     auto viewMat = glm::lookAt(glm::vec3(0, 2, 5), glm::vec3(0, 0, 0), glm::vec3(0, 1, 0));
     auto meshMat = glm::rotate(glm::mat4(1.0f), (float)SDL_GetTicks() / 2000.0f, glm::vec3(0, 1, 0));
 
-    static auto module = gl_create_module_render(nullptr, MS, FS);
+    static auto module = gl_create_module_meshlet(nullptr, MS, FS);
     static auto pass_color = gl_create_texture_color(width, height, nullptr);
     static auto pass_depth = gl_create_texture_depth(width, height, nullptr);
     {

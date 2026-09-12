@@ -1,4 +1,3 @@
-#define OPENGL_IMPLEMENTATION
 #define OPENGLX_IMPLEMENTATION
 #include "../OpenGLX.h"
 #include <SDL3/SDL.h>
@@ -126,25 +125,25 @@ void frame(int width, int height)
     auto viewMat = glm::lookAt(glm::vec3(0, 2, 5), glm::vec3(0, 0, 0), glm::vec3(0, 1, 0));
     auto meshMat = glm::rotate(glm::mat4(1.0f), (float)SDL_GetTicks() / 2000.0f, glm::vec3(0, 1, 0));
 
-    static auto module = gl_create_module_render(VS, FS);
-    static auto pass_color = gl_create_texture_color(width, height, nullptr);
-    static auto pass_depth = gl_create_texture_depth(width, height, nullptr);
+    static auto module = rhi_create_module_render(VS, FS);
+    static auto pass_color = rhi_create_texture_color(width, height, nullptr);
+    static auto pass_depth = rhi_create_texture_depth(width, height, nullptr);
     {
-        gl_pass_t pass = {.module = module, .colors = {{.texture = pass_color, .clear = true,}}, .depth = {.texture = pass_depth, .clear = true, .write = true, .func = GL_LEQUAL,},};
-        gl_begin_render(pass);
+        rhi_pass_t pass = {.module = module, .colors = {{.texture = pass_color, .clear = true,}}, .depth = {.texture = pass_depth, .clear = true, .write = true, .func = GL_LEQUAL,},};
+        rhi_begin_render(pass);
 
-        gl_push_const_mat4("projMat", &projMat[0][0]);
-        gl_push_const_mat4("viewMat", &viewMat[0][0]);
-        gl_push_const_mat4("meshMat", &meshMat[0][0]);
+        rhi_push_const_mat4("projMat", &projMat[0][0]);
+        rhi_push_const_mat4("viewMat", &viewMat[0][0]);
+        rhi_push_const_mat4("meshMat", &meshMat[0][0]);
 
         static auto texture0 = gl_load_texture("../../Earth.png");
-        gl_bind_texture(texture0, {.binding = 0,});
+        rhi_bind_texture(texture0, {.binding = 0,});
 
-        static auto meshlet = gl_create_mesh_sphere(2, 64, 32);
-        gl_draw_mesh(meshlet);
+        static auto mesh = gl_create_mesh_sphere(2, 64, 32);
+        rhi_draw_mesh(mesh);
 
-        gl_end_render(pass);
+        rhi_end_render(pass);
     }
 
-    gl_draw_screen(width, height, pass_color);
+    rhi_draw_screen(width, height, pass_color, {});
 }
