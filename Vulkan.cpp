@@ -10,18 +10,166 @@
 * =================================================*/
 #ifdef VULKAN_IMPLEMENTATION
 #include "Vulkan.h"
+#include <map>
 
-void vk_load_library()
+struct vk_buffer_native_t
 {
+    VkBuffer handle = nullptr;
+};
+struct vk_texture_native_t
+{
+    VkImage handle = nullptr;
+};
+struct vk_sampler_native_t
+{
+    VkSampler handle = nullptr;
+};
+struct vk_module_native_t
+{
+    VkShaderModule vshader = nullptr;   // Vertex Shader
+    VkShaderModule tshader = nullptr;   // Task Shader
+    VkShaderModule mshader = nullptr;   // Mesh Shader
+    VkShaderModule fshader = nullptr;   // Fragment Shader
+    VkShaderModule cshader = nullptr;   // Compute Shader
+};
+struct vk_mesh_native_t
+{
+
+};
+struct vk_meshlet_native_t
+{
+
+};
+
+struct vk_native_t
+{
+    uint32_t bufferID = 0;
+    uint32_t textureID = 0;
+    uint32_t samplerID = 0;
+    uint32_t moduleID = 0;
+    uint32_t meshID = 0;
+    uint32_t meshletID = 0;
+
+    std::map<uint32_t, vk_buffer_native_t> buffers;
+    std::map<uint32_t, vk_texture_native_t> textures;
+    std::map<uint32_t, vk_sampler_native_t> samplers;
+    std::map<uint32_t, vk_module_native_t> modules;
+    std::map<uint32_t, vk_mesh_native_t> meshes;
+    std::map<uint32_t, vk_meshlet_native_t> meshlets;
+
+    VkDevice device = nullptr;
+    VkCommandBuffer cmdBuf = nullptr;
+    // Other Resource here...
+
+} static vulkan;
+
+void vk_load_library(VkDevice device)
+{
+    vulkan.device = device;
+
+    // ====================================================================
+
+    // Buffer 相关
+    rhi_create_buffer = vk_create_buffer;
+    rhi_destroy_buffer = vk_destroy_buffer;
+    rhi_bind_buffer = vk_bind_buffer;
+    rhi_read_buffer = vk_read_buffer;
+    rhi_write_buffer = vk_write_buffer;
+
+    // Texture 相关
+    rhi_create_texture = vk_create_texture;
+    rhi_create_texture_color = vk_create_texture_color;
+    rhi_create_texture_depth = vk_create_texture_depth;
+    rhi_create_texture_depth_stencil = vk_create_texture_depth_stencil;
+    rhi_destroy_texture = vk_destroy_texture;
+    rhi_bind_texture = vk_bind_texture;
+    rhi_bind_texture_storage = vk_bind_texture_storage;
+    rhi_load_texture = vk_load_texture;
+    rhi_load_image = vk_load_image;
+
+    // Sampler 相关
+    rhi_create_sampler = vk_create_sampler;
+    rhi_destroy_sampler = vk_destroy_sampler;
+    rhi_bind_sampler = vk_bind_sampler;
+
+    // Module 相关
+    rhi_create_module_compute = vk_create_module_compute;
+    rhi_create_module_render = vk_create_module_render;
+    rhi_create_module_meshlet = vk_create_module_meshlet;
+    rhi_destroy_module = vk_destroy_module;
+
+    // Uniform 相关
+    rhi_push_const_int = vk_push_const_int;
+    rhi_push_const_uint = vk_push_const_uint;
+    rhi_push_const_float = vk_push_const_float;
+    rhi_push_const_vec2 = vk_push_const_vec2;
+    rhi_push_const_vec3 = vk_push_const_vec3;
+    rhi_push_const_vec4 = vk_push_const_vec4;
+    rhi_push_const_mat3 = vk_push_const_mat3;
+    rhi_push_const_mat4 = vk_push_const_mat4;
+
+    // Compute Pass 相关
+    rhi_begin_compute = vk_begin_compute;
+    rhi_end_compute = vk_end_compute;
+    rhi_dispatch_compute = vk_dispatch_compute;
+
+    // Render Pass 相关
+    rhi_begin_render = vk_begin_render;
+    rhi_end_render = vk_end_render;
+    rhi_set_viewport = vk_set_viewport;
+    rhi_set_scissor = vk_set_scissor;
+    rhi_draw_mesh_task = vk_draw_mesh_task;
+
+    // Mesh 相关
+    rhi_create_mesh = vk_create_mesh;
+    rhi_destroy_mesh = vk_destroy_mesh;
+    rhi_draw_mesh = vk_draw_mesh;
+
+    // Meshlet 相关
+    rhi_create_meshlet = vk_create_meshlet;
+    rhi_destroy_meshlet = vk_destroy_meshlet;
+    rhi_draw_meshlet = vk_draw_meshlet;
+
+    // Screen 相关
+    rhi_create_mesh_screen = vk_create_mesh_screen;
+    rhi_draw_screen = vk_draw_screen;
 }
 
 vk_buffer_t vk_create_buffer(vk_buffer_desc_t const& info)
 {
-    return {};
+    vk_buffer_t result = {};
+    result.handle = vulkan.bufferID + 1;
+    auto& native = vulkan.buffers[result.handle];
+    result.native = &native;
+    VkBufferCreateInfo vkInfo = {};
+    vkInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    vkInfo.size = info.size;
+    vkInfo.usage =
+        VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
+        VK_BUFFER_USAGE_TRANSFER_DST_BIT |
+        VK_BUFFER_USAGE_VERTEX_BUFFER_BIT |
+        VK_BUFFER_USAGE_INDEX_BUFFER_BIT |
+        VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT |
+        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
+        VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT;
+    vkInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    if (vkCreateBuffer(vulkan.device, &vkInfo, nullptr, &native.handle) != VK_SUCCESS) return {};
+
+    vulkan.bufferID += 1;
+    result.size = info.size;
+    result.usage = info.usage;
+    return result;
 }
 
 void vk_destroy_buffer(vk_buffer_t& buffer)
 {
+    if (vulkan.device && buffer.native)
+    {
+        auto& native = vulkan.buffers[buffer.handle];
+        vkDestroyBuffer(vulkan.device, native.handle, nullptr);
+
+        vulkan.buffers.erase(buffer.handle);
+    }
 }
 
 void vk_bind_buffer(vk_buffer_t buffer, vk_buffer_bind_t bind)

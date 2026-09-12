@@ -40,8 +40,8 @@ using vk_meshlet_t = rhi_meshlet_t;
 
 // ====================================================================
 
-/* @brief Load the OpenGL function pointers and initialize the extension library. */
-void vk_load_library();
+/* @brief Load the Vulkan function pointers and initialize the extension library. */
+void vk_load_library(VkDevice device);
 
 /*
 * @brief Create a buffer object with the given size, usage hint, and optional initial data.
