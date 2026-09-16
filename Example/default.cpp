@@ -134,6 +134,28 @@ void frame(int width, int height)
     static auto pass_color = rhi_create_texture_color(width, height, nullptr);
     static auto pass_depth = rhi_create_texture_depth(width, height, nullptr);
     {
+        static auto texture0 = []()
+        {
+            auto texture = rhi_load_texture_file("../../Earth.png");
+            std::vector<uint8_t> data (texture.width * texture.height * 3, 255);
+
+            rhi_pass_t pass = {};
+            rhi_begin_transfer(pass);
+            rhi_copy_texture_data(
+                {.data = data.data(), .size = data.size(), .bytesPerRow = texture.width * 3, .rowsPerImage = texture.height,},
+                {.texture = texture,},
+                {texture.width, texture.height, 1});
+            rhi_end_transfer(pass);
+
+            rhi_begin_transfer(pass);
+            auto texture2 = rhi_load_texture_file("../../Earth.png");
+            rhi_copy_texture({.texture = texture2,}, {.texture = texture,}, {texture.width, texture.height, 1});
+            rhi_destroy_texture(texture2);
+            rhi_end_transfer(pass);
+
+            return texture;
+        }();
+
         rhi_pass_t pass = {.module = module, .colors = {{.texture = pass_color, .clear = true,}}, .depth = {.texture = pass_depth, .clear = true,},};
         rhi_begin_render(pass);
 
@@ -141,7 +163,6 @@ void frame(int width, int height)
         rhi_push_const_mat4("viewMat", &viewMat[0][0]);
         rhi_push_const_mat4("meshMat", &meshMat[0][0]);
 
-        static auto texture0 = rhi_load_texture_file("../../Earth.png");
         rhi_bind_texture(texture0, {.binding = 0,});
 
         static auto mesh = rhi_create_mesh_sphere(2, 64, 32);

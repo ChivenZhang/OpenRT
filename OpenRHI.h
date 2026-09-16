@@ -46,7 +46,7 @@ struct rhi_buffer_bind_t
 struct rhi_texture_t
 {
     GLuint handle = 0;
-    uint32_t width = 0, height = 0;
+    uint32_t width = 0, height = 0, depth = 1;
     GLenum target = GL_TEXTURE_2D;
     GLenum format = GL_RGBA;
     GLenum internal_format = GL_RGBA;
@@ -189,10 +189,15 @@ struct rhi_compute_info_t
 {
 };
 
+#define GL_MODULE_RENDER 1
+#define GL_MODULE_COMPUTE 2
+#define GL_MODULE_MESHLET 3
+#define GL_MODULE_TRANSFER 4
+
 struct rhi_module_t
 {
     GLuint handle = 0;
-    GLenum target = GL_NONE;
+    GLenum target = GL_NONE;    // GL_MODULE_RENDER / GL_MODULE_COMPUTE / GL_MODULE_MESHLET / GL_MODULE_TRANSFER
     union
     {
         rhi_render_info_t render;
@@ -299,6 +304,49 @@ struct rhi_meshlet_t
     void* native = nullptr;
 };
 
+struct rhi_vec3_t
+{
+    uint32_t x = 0, y = 0, z = 0;
+};
+
+struct rhi_buffer_copy_t
+{
+    rhi_buffer_t buffer;
+    size_t offset = 0;
+};
+
+struct rhi_buffer_data_t
+{
+    const uint8_t* data = nullptr;
+    size_t size = 0;
+    size_t offset = 0;
+};
+
+struct rhi_buffer_texel_t
+{
+    rhi_buffer_t buffer;
+    size_t offset = 0;
+    uint32_t bytesPerRow = 0;
+    uint32_t rowsPerImage = 0;
+};
+
+struct rhi_texture_copy_t
+{
+    rhi_texture_t texture;
+    GLenum aspect = GL_DEPTH_COMPONENT; // GL_DEPTH_COMPONENT / GL_STENCIL_INDEX / GL_ALL
+    uint32_t mipLevel = 0;
+    rhi_vec3_t origin;
+};
+
+struct rhi_texture_data_t
+{
+    const uint8_t* data = nullptr;
+    size_t size = 0;
+    size_t offset = 0;
+    uint32_t bytesPerRow = 0;
+    uint32_t rowsPerImage = 0;
+};
+
 // ====================================================================
 
 extern rhi_buffer_t (*rhi_create_buffer)(rhi_buffer_desc_t const& info);
@@ -326,7 +374,6 @@ extern rhi_module_t (*rhi_create_module_render)(const char* vert_src, const char
 extern rhi_module_t (*rhi_create_module_meshlet)(const char* task_src, const char* mesh_src, const char* frag_src, rhi_render_info_t const& info);
 extern void (*rhi_destroy_module)(rhi_module_t& module);
 
-
 extern void (*rhi_push_constant)(uint8_t const* buffer, size_t length);
 extern void (*rhi_push_const_int)(const char* name, int32_t value);
 extern void (*rhi_push_const_uint)(const char* name, uint32_t value);
@@ -347,6 +394,15 @@ extern void (*rhi_set_viewport)(int32_t x, int32_t y, int32_t width, int32_t hei
 extern void (*rhi_set_scissor)(int32_t x, int32_t y, int32_t width, int32_t height);
 extern void (*rhi_draw_mesh_task)(uint32_t groupX, uint32_t groupY, uint32_t groupZ);
 
+extern void (*rhi_begin_transfer)(rhi_pass_t& pass);
+extern void (*rhi_end_transfer)(rhi_pass_t& pass);
+extern void (*rhi_copy_buffer)(rhi_buffer_copy_t source, rhi_buffer_copy_t destination, size_t copySize);
+extern void (*rhi_copy_buffer_data)(rhi_buffer_data_t source, rhi_buffer_copy_t destination, size_t copySize);
+extern void (*rhi_copy_buffer_texture)(rhi_buffer_texel_t source, rhi_texture_copy_t destination, rhi_vec3_t copySize);
+extern void (*rhi_copy_texture)(rhi_texture_copy_t source, rhi_texture_copy_t destination, rhi_vec3_t copySize);
+extern void (*rhi_copy_texture_data)(rhi_texture_data_t source, rhi_texture_copy_t destination, rhi_vec3_t copySize);
+extern void (*rhi_copy_texture_buffer)(rhi_texture_copy_t source, rhi_buffer_texel_t destination, rhi_vec3_t copySize);
+
 extern rhi_mesh_t (*rhi_create_mesh)(const float* vertices, const float* normals, const float* uvs, size_t vertex_count, const unsigned int* indices, size_t index_count);
 extern void (*rhi_destroy_mesh)(rhi_mesh_t& mesh);
 extern void (*rhi_draw_mesh)(rhi_mesh_t const& mesh);
@@ -354,8 +410,6 @@ extern void (*rhi_draw_mesh)(rhi_mesh_t const& mesh);
 extern rhi_meshlet_t (*rhi_create_meshlet)(const float* vertices, const float* normals, const float* uvs, size_t vertex_count, const unsigned int* indices, size_t index_count);
 extern void (*rhi_destroy_meshlet)(rhi_meshlet_t& meshlet);
 extern void (*rhi_draw_meshlet)(rhi_meshlet_t const& meshlet);
-
-extern void (*rhi_begin_transfer)(rhi_pass_t& pass);
 
 extern rhi_mesh_t (*rhi_create_mesh_screen)();
 extern void (*rhi_draw_screen)(int width, int height, rhi_texture_t texture, rhi_color_t clear);
