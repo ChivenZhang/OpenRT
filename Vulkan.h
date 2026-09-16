@@ -9,7 +9,6 @@
 * Created by chivenzhang@gmail.com.
 *
 * =================================================*/
-#define VULKAN_IMPLEMENTATION
 #ifdef VULKAN_IMPLEMENTATION
 #include "OpenRHI.h"
 #include <vulkan/vulkan.h>

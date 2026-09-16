@@ -9,7 +9,6 @@
 * Created by chivenzhang@gmail.com.
 *
 * =================================================*/
-#define OPENGL_IMPLEMENTATION
 #ifdef OPENGL_IMPLEMENTATION
 #include "OpenRHI.h"
 #include <GL/glew.h>
@@ -48,7 +47,7 @@ void gl_load_library();
 void gl_unload_library();
 
 /*
-* @brief Create a buffer object with the given size, usage hint, and optional initial data.
+ * @brief Create a buffer object with the given size, usage hint, and optional initial data.
  * @param info Buffer creation data.
  * @return The created buffer.
  */

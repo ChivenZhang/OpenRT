@@ -1,5 +1,6 @@
 #define OPENGLX_IMPLEMENTATION
 #include "../OpenGLX.h"
+#include "../OpenGL.h"
 #include <SDL3/SDL.h>
 
 void frame(int width, int height);
@@ -125,12 +126,11 @@ void frame(int width, int height)
     auto viewMat = glm::lookAt(glm::vec3(0, 2, 5), glm::vec3(0, 0, 0), glm::vec3(0, 1, 0));
     auto meshMat = glm::rotate(glm::mat4(1.0f), (float)SDL_GetTicks() / 2000.0f, glm::vec3(0, 1, 0));
 
-    static auto module = rhi_create_module_render(VS, FS,
-        {
-            .depth = {.write = true, .func = GL_LEQUAL,},
-            .layout = {{.binding = 0, .type = GL_BINDING_TEXTURE, }},
-            .vertex = {rhi_vertex_layout, rhi_normal_layout, rhi_uv_layout,},
-        });
+    static auto module = rhi_create_module_render(VS, FS, {
+        .depth = {.write = true, .func = GL_LEQUAL,},
+        .layout = {{.binding = 0, .type = GL_BINDING_TEXTURE, }},
+        .vertex = {rhi_vertex_layout, rhi_normal_layout, rhi_uv_layout,},
+    });
     static auto pass_color = rhi_create_texture_color(width, height, nullptr);
     static auto pass_depth = rhi_create_texture_depth(width, height, nullptr);
     {
@@ -141,10 +141,10 @@ void frame(int width, int height)
         rhi_push_const_mat4("viewMat", &viewMat[0][0]);
         rhi_push_const_mat4("meshMat", &meshMat[0][0]);
 
-        static auto texture0 = gl_load_texture("../../Earth.png");
+        static auto texture0 = rhi_load_texture_file("../../Earth.png");
         rhi_bind_texture(texture0, {.binding = 0,});
 
-        static auto mesh = gl_create_mesh_sphere(2, 64, 32);
+        static auto mesh = rhi_create_mesh_sphere(2, 64, 32);
         rhi_draw_mesh(mesh);
 
         rhi_end_render(pass);

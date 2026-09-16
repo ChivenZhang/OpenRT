@@ -280,7 +280,7 @@ gl_texture_t gl_create_texture_color(uint32_t width, uint32_t height, const void
         .format = GL_RGBA,
         .internal_format = GL_RGBA,
         .type = GL_UNSIGNED_BYTE,
-        .min_filter = GL_LINEAR_MIPMAP_LINEAR,
+        .min_filter = GL_LINEAR,
         .mag_filter = GL_LINEAR,
         .wrap_s = GL_REPEAT,
         .wrap_t = GL_REPEAT,
@@ -994,11 +994,6 @@ void gl_begin_render(gl_pass_t& pass)
         glEnable(GL_CULL_FACE);
     else
         glDisable(GL_CULL_FACE);
-
-    if (pass.module.render.front_face)
-        glEnable(GL_FRONT_FACE);
-    else
-        glDisable(GL_FRONT_FACE);
 
     glPolygonMode(GL_FRONT_AND_BACK, pass.module.render.fill_mode);
 }

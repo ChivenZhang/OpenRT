@@ -12,10 +12,10 @@
     "name" : "glm",
     "version>=" : "1.0.3"
   }, {
-    "name" : "opencv",
-    "version>=" : "4.12.0"
-  }, {
     "name" : "vulkan",
     "version>=" : "2023-12-17"
+  }, {
+    "name" : "stb",
+    "version>=" : "2024-07-29#1"
   } ]
 }

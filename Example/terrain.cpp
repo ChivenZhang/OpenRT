@@ -1,5 +1,6 @@
 #define OPENGLX_IMPLEMENTATION
 #include "../OpenGLX.h"
+#include "../OpenGL.h"
 #include <SDL3/SDL.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
@@ -98,6 +99,8 @@ void frame(int width, int height)
                 ms_out[vid + i].vertex = in_vertex[i];
                 ms_out[vid + i].normal = normalize(cross(in_vertex[1] - in_vertex[0], in_vertex[2] - in_vertex[0]));
                 ms_out[vid + i].uv = in_uv[i];
+                gl_MeshVerticesNV[vid + i].gl_Position = projMat * viewMat * vec4(in_vertex[i], 1);
+                gl_PrimitiveIndicesNV[iid + i] = vid + i;
                 gl_MeshVerticesNV[vid + i].gl_Position = projMat * viewMat * vec4(in_vertex[i], 1);
                 gl_PrimitiveIndicesNV[iid + i] = vid + i;
             }
@@ -208,6 +211,7 @@ void frame(int width, int height)
             assembleLOD3(in_vertex, in_uv, vid, iid);
 
             gl_PrimitiveCountNV = iid / 3;
+            gl_PrimitiveCountNV = iid / 3;
         }
     )";
     constexpr auto FS = R"(
@@ -276,27 +280,28 @@ void frame(int width, int height)
     auto meshMat = glm::rotate(glm::mat4(1.0f), (float)SDL_GetTicks() / 2000.0f, glm::vec3(0, 1, 0));
 
     static auto module = gl_create_module_meshlet(nullptr, MS, FS, {.depth = {.write = true, .func = GL_LEQUAL,}, .fill_mode = GL_FILL,});
-    static auto pass_color = gl_create_texture_color(width, height, nullptr);
-    static auto pass_depth = gl_create_texture_depth(width, height, nullptr);
+    static auto pass_color = rhi_create_texture_color(width, height, nullptr);
+    static auto pass_depth = rhi_create_texture_depth(width, height, nullptr);
     {
-        gl_pass_t pass = {.module = module, .colors = {{.texture = pass_color, .clear = true,}}, .depth = {.texture = pass_depth, .clear = true,}, };
-        gl_begin_render(pass);
+        rhi_pass_t pass = {.module = module, .colors = {{.texture = pass_color, .clear = true,}}, .depth = {.texture = pass_depth, .clear = true,},};
+        rhi_begin_render(pass);
 
-        gl_push_const_float("height", 2.5f);
-        gl_push_const_mat4("projMat", &projMat[0][0]);
-        gl_push_const_mat4("viewMat", &viewMat[0][0]);
-        gl_push_const_mat4("meshMat", &meshMat[0][0]);
+        rhi_push_const_float("height", 2.5f);
+        rhi_push_const_mat4("projMat", &projMat[0][0]);
+        rhi_push_const_mat4("viewMat", &viewMat[0][0]);
+        rhi_push_const_mat4("meshMat", &meshMat[0][0]);
 
-        static auto texture0 = gl_load_texture("../../DiffuseTerrain.png");
-        static auto texture1 = gl_load_texture("../../HeightTerrain.png");
-        gl_bind_texture(texture0, {.binding = 0,});
-        gl_bind_texture(texture1, {.binding = 1,});
+        static auto texture0 = rhi_load_texture_file("../../DiffuseTerrain.png");
+        static auto texture1 = rhi_load_texture_file("../../HeightTerrain.png");
+        rhi_bind_texture(texture0, {.binding = 0,});
+        rhi_bind_texture(texture1, {.binding = 1,});
 
-        static auto meshlet = gl_create_meshlet_plane(5, 100);
-        gl_draw_meshlet(meshlet);
+        static auto meshlet = rhi_create_meshlet_plane(5, 100);
+        rhi_draw_meshlet(meshlet);
 
-        gl_end_render(pass);
+        rhi_end_render(pass);
     }
 
     gl_draw_screen(width, height, pass_color);
+    rhi_draw_screen(width, height, pass_color, {});
 }

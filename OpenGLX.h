@@ -1,106 +1,113 @@
 #pragma once
-#include "OpenGL.h"
+#include "OpenRHI.h"
 
-gl_texture_t gl_load_texture(const char* filename, bool flip = false);
-gl_mesh_t gl_create_mesh_cube(float width, float height, float length);
-gl_mesh_t gl_create_mesh_plane(float size, int N = 1);
-gl_mesh_t gl_create_mesh_sphere(float radius, int rings, int slices);
-gl_mesh_t gl_create_mesh_capsule(float radius, float height, int rings, int slices);
-gl_mesh_t gl_create_mesh_footprint(float length, float width, float thickness, bool left_foot);
-gl_meshlet_t gl_create_meshlet_plane(float size, int N = 1);
-gl_meshlet_t gl_create_meshlet_sphere(float radius, int rings, int slices);
-gl_meshlet_t gl_create_meshlet_capsule(float radius, float height, int rings, int slices);
+rhi_texture_t rhi_load_texture_file(const char* filename, bool flip = false);
+rhi_mesh_t rhi_create_mesh_cube(float width, float height, float length);
+rhi_mesh_t rhi_create_mesh_plane(float size, int N = 1);
+rhi_mesh_t rhi_create_mesh_sphere(float radius, int rings, int slices);
+rhi_mesh_t rhi_create_mesh_capsule(float radius, float height, int rings, int slices);
+rhi_mesh_t rhi_create_mesh_footprint(float length, float width, float thickness, bool left_foot);
+rhi_meshlet_t rhi_create_meshlet_plane(float size, int N = 1);
+rhi_meshlet_t rhi_create_meshlet_sphere(float radius, int rings, int slices);
+rhi_meshlet_t rhi_create_meshlet_capsule(float radius, float height, int rings, int slices);
 
 #ifdef OPENGLX_IMPLEMENTATION
 
-#include <opencv2/opencv.hpp>
-static gl_texture_t gl_load_texture(const char* filename, bool flip)
+#define STB_IMAGE_IMPLEMENTATION
+#include <stb_image.h>
+
+static rhi_texture_t rhi_load_texture_file(const char* filename, bool flip)
 {
-    cv::Mat image = cv::imread(filename, cv::IMREAD_UNCHANGED);
-    if (image.empty()) {
-        fprintf(stderr, "Failed to load image: %s\n", filename);
+    // stb 默认以左上角为原点，flip 为 true 时翻转为 OpenGL 的左下角原点
+    stbi_set_flip_vertically_on_load(flip ? 1 : 0);
+
+    int width = 0, height = 0, channels = 0;
+    void* data = nullptr;
+    GLenum type = GL_UNSIGNED_BYTE;
+
+    // 按文件实际位深选择加载方式：HDR -> float，16 位 PNG/PSD -> ushort，其余 -> byte
+    if (stbi_is_hdr(filename)) {
+        data = stbi_loadf(filename, &width, &height, &channels, 0);
+        type = GL_FLOAT;
+    }
+    else if (stbi_is_16_bit(filename)) {
+        data = stbi_load_16(filename, &width, &height, &channels, 0);
+        type = GL_UNSIGNED_SHORT;
+    }
+    else {
+        data = stbi_load(filename, &width, &height, &channels, 0);
+        type = GL_UNSIGNED_BYTE;
+    }
+
+    if (!data) {
+        fprintf(stderr, "Failed to load image: %s (%s)\n", filename, stbi_failure_reason());
         return {};
     }
 
-    if (flip) {
-        cv::flip(image, image, 0);
-    }
-
-    // 将 BGR/BGRA 转换为 RGB/RGBA（仅对整数类型有效）
-    if (image.depth() == CV_8U || image.depth() == CV_16U) {
-        if (image.channels() == 3) {
-            cv::cvtColor(image, image, cv::COLOR_BGR2RGB);
-        }
-        else if (image.channels() == 4) {
-            cv::cvtColor(image, image, cv::COLOR_BGRA2RGBA);
-        }
-    }
-    // float 类型（EXR/HDR）通常是 RGB/RGBA 顺序，不需要转换
-
-    gl_texture_desc_t info = {};
-    info.width = (uint32_t)image.cols;
-    info.height = (uint32_t)image.rows;
+    rhi_texture_desc_t info = {};
+    info.width = (uint32_t)width;
+    info.height = (uint32_t)height;
     info.target = GL_TEXTURE_2D;
-    info.data = image.data;
+    info.type = type;
+    info.data = data;
 
-    // 根据通道数和数据类型选择格式
-    switch (image.channels())
+    // stb 输出始终为 RGB/RGBA 顺序，无需通道转换；根据通道数和数据类型选择格式
+    switch (channels)
     {
         case 1:
             info.format = GL_RED;
-            switch (image.depth())
+            switch (type)
             {
-                case CV_8U:  info.internal_format = GL_R8;   info.type = GL_UNSIGNED_BYTE; break;
-                case CV_16U: info.internal_format = GL_R16;  info.type = GL_UNSIGNED_SHORT; break;
-                case CV_32F: info.internal_format = GL_R32F; info.type = GL_FLOAT; break;
-                default: fprintf(stderr, "Unsupported depth: %d\n", image.depth()); return {};
+                case GL_UNSIGNED_BYTE:  info.internal_format = GL_R8;   break;
+                case GL_UNSIGNED_SHORT: info.internal_format = GL_R16;  break;
+                case GL_FLOAT:          info.internal_format = GL_R32F; break;
             }
             break;
 
         case 2:
             info.format = GL_RG;
-            switch (image.depth())
+            switch (type)
             {
-                case CV_8U:  info.internal_format = GL_RG8;   info.type = GL_UNSIGNED_BYTE; break;
-                case CV_16U: info.internal_format = GL_RG16;  info.type = GL_UNSIGNED_SHORT; break;
-                case CV_32F: info.internal_format = GL_RG32F; info.type = GL_FLOAT; break;
-                default: fprintf(stderr, "Unsupported depth: %d\n", image.depth()); return {};
+                case GL_UNSIGNED_BYTE:  info.internal_format = GL_RG8;   break;
+                case GL_UNSIGNED_SHORT: info.internal_format = GL_RG16;  break;
+                case GL_FLOAT:          info.internal_format = GL_RG32F; break;
             }
             break;
 
         case 3:
             info.format = GL_RGB;
-            switch (image.depth())
+            switch (type)
             {
-                case CV_8U:  info.internal_format = GL_RGB8;   info.type = GL_UNSIGNED_BYTE; break;
-                case CV_16U: info.internal_format = GL_RGB16;  info.type = GL_UNSIGNED_SHORT; break;
-                case CV_32F: info.internal_format = GL_RGB32F; info.type = GL_FLOAT; break;
-                default: fprintf(stderr, "Unsupported depth: %d\n", image.depth()); return {};
+                case GL_UNSIGNED_BYTE:  info.internal_format = GL_RGB8;   break;
+                case GL_UNSIGNED_SHORT: info.internal_format = GL_RGB16;  break;
+                case GL_FLOAT:          info.internal_format = GL_RGB32F; break;
             }
             break;
 
         case 4:
             info.format = GL_RGBA;
-            switch (image.depth())
+            switch (type)
             {
-                case CV_8U:  info.internal_format = GL_RGBA8;   info.type = GL_UNSIGNED_BYTE; break;
-                case CV_16U: info.internal_format = GL_RGBA16;  info.type = GL_UNSIGNED_SHORT; break;
-                case CV_32F: info.internal_format = GL_RGBA32F; info.type = GL_FLOAT; break;
-                default: fprintf(stderr, "Unsupported depth: %d\n", image.depth()); return {};
+                case GL_UNSIGNED_BYTE:  info.internal_format = GL_RGBA8;   break;
+                case GL_UNSIGNED_SHORT: info.internal_format = GL_RGBA16;  break;
+                case GL_FLOAT:          info.internal_format = GL_RGBA32F; break;
             }
             break;
 
         default:
-            fprintf(stderr, "Unsupported channel count: %d\n", image.channels());
+            fprintf(stderr, "Unsupported channel count: %d\n", channels);
+            stbi_image_free(data);
             return {};
     }
 
-    return gl_create_texture(info);
+    rhi_texture_t texture = rhi_create_texture(info);
+    stbi_image_free(data);
+    return texture;
 }
 
 #include <vector>
 
-static gl_mesh_t gl_create_mesh_plane(float size, int N)
+static rhi_mesh_t rhi_create_mesh_plane(float size, int N)
 {
     int vertsX = N + 1;
     int vertsY = N + 1;
@@ -157,7 +164,7 @@ static gl_mesh_t gl_create_mesh_plane(float size, int N)
         }
     }
 
-    return gl_create_mesh(
+    return rhi_create_mesh(
         positions.data(),
         normals.data(),
         uvs.data(),
@@ -167,7 +174,7 @@ static gl_mesh_t gl_create_mesh_plane(float size, int N)
     );
 }
 
-static gl_mesh_t gl_create_mesh_cube(float width, float height, float length)
+static rhi_mesh_t rhi_create_mesh_cube(float width, float height, float length)
 {
     static const float v[24 * 3] = {
         // 前
@@ -235,13 +242,13 @@ static gl_mesh_t gl_create_mesh_cube(float width, float height, float length)
         uvs[i * 2 + 1] = uv[i * 2 + 1];
     }
 
-    return gl_create_mesh(
+    return rhi_create_mesh(
         positions.data(), normals.data(), uvs.data(),
         24, idx, 36
     );
 }
 
-static gl_mesh_t gl_create_mesh_footprint(
+static rhi_mesh_t rhi_create_mesh_footprint(
     float length,    // 鞋印长度（Z方向）
     float width,     // 鞋印宽度（X方向）
     float thickness, // 厚度（Y方向）
@@ -426,7 +433,7 @@ static gl_mesh_t gl_create_mesh_footprint(
         }
     }
 
-    return gl_create_mesh(
+    return rhi_create_mesh(
         positions.data(),
         normals.data(),
         uvs.data(),
@@ -436,7 +443,7 @@ static gl_mesh_t gl_create_mesh_footprint(
     );
 }
 
-static gl_mesh_t gl_create_mesh_sphere(float radius, int rings, int slices)
+static rhi_mesh_t rhi_create_mesh_sphere(float radius, int rings, int slices)
 {
     int vertex_count = (rings + 1) * (slices + 1);
     int index_count = rings * slices * 6;
@@ -493,13 +500,13 @@ static gl_mesh_t gl_create_mesh_sphere(float radius, int rings, int slices)
         }
     }
 
-    return gl_create_mesh(
+    return rhi_create_mesh(
         positions.data(), normals.data(), uvs.data(),
         vertex_count, indices.data(), index_count
     );
 }
 
-static gl_mesh_t gl_create_mesh_capsule(float radius, float height, int rings, int slices)
+static rhi_mesh_t rhi_create_mesh_capsule(float radius, float height, int rings, int slices)
 {
     // 半球纬度只用到 90°，所以 rings 参数复用
     // 上半球：从顶(0)到底(rings)
@@ -610,7 +617,7 @@ static gl_mesh_t gl_create_mesh_capsule(float radius, float height, int rings, i
         }
     }
 
-    return gl_create_mesh(
+    return rhi_create_mesh(
         positions.data(), normals.data(), uvs.data(),
         vertexCount, indices.data(), indexCount
     );
@@ -618,7 +625,7 @@ static gl_mesh_t gl_create_mesh_capsule(float radius, float height, int rings, i
 
 // ====================================================================
 
-static gl_mesh_t gl_create_mesh_quad(float width, float height)
+static rhi_mesh_t rhi_create_mesh_quad(float width, float height)
 {
     const size_t vertex_count = 4;
     const size_t index_count  = 6;
@@ -664,7 +671,7 @@ static gl_mesh_t gl_create_mesh_quad(float width, float height)
     indices[0] = 0; indices[1] = 1; indices[2] = 2;
     indices[3] = 0; indices[4] = 2; indices[5] = 3;
 
-    return gl_create_mesh(
+    return rhi_create_mesh(
         positions.data(),
         normals.data(),
         uvs.data(),
@@ -674,7 +681,7 @@ static gl_mesh_t gl_create_mesh_quad(float width, float height)
     );
 }
 
-static gl_mesh_t gl_create_mesh_circle(float radius, int segments)
+static rhi_mesh_t rhi_create_mesh_circle(float radius, int segments)
 {
     size_t vertex_count = segments + 1; // 中心点 + 边缘点
     size_t index_count  = segments * 3;
@@ -718,7 +725,7 @@ static gl_mesh_t gl_create_mesh_circle(float radius, int segments)
         indices[i * 3 + 2] = i + 2 > segments ? 1 : i + 2;
     }
 
-    return gl_create_mesh(
+    return rhi_create_mesh(
         positions.data(),
         normals.data(),
         uvs.data(),
@@ -728,7 +735,7 @@ static gl_mesh_t gl_create_mesh_circle(float radius, int segments)
     );
 }
 
-static gl_mesh_t gl_create_mesh_ring(
+static rhi_mesh_t rhi_create_mesh_ring(
     float inner_radius,
     float outer_radius,
     int segments)
@@ -788,7 +795,7 @@ static gl_mesh_t gl_create_mesh_ring(
         indices[idx++] = i1;
     }
 
-    return gl_create_mesh(
+    return rhi_create_mesh(
         positions.data(),
         normals.data(),
         uvs.data(),
@@ -800,7 +807,7 @@ static gl_mesh_t gl_create_mesh_ring(
 
 // ====================================================================
 
-static gl_meshlet_t gl_create_meshlet_plane(float size, int N)
+static rhi_meshlet_t rhi_create_meshlet_plane(float size, int N)
 {
     int vertsX = N + 1;
     int vertsY = N + 1;
@@ -857,7 +864,7 @@ static gl_meshlet_t gl_create_meshlet_plane(float size, int N)
         }
     }
 
-    return gl_create_meshlet(
+    return rhi_create_meshlet(
         positions.data(),
         normals.data(),
         uvs.data(),
@@ -867,7 +874,7 @@ static gl_meshlet_t gl_create_meshlet_plane(float size, int N)
     );
 }
 
-static gl_meshlet_t gl_create_meshlet_sphere(float radius, int rings, int slices)
+static rhi_meshlet_t rhi_create_meshlet_sphere(float radius, int rings, int slices)
 {
     int vertex_count = (rings + 1) * (slices + 1);
     int index_count = rings * slices * 6;
@@ -924,13 +931,13 @@ static gl_meshlet_t gl_create_meshlet_sphere(float radius, int rings, int slices
         }
     }
 
-    return gl_create_meshlet(
+    return rhi_create_meshlet(
         positions.data(), normals.data(), uvs.data(),
         vertex_count, indices.data(), index_count
     );
 }
 
-static gl_meshlet_t gl_create_meshlet_capsule(float radius, float height, int rings, int slices)
+static rhi_meshlet_t rhi_create_meshlet_capsule(float radius, float height, int rings, int slices)
 {
     // 半球纬度只用到 90°，所以 rings 参数复用
     // 上半球：从顶(0)到底(rings)
@@ -1041,7 +1048,7 @@ static gl_meshlet_t gl_create_meshlet_capsule(float radius, float height, int ri
         }
     }
 
-    return gl_create_meshlet(
+    return rhi_create_meshlet(
         positions.data(), normals.data(), uvs.data(),
         vertexCount, indices.data(), indexCount
     );
