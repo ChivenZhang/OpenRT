@@ -300,5 +300,7 @@ extern rhi_meshlet_t (*rhi_create_meshlet)(const float* vertices, const float* n
 extern void (*rhi_destroy_meshlet)(rhi_meshlet_t& meshlet);
 extern void (*rhi_draw_meshlet)(rhi_meshlet_t const& meshlet);
 
+extern void (*rhi_begin_transfer)(rhi_pass_t& pass);
+
 extern rhi_mesh_t (*rhi_create_mesh_screen)();
 extern void (*rhi_draw_screen)(int width, int height, rhi_texture_t texture, rhi_color_t clear);

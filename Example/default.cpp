@@ -1,5 +1,6 @@
 #define OPENGLX_IMPLEMENTATION
 #include "../OpenGLX.h"
+#include "../OpenGL.h"
 #include <SDL3/SDL.h>
 
 void frame(int width, int height);
@@ -136,10 +137,10 @@ void frame(int width, int height)
         rhi_push_const_mat4("viewMat", &viewMat[0][0]);
         rhi_push_const_mat4("meshMat", &meshMat[0][0]);
 
-        static auto texture0 = gl_load_texture("../../Earth.png");
+        static auto texture0 = rhi_load_texture_file("../../Earth.png");
         rhi_bind_texture(texture0, {.binding = 0,});
 
-        static auto mesh = gl_create_mesh_sphere(2, 64, 32);
+        static auto mesh = rhi_create_mesh_sphere(2, 64, 32);
         rhi_draw_mesh(mesh);
 
         rhi_end_render(pass);

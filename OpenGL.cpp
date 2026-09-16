@@ -271,7 +271,7 @@ gl_texture_t gl_create_texture_color(uint32_t width, uint32_t height, const void
         .format = GL_RGBA,
         .internal_format = GL_RGBA,
         .type = GL_UNSIGNED_BYTE,
-        .min_filter = GL_LINEAR_MIPMAP_LINEAR,
+        .min_filter = GL_LINEAR,
         .mag_filter = GL_LINEAR,
         .wrap_s = GL_REPEAT,
         .wrap_t = GL_REPEAT,
@@ -979,11 +979,6 @@ void gl_begin_render(gl_pass_t& pass)
     else
         glDisable(GL_CULL_FACE);
 
-    if (pass.front_face)
-        glEnable(GL_FRONT_FACE);
-    else
-        glDisable(GL_FRONT_FACE);
-
     glPolygonMode(GL_FRONT_AND_BACK, pass.fill_mode);
 }
 
@@ -1220,7 +1215,7 @@ void gl_draw_screen(int width, int height, gl_texture_t texture, gl_color_t clea
             final = texture(texture0, uv);
         }
     )";
-    auto module = gl_create_module_render(VS, FS);
+    static auto module = gl_create_module_render(VS, FS);
     gl_pass_t pass = {.module = module, .screen = {.color = { .clear = true, .value = clear, }}};
     gl_begin_render(pass);
     gl_set_viewport(0, 0, width, height);

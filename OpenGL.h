@@ -44,7 +44,7 @@ using gl_meshlet_t = rhi_meshlet_t;
 void gl_load_library();
 
 /*
-* @brief Create a buffer object with the given size, usage hint, and optional initial data.
+ * @brief Create a buffer object with the given size, usage hint, and optional initial data.
  * @param info Buffer creation data.
  * @return The created buffer.
  */
