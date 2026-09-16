@@ -13,6 +13,7 @@
 
 struct OpenGL
 {
+    GLenum currentPassType = GL_NONE;
     gl_pass_t* currentPipeline = nullptr;
 } static thread_local opengl;
 
@@ -730,6 +731,7 @@ void gl_begin_compute(gl_pass_t& pass)
         abort();
     }
     opengl.currentPipeline = &pass;
+    opengl.currentPassType = GL_MODULE_COMPUTE;
 
     glUseProgram(pass.module.handle);
 }
@@ -759,6 +761,7 @@ void gl_end_compute(gl_pass_t& pass)
         abort();
     }
     opengl.currentPipeline = nullptr;
+    opengl.currentPassType = GL_NONE;
 
     glUseProgram(0);
 }
@@ -788,6 +791,7 @@ void gl_begin_render(gl_pass_t& pass)
         abort();
     }
     opengl.currentPipeline = &pass;
+    opengl.currentPassType = GL_MODULE_RENDER;
 
     pass.handle = 0;
     glUseProgram(pass.module.handle);
@@ -1033,6 +1037,7 @@ void gl_end_render(gl_pass_t& pass)
         abort();
     }
     opengl.currentPipeline = nullptr;
+    opengl.currentPassType = GL_NONE;
 
     bool offscreen = pass.depth.texture.handle;
     for (size_t i = 0; i < std::size(pass.colors) && !offscreen; ++i)
@@ -1377,6 +1382,7 @@ void gl_begin_transfer(rhi_pass_t& pass)
         abort();
     }
     opengl.currentPipeline = &pass;
+    opengl.currentPassType = GL_MODULE_TRANSFER;
 }
 
 void gl_end_transfer(rhi_pass_t& pass)
@@ -1394,6 +1400,7 @@ void gl_end_transfer(rhi_pass_t& pass)
         abort();
     }
     opengl.currentPipeline = nullptr;
+    opengl.currentPassType = GL_NONE;
 
     // 保证传输结果对后续的着色器读取、顶点拉取和纹理采样可见
     glMemoryBarrier(GL_BUFFER_UPDATE_BARRIER_BIT | GL_TEXTURE_UPDATE_BARRIER_BIT | GL_PIXEL_BUFFER_BARRIER_BIT |
@@ -1404,6 +1411,11 @@ void gl_end_transfer(rhi_pass_t& pass)
 void gl_copy_buffer(rhi_buffer_copy_t source, rhi_buffer_copy_t destination, size_t copySize)
 {
     if (opengl.currentPipeline == nullptr)
+    {
+        fprintf(stderr, "Pipeline not begin\n");
+        abort();
+    }
+    if (opengl.currentPassType != GL_MODULE_TRANSFER)
     {
         fprintf(stderr, "Pipeline not begin\n");
         abort();
@@ -1426,6 +1438,11 @@ void gl_copy_buffer_data(rhi_buffer_data_t source, rhi_buffer_copy_t destination
         fprintf(stderr, "Pipeline not begin\n");
         abort();
     }
+    if (opengl.currentPassType != GL_MODULE_TRANSFER)
+    {
+        fprintf(stderr, "Pipeline not begin\n");
+        abort();
+    }
     if (source.data == nullptr || destination.buffer.handle == 0 || copySize == 0)
         return;
     if (source.offset + copySize > source.size)
@@ -1440,6 +1457,11 @@ void gl_copy_buffer_data(rhi_buffer_data_t source, rhi_buffer_copy_t destination
 void gl_copy_buffer_texture(rhi_texture_copy_t source, rhi_buffer_texel_t destination, rhi_vec3_t copySize)
 {
     if (opengl.currentPipeline == nullptr)
+    {
+        fprintf(stderr, "Pipeline not begin\n");
+        abort();
+    }
+    if (opengl.currentPassType != GL_MODULE_TRANSFER)
     {
         fprintf(stderr, "Pipeline not begin\n");
         abort();
@@ -1479,6 +1501,11 @@ void gl_copy_texture(rhi_texture_copy_t source, rhi_texture_copy_t destination, 
         fprintf(stderr, "Pipeline not begin\n");
         abort();
     }
+    if (opengl.currentPassType != GL_MODULE_TRANSFER)
+    {
+        fprintf(stderr, "Pipeline not begin\n");
+        abort();
+    }
     if (copySize.x == 0 || copySize.y == 0)
         return;
     if (!gl_check_texture_region(source, copySize) || !gl_check_texture_region(destination, copySize))
@@ -1497,6 +1524,11 @@ void gl_copy_texture(rhi_texture_copy_t source, rhi_texture_copy_t destination, 
 void gl_copy_texture_data(rhi_texture_data_t source, rhi_texture_copy_t destination, rhi_vec3_t copySize)
 {
     if (opengl.currentPipeline == nullptr)
+    {
+        fprintf(stderr, "Pipeline not begin\n");
+        abort();
+    }
+    if (opengl.currentPassType != GL_MODULE_TRANSFER)
     {
         fprintf(stderr, "Pipeline not begin\n");
         abort();
@@ -1548,6 +1580,11 @@ void gl_copy_texture_data(rhi_texture_data_t source, rhi_texture_copy_t destinat
 void gl_copy_texture_buffer(rhi_buffer_texel_t source, rhi_texture_copy_t destination, rhi_vec3_t copySize)
 {
     if (opengl.currentPipeline == nullptr)
+    {
+        fprintf(stderr, "Pipeline not begin\n");
+        abort();
+    }
+    if (opengl.currentPassType != GL_MODULE_TRANSFER)
     {
         fprintf(stderr, "Pipeline not begin\n");
         abort();
