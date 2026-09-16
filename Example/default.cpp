@@ -125,11 +125,16 @@ void frame(int width, int height)
     auto viewMat = glm::lookAt(glm::vec3(0, 2, 5), glm::vec3(0, 0, 0), glm::vec3(0, 1, 0));
     auto meshMat = glm::rotate(glm::mat4(1.0f), (float)SDL_GetTicks() / 2000.0f, glm::vec3(0, 1, 0));
 
-    static auto module = rhi_create_module_render(VS, FS);
+    static auto module = rhi_create_module_render(VS, FS,
+        {
+            .depth = {.write = true, .func = GL_LEQUAL,},
+            .layout = {{.binding = 0, .type = GL_BINDING_TEXTURE, }},
+            .vertex = {rhi_vertex_layout, rhi_normal_layout, rhi_uv_layout,},
+        });
     static auto pass_color = rhi_create_texture_color(width, height, nullptr);
     static auto pass_depth = rhi_create_texture_depth(width, height, nullptr);
     {
-        rhi_pass_t pass = {.module = module, .colors = {{.texture = pass_color, .clear = true,}}, .depth = {.texture = pass_depth, .clear = true, .write = true, .func = GL_LEQUAL,},};
+        rhi_pass_t pass = {.module = module, .colors = {{.texture = pass_color, .clear = true,}}, .depth = {.texture = pass_depth, .clear = true,},};
         rhi_begin_render(pass);
 
         rhi_push_const_mat4("projMat", &projMat[0][0]);

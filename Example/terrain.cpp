@@ -275,11 +275,11 @@ void frame(int width, int height)
     auto viewMat = glm::lookAt(glm::vec3(0, 2, 5), glm::vec3(0, 0, 0), glm::vec3(0, 1, 0));
     auto meshMat = glm::rotate(glm::mat4(1.0f), (float)SDL_GetTicks() / 2000.0f, glm::vec3(0, 1, 0));
 
-    static auto module = gl_create_module_meshlet(nullptr, MS, FS);
+    static auto module = gl_create_module_meshlet(nullptr, MS, FS, {.depth = {.write = true, .func = GL_LEQUAL,}, .fill_mode = GL_FILL,});
     static auto pass_color = gl_create_texture_color(width, height, nullptr);
     static auto pass_depth = gl_create_texture_depth(width, height, nullptr);
     {
-        gl_pass_t pass = {.module = module, .colors = {{.texture = pass_color, .clear = true,}}, .depth = {.texture = pass_depth, .clear = true, .write = true, .func = GL_LEQUAL,}, .fill_mode = GL_FILL,};
+        gl_pass_t pass = {.module = module, .colors = {{.texture = pass_color, .clear = true,}}, .depth = {.texture = pass_depth, .clear = true,}, };
         gl_begin_render(pass);
 
         gl_push_const_float("height", 2.5f);

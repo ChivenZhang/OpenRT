@@ -9,6 +9,7 @@
 * Created by chivenzhang@gmail.com.
 *
 * =================================================*/
+#define OPENGL_IMPLEMENTATION
 #ifdef OPENGL_IMPLEMENTATION
 #include "OpenRHI.h"
 #include <GL/glew.h>
@@ -42,6 +43,9 @@ using gl_meshlet_t = rhi_meshlet_t;
 
 /* @brief Load the OpenGL function pointers and initialize the extension library. */
 void gl_load_library();
+
+/* @brief Unload the OpenGL function pointers and destroy the extension library. */
+void gl_unload_library();
 
 /*
 * @brief Create a buffer object with the given size, usage hint, and optional initial data.
@@ -159,30 +163,39 @@ void gl_bind_sampler(gl_sampler_t sampler, gl_sampler_bind_t bind = {});
 /*
  * @brief Create a compute module from a compute shader source string.
  * @param comp_src Compute shader source code.
+ * @param info Pipeline state.
  * @return The created module.
  */
-gl_module_t gl_create_module_compute(const char* comp_src);
+gl_module_t gl_create_module_compute(const char* comp_src, rhi_compute_info_t const& info);
 /*
  * @brief Create a render module from vertex and fragment shader source strings.
  * @param vert_src Vertex shader source code, or nullptr.
  * @param frag_src Fragment shader source code, or nullptr.
+ * @param info Pipeline state.
  * @return The created module.
  */
-gl_module_t gl_create_module_render(const char* vert_src, const char* frag_src);
+gl_module_t gl_create_module_render(const char* vert_src, const char* frag_src, rhi_render_info_t const& info);
 /*
  * @brief Create a meshlet module from task, mesh, and fragment shader source strings.
  * @param task_src Task shader source code, or nullptr.
  * @param mesh_src Mesh shader source code.
  * @param frag_src Fragment shader source code.
+ * @param info Pipeline state.
  * @return The created module.
  */
-gl_module_t gl_create_module_meshlet(const char* task_src, const char* mesh_src, const char* frag_src);
+gl_module_t gl_create_module_meshlet(const char* task_src, const char* mesh_src, const char* frag_src, rhi_render_info_t const& info);
 /*
  * @brief Delete a shader module (program) and reset its handle to zero.
  * @param module The module to delete.
  */
 void gl_destroy_module(gl_module_t& module);
 
+/*
+ * @brief Set constant buffer of the currently bound program
+ * @param buffer Constant buffer data
+ * @param length Constant buffer size
+ */
+void gl_push_constant(uint8_t const* buffer, size_t length);
 /*
  * @brief Set an integer uniform of the currently bound program.
  * @param name  Uniform name.

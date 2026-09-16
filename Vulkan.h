@@ -9,6 +9,7 @@
 * Created by chivenzhang@gmail.com.
 *
 * =================================================*/
+#define VULKAN_IMPLEMENTATION
 #ifdef VULKAN_IMPLEMENTATION
 #include "OpenRHI.h"
 #include <vulkan/vulkan.h>
@@ -41,7 +42,10 @@ using vk_meshlet_t = rhi_meshlet_t;
 // ====================================================================
 
 /* @brief Load the Vulkan function pointers and initialize the extension library. */
-void vk_load_library(VkDevice device);
+void vk_load_library(VkInstance instance, VkDevice device, uint32_t family);
+
+/* @brief Unload the Vulkan function pointers and destroy the extension library. */
+void vk_unload_library();
 
 /*
 * @brief Create a buffer object with the given size, usage hint, and optional initial data.
@@ -159,30 +163,38 @@ void vk_bind_sampler(vk_sampler_t sampler, vk_sampler_bind_t bind = {});
 /*
  * @brief Create a compute module from a compute shader source string.
  * @param comp_src Compute shader source code.
+ * @param info Pipeline state.
  * @return The created module.
  */
-vk_module_t vk_create_module_compute(const char* comp_src);
+vk_module_t vk_create_module_compute(const char* comp_src, rhi_compute_info_t const& info);
 /*
  * @brief Create a render module from vertex and fragment shader source strings.
  * @param vert_src Vertex shader source code, or nullptr.
  * @param frag_src Fragment shader source code, or nullptr.
+ * @param info Pipeline state.
  * @return The created module.
  */
-vk_module_t vk_create_module_render(const char* vert_src, const char* frag_src);
+vk_module_t vk_create_module_render(const char* vert_src, const char* frag_src, rhi_render_info_t const& info);
 /*
  * @brief Create a meshlet module from task, mesh, and fragment shader source strings.
  * @param task_src Task shader source code, or nullptr.
  * @param mesh_src Mesh shader source code.
  * @param frag_src Fragment shader source code.
+ * @param info Pipeline state.
  * @return The created module.
  */
-vk_module_t vk_create_module_meshlet(const char* task_src, const char* mesh_src, const char* frag_src);
+vk_module_t vk_create_module_meshlet(const char* task_src, const char* mesh_src, const char* frag_src, rhi_render_info_t const& info);
 /*
  * @brief Delete a shader module (program) and reset its handle to zero.
  * @param module The module to delete.
  */
 void vk_destroy_module(vk_module_t& module);
-
+/*
+ * @brief Set constant buffer of the currently bound program
+ * @param buffer Constant buffer data
+ * @param length Constant buffer size
+ */
+void vk_push_constant(uint8_t const* buffer, size_t length);
 /*
  * @brief Set an integer uniform of the currently bound program.
  * @param name  Uniform name.

@@ -33,12 +33,13 @@ void (*rhi_destroy_sampler)(rhi_sampler_t& sampler) = nullptr;
 void (*rhi_bind_sampler)(rhi_sampler_t sampler, rhi_sampler_bind_t bind) = nullptr;
 
 // Module 相关
-rhi_module_t (*rhi_create_module_compute)(const char* comp_src) = nullptr;
-rhi_module_t (*rhi_create_module_render)(const char* vert_src, const char* frag_src) = nullptr;
-rhi_module_t (*rhi_create_module_meshlet)(const char* task_src, const char* mesh_src, const char* frag_src) = nullptr;
+rhi_module_t (*rhi_create_module_compute)(const char* comp_src, rhi_compute_info_t const& info) = nullptr;
+rhi_module_t (*rhi_create_module_render)(const char* vert_src, const char* frag_src, rhi_render_info_t const& info) = nullptr;
+rhi_module_t (*rhi_create_module_meshlet)(const char* task_src, const char* mesh_src, const char* frag_src, rhi_render_info_t const& info) = nullptr;
 void (*rhi_destroy_module)(rhi_module_t& module) = nullptr;
 
 // Uniform 相关
+void (*rhi_push_constant)(uint8_t const* buffer, size_t length) = nullptr;
 void (*rhi_push_const_int)(const char* name, int32_t value) = nullptr;
 void (*rhi_push_const_uint)(const char* name, uint32_t value) = nullptr;
 void (*rhi_push_const_float)(const char* name, float value) = nullptr;

@@ -8,8 +8,13 @@
 * Created by chivenzhang@gmail.com.
 *
 * =================================================*/
-#ifdef OPENGL_IMPLEMENTATION
 #include "OpenGL.h"
+#ifdef OPENGL_IMPLEMENTATION
+
+struct OpenGL
+{
+    gl_pass_t* currentPipeline = nullptr;
+} static thread_local opengl;
 
 void gl_load_library()
 {
@@ -63,6 +68,7 @@ void gl_load_library()
     rhi_destroy_module = gl_destroy_module;
 
     // Uniform 相关
+    rhi_push_constant = gl_push_constant;
     rhi_push_const_int = gl_push_const_int;
     rhi_push_const_uint = gl_push_const_uint;
     rhi_push_const_float = gl_push_const_float;
@@ -99,9 +105,12 @@ void gl_load_library()
     rhi_draw_screen = gl_draw_screen;
 }
 
-// ====================================================================
+void gl_unload_library()
+{
+    opengl.currentPipeline = nullptr;
+}
 
-static thread_local gl_pass_t* GL_CURRENT_PIPELINE = nullptr;
+// ====================================================================
 
 gl_buffer_t gl_create_buffer(gl_buffer_desc_t const& info)
 {
@@ -124,7 +133,7 @@ void gl_destroy_buffer(gl_buffer_t& buffer)
 
 void gl_bind_buffer(gl_buffer_t buffer, gl_buffer_bind_t bind)
 {
-    if (GL_CURRENT_PIPELINE == nullptr)
+    if (opengl.currentPipeline == nullptr)
     {
         fprintf(stderr, "Pipeline not begin");
         abort();
@@ -327,7 +336,7 @@ void gl_destroy_texture(gl_texture_t& texture)
 
 void gl_bind_texture(gl_texture_t texture, gl_texture_bind_t bind)
 {
-    if (GL_CURRENT_PIPELINE == nullptr)
+    if (opengl.currentPipeline == nullptr)
     {
         fprintf(stderr, "Pipeline not begin");
         abort();
@@ -344,7 +353,7 @@ void gl_bind_texture(gl_texture_t texture, gl_texture_bind_t bind)
 
 void gl_bind_texture_storage(gl_texture_t texture, gl_texture_storage_bind_t bind)
 {
-    if (GL_CURRENT_PIPELINE == nullptr)
+    if (opengl.currentPipeline == nullptr)
     {
         fprintf(stderr, "Pipeline not begin");
         abort();
@@ -408,7 +417,7 @@ void gl_destroy_sampler(gl_sampler_t& sampler)
 
 void gl_bind_sampler(gl_sampler_t sampler, gl_sampler_bind_t bind)
 {
-    if (GL_CURRENT_PIPELINE == nullptr)
+    if (opengl.currentPipeline == nullptr)
     {
         fprintf(stderr, "Pipeline not begin");
         abort();
@@ -419,7 +428,7 @@ void gl_bind_sampler(gl_sampler_t sampler, gl_sampler_bind_t bind)
 
 // ====================================================================
 
-gl_module_t gl_create_module_compute(const char* comp_src)
+gl_module_t gl_create_module_compute(const char* comp_src, rhi_compute_info_t const& info)
 {
     gl_module_t result = {};
 
@@ -453,10 +462,11 @@ gl_module_t gl_create_module_compute(const char* comp_src)
     glDeleteShader(cs);
 
     result.target = GL_COMPUTE_SHADER;
+    result.compute = info;
     return result;
 }
 
-gl_module_t gl_create_module_render(const char* vert_src, const char* frag_src)
+gl_module_t gl_create_module_render(const char* vert_src, const char* frag_src, rhi_render_info_t const& info)
 {
     gl_module_t result = {};
 
@@ -518,10 +528,11 @@ gl_module_t gl_create_module_render(const char* vert_src, const char* frag_src)
     glDeleteShader(fs);
 
     result.target = GL_VERTEX_SHADER;
+    result.render = info;
     return result;
 }
 
-gl_module_t gl_create_module_meshlet(const char* task_src, const char* mesh_src, const char* frag_src)
+gl_module_t gl_create_module_meshlet(const char* task_src, const char* mesh_src, const char* frag_src, rhi_render_info_t const& info)
 {
     gl_module_t result = {};
 
@@ -593,6 +604,7 @@ gl_module_t gl_create_module_meshlet(const char* task_src, const char* mesh_src,
     glDeleteShader(fs);
 
     result.target = GL_MESH_SHADER_NV;
+    result.render = info;
     return result;
 }
 
@@ -600,6 +612,10 @@ void gl_destroy_module(gl_module_t& module)
 {
     glDeleteProgram(module.handle);
     module.handle = 0;
+}
+
+void gl_push_constant(uint8_t const* buffer, size_t length)
+{
 }
 
 void gl_push_const_int(const char* name, int32_t value)
@@ -703,7 +719,7 @@ void gl_begin_compute(gl_pass_t& pass)
         fprintf(stderr, "Pipeline module is not compute shader\n");
         abort();
     }
-    GL_CURRENT_PIPELINE = &pass;
+    opengl.currentPipeline = &pass;
 
     glUseProgram(pass.module.handle);
 }
@@ -727,12 +743,12 @@ void gl_end_compute(gl_pass_t& pass)
         fprintf(stderr, "Pipeline module is not compute shader\n");
         abort();
     }
-    if (GL_CURRENT_PIPELINE != &pass)
+    if (opengl.currentPipeline != &pass)
     {
         fprintf(stderr, "Pipeline not end\n");
         abort();
     }
-    GL_CURRENT_PIPELINE = nullptr;
+    opengl.currentPipeline = nullptr;
 
     glUseProgram(0);
 }
@@ -761,7 +777,7 @@ void gl_begin_render(gl_pass_t& pass)
         fprintf(stderr, "Pipeline module is not render shader\n");
         abort();
     }
-    GL_CURRENT_PIPELINE = &pass;
+    opengl.currentPipeline = &pass;
 
     pass.handle = 0;
     glUseProgram(pass.module.handle);
@@ -833,12 +849,12 @@ void gl_begin_render(gl_pass_t& pass)
                 if (pass.colors[i].clear)
                     glClearBufferfv(GL_COLOR, (int32_t)i, &pass.colors[i].value.r);
 
-                if (pass.colors[i].color.func != GL_ADD || pass.colors[i].color.src != GL_ONE ||
-                    pass.colors[i].color.dst != GL_ZERO || pass.colors[i].alpha.func != GL_ADD ||
-                    pass.colors[i].alpha.src != GL_ONE || pass.colors[i].alpha.dst != GL_ZERO)
+                if (pass.module.render.colors[i].color.func != GL_ADD || pass.module.render.colors[i].color.src != GL_ONE ||
+                    pass.module.render.colors[i].color.dst != GL_ZERO || pass.module.render.colors[i].alpha.func != GL_ADD ||
+                    pass.module.render.colors[i].alpha.src != GL_ONE || pass.module.render.colors[i].alpha.dst != GL_ZERO)
                     glEnable(GL_BLEND);
-                glBlendEquationSeparatei(i, pass.colors[i].color.func, pass.colors[i].alpha.func);
-                glBlendFuncSeparatei(i, pass.colors[i].color.src, pass.colors[i].color.dst, pass.colors[i].alpha.src, pass.colors[i].alpha.dst);
+                glBlendEquationSeparatei(i, pass.module.render.colors[i].color.func, pass.module.render.colors[i].alpha.func);
+                glBlendFuncSeparatei(i, pass.module.render.colors[i].color.src, pass.module.render.colors[i].color.dst, pass.module.render.colors[i].alpha.src, pass.module.render.colors[i].alpha.dst);
             }
         }
 
@@ -857,7 +873,7 @@ void gl_begin_render(gl_pass_t& pass)
 
         // Depth State
 
-        if (pass.depth.func == GL_ALWAYS && pass.depth.write == false)
+        if (pass.module.render.depth.func == GL_ALWAYS && pass.module.render.depth.write == false)
         {
             glDisable(GL_DEPTH_TEST);
             glDepthMask(GL_TRUE);
@@ -865,26 +881,26 @@ void gl_begin_render(gl_pass_t& pass)
         else
         {
             glEnable(GL_DEPTH_TEST);
-            glDepthMask(pass.depth.write);
+            glDepthMask(pass.module.render.depth.write);
         }
-        glDepthFunc(pass.depth.func);
+        glDepthFunc(pass.module.render.depth.func);
 
-        if (pass.depth.bias == 0 && pass.depth.biasSlope == 0)
+        if (pass.module.render.depth.bias == 0 && pass.module.render.depth.biasSlope == 0)
         {
             glDisable(GL_POLYGON_OFFSET_FILL);
         }
         else
         {
             glEnable(GL_POLYGON_OFFSET_FILL);
-            glPolygonOffsetClamp(pass.depth.biasSlope, pass.depth.bias, pass.depth.biasClamp);
+            glPolygonOffsetClamp(pass.module.render.depth.biasSlope, pass.module.render.depth.bias, pass.module.render.depth.biasClamp);
         }
 
         // Stencil State
 
-        if (pass.stencil.back.func != GL_ALWAYS || pass.stencil.back.sfail != GL_KEEP ||
-            pass.stencil.back.zfail != GL_KEEP || pass.stencil.back.zpass != GL_KEEP ||
-            pass.stencil.front.func != GL_ALWAYS || pass.stencil.front.sfail != GL_KEEP ||
-            pass.stencil.front.zfail != GL_KEEP || pass.stencil.front.zpass != GL_KEEP)
+        if (pass.module.render.stencil.back.func != GL_ALWAYS || pass.module.render.stencil.back.sfail != GL_KEEP ||
+            pass.module.render.stencil.back.zfail != GL_KEEP || pass.module.render.stencil.back.zpass != GL_KEEP ||
+            pass.module.render.stencil.front.func != GL_ALWAYS || pass.module.render.stencil.front.sfail != GL_KEEP ||
+            pass.module.render.stencil.front.zfail != GL_KEEP || pass.module.render.stencil.front.zpass != GL_KEEP)
         {
             glEnable(GL_STENCIL_TEST);
         }
@@ -892,11 +908,11 @@ void gl_begin_render(gl_pass_t& pass)
         {
             glDisable(GL_STENCIL_TEST);
         }
-        glStencilMask(pass.stencil.write);
-        glStencilFuncSeparate(GL_BACK, pass.stencil.back.func, pass.stencil.refer, pass.stencil.read);
-        glStencilFuncSeparate(GL_FRONT, pass.stencil.front.func, pass.stencil.refer, pass.stencil.read);
-        glStencilOpSeparate(GL_BACK, pass.stencil.back.sfail, pass.stencil.back.zfail, pass.stencil.back.zpass);
-        glStencilOpSeparate(GL_FRONT, pass.stencil.front.sfail, pass.stencil.front.zfail, pass.stencil.front.zpass);
+        glStencilMask(pass.module.render.stencil.write);
+        glStencilFuncSeparate(GL_BACK, pass.module.render.stencil.back.func, pass.stencil.refer, pass.module.render.stencil.read);
+        glStencilFuncSeparate(GL_FRONT, pass.module.render.stencil.front.func, pass.stencil.refer, pass.module.render.stencil.read);
+        glStencilOpSeparate(GL_BACK, pass.module.render.stencil.back.sfail, pass.module.render.stencil.back.zfail, pass.module.render.stencil.back.zpass);
+        glStencilOpSeparate(GL_FRONT, pass.module.render.stencil.front.sfail, pass.module.render.stencil.front.zfail, pass.module.render.stencil.front.zpass);
     }
     else
     {
@@ -971,20 +987,20 @@ void gl_begin_render(gl_pass_t& pass)
 
     // Primitive State
 
-    glFrontFace(pass.front_face);
-    if (pass.cull_mode)
-        glCullFace(pass.cull_mode);
-    if (pass.cull_mode)
+    glFrontFace(pass.module.render.front_face);
+    if (pass.module.render.cull_mode)
+        glCullFace(pass.module.render.cull_mode);
+    if (pass.module.render.cull_mode)
         glEnable(GL_CULL_FACE);
     else
         glDisable(GL_CULL_FACE);
 
-    if (pass.front_face)
+    if (pass.module.render.front_face)
         glEnable(GL_FRONT_FACE);
     else
         glDisable(GL_FRONT_FACE);
 
-    glPolygonMode(GL_FRONT_AND_BACK, pass.fill_mode);
+    glPolygonMode(GL_FRONT_AND_BACK, pass.module.render.fill_mode);
 }
 
 void gl_end_render(gl_pass_t& pass)
@@ -1006,12 +1022,12 @@ void gl_end_render(gl_pass_t& pass)
         fprintf(stderr, "Pipeline module is not render shader\n");
         abort();
     }
-    if (GL_CURRENT_PIPELINE != &pass)
+    if (opengl.currentPipeline != &pass)
     {
         fprintf(stderr, "Pipeline not end\n");
         abort();
     }
-    GL_CURRENT_PIPELINE = nullptr;
+    opengl.currentPipeline = nullptr;
 
     bool offscreen = pass.depth.texture.handle;
     for (size_t i = 0; i < std::size(pass.colors) && !offscreen; ++i)
@@ -1195,9 +1211,9 @@ void gl_draw_screen(int width, int height, gl_texture_t texture, gl_color_t clea
         layout(location = 0) in vec3 in_vertex;
         layout(location = 1) in vec3 in_normal;
         layout(location = 2) in vec2 in_uv;
-        out vec3 vertex;
-        out vec3 normal;
-        out vec2 uv;
+        layout(location = 0) out vec3 vertex;
+        layout(location = 1) out vec3 normal;
+        layout(location = 2) out vec2 uv;
 
         void main()
         {
@@ -1209,10 +1225,10 @@ void gl_draw_screen(int width, int height, gl_texture_t texture, gl_color_t clea
     )";
     constexpr auto FS = R"(
         #version 460
-        in vec3 vertex;
-        in vec3 normal;
-        in vec2 uv;
-        out vec4 final;
+        layout(location = 0) in vec3 vertex;
+        layout(location = 1) in vec3 normal;
+        layout(location = 2) in vec2 uv;
+        layout(location = 0) out vec4 final;
         layout(binding = 0) uniform sampler2D texture0;
 
         void main()
@@ -1220,7 +1236,7 @@ void gl_draw_screen(int width, int height, gl_texture_t texture, gl_color_t clea
             final = texture(texture0, uv);
         }
     )";
-    auto module = gl_create_module_render(VS, FS);
+    auto module = gl_create_module_render(VS, FS, {.vertex = {rhi_vertex_layout, rhi_normal_layout, rhi_uv_layout,},});
     gl_pass_t pass = {.module = module, .screen = {.color = { .clear = true, .value = clear, }}};
     gl_begin_render(pass);
     gl_set_viewport(0, 0, width, height);

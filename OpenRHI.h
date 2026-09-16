@@ -12,6 +12,9 @@
 #include <GL/glew.h>
 #include <iostream>
 
+#define GL_MAX_COLOR_TEXTURE_NUM 2
+#define GL_MAX_VERTEX_BUFFER_NUM 5
+#define GL_MAX_BINDING_HANDLE_NUM 16
 #define GL_PI 3.14159265358979323846    // pi
 #define GL_PI_2 1.57079632679489661923  // pi/2
 #define GL_PI_4 0.785398163397448309616 // pi/4
@@ -113,16 +116,89 @@ struct rhi_sampler_bind_t
     uint32_t binding = 0;
 };
 
+struct rhi_color_t
+{
+    float r = 0, g = 0, b = 0, a = 0;
+};
+
+struct rhi_vertex_t
+{
+    uint32_t location = 0;
+    GLenum type = 0;
+    GLenum count = 0;
+    bool instance = false;
+};
+inline rhi_vertex_t rhi_vertex_layout{.location = 0, .type = GL_FLOAT, .count = 3,};
+inline rhi_vertex_t rhi_normal_layout{.location = 1, .type = GL_FLOAT, .count = 3,};
+inline rhi_vertex_t rhi_uv_layout{.location = 2, .type = GL_FLOAT, .count = 2,};
+
+#define GL_BINDING_BUFFER 1
+#define GL_BINDING_TEXTURE 2
+#define GL_BINDING_STORAGE_TEXTURE 3
+#define GL_BINDING_SAMPLER 4
+
+struct rhi_layout_t
+{
+    uint32_t binding = 0;
+    GLenum type = GL_NONE;  // GL_BINDING_BUFFER / GL_BINDING_TEXTURE / GL_BINDING_STORAGE_TEXTURE / GL_BINDING_SAMPLER
+};
+
+struct rhi_render_info_t
+{
+    struct
+    {
+        struct
+        {
+            GLenum func = GL_FUNC_ADD; // GL_FUNC_ADD / GL_FUNC_SUBTRACT / GL_FUNC_REVERSE_SUBTRACT / GL_MIN / GL_MAX
+            GLenum src = GL_ONE; // GL_ZERO / GL_ONE / GL_SRC_COLOR / GL_ONE_MINUS_SRC_COLOR / GL_DST_COLOR / GL_ONE_MINUS_DST_COLOR / GL_SRC_ALPHA / GL_ONE_MINUS_SRC_ALPHA / GL_DST_ALPHA / GL_ONE_MINUS_DST_ALPHA / GL_CONSTANT_COLOR / GL_ONE_MINUS_CONSTANT_COLOR / GL_CONSTANT_ALPHA / GL_ONE_MINUS_CONSTANT_ALPHA / GL_SRC_ALPHA_SATURATE
+            GLenum dst = GL_ZERO; // GL_ZERO / GL_ONE / GL_SRC_COLOR / GL_ONE_MINUS_SRC_COLOR / GL_DST_COLOR / GL_ONE_MINUS_DST_COLOR / GL_SRC_ALPHA / GL_ONE_MINUS_SRC_ALPHA / GL_DST_ALPHA / GL_ONE_MINUS_DST_ALPHA / GL_CONSTANT_COLOR / GL_ONE_MINUS_CONSTANT_COLOR / GL_CONSTANT_ALPHA / GL_ONE_MINUS_CONSTANT_ALPHA / GL_SRC_ALPHA_SATURATE
+        } color, alpha;
+    } colors[GL_MAX_COLOR_TEXTURE_NUM];
+    struct
+    {
+        bool write = false;
+        float bias = 0.0f;
+        float biasSlope = 0.0f;
+        float biasClamp = 0.0f;
+        GLenum func = GL_ALWAYS; // GL_NEVER / GL_LESS / GL_EQUAL / GL_LEQUAL / GL_GREATER / GL_NOTEQUAL / GL_GEQUAL / GL_ALWAYS
+    } depth;
+    struct
+    {
+        uint32_t read = 0xFFFFFFFF;
+        uint32_t write = 0xFFFFFFFF;
+        struct
+        {
+            GLenum func = GL_ALWAYS; // GL_NEVER / GL_LESS / GL_EQUAL / GL_LEQUAL / GL_GREATER / GL_NOTEQUAL / GL_GEQUAL / GL_ALWAYS
+            GLenum sfail = GL_KEEP; // GL_KEEP / GL_ZERO / GL_REPLACE / GL_INCR / GL_INCR_WRAP / GL_DECR / GL_DECR_WRAP / GL_INVERT
+            GLenum zfail = GL_KEEP; // GL_KEEP / GL_ZERO / GL_REPLACE / GL_INCR / GL_INCR_WRAP / GL_DECR / GL_DECR_WRAP / GL_INVERT
+            GLenum zpass = GL_KEEP; // GL_KEEP / GL_ZERO / GL_REPLACE / GL_INCR / GL_INCR_WRAP / GL_DECR / GL_DECR_WRAP / GL_INVERT
+        } back, front;
+    } stencil;
+
+    rhi_layout_t layout[GL_MAX_BINDING_HANDLE_NUM];
+
+    rhi_vertex_t vertex[GL_MAX_VERTEX_BUFFER_NUM];
+
+    GLenum cull_mode = GL_BACK; // GL_NONE / GL_FRONT / GL_BACK / GL_FRONT_AND_BACK
+    GLenum front_face = GL_CCW; // GL_CW / GL_CCW
+    GLenum fill_mode = GL_FILL; // GL_POINT / GL_LINE / GL_FILL
+    GLenum primitive = GL_TRIANGLES;
+};
+
+struct rhi_compute_info_t
+{
+};
+
 struct rhi_module_t
 {
     GLuint handle = 0;
     GLenum target = GL_NONE;
+    union
+    {
+        rhi_render_info_t render;
+        rhi_compute_info_t compute;
+    };
     void* native = nullptr;
-};
-
-struct rhi_color_t
-{
-    float r = 0, g = 0, b = 0, a = 0;
 };
 
 struct rhi_pass_t
@@ -137,38 +213,18 @@ struct rhi_pass_t
         rhi_texture_t texture;
         bool clear = false;
         rhi_color_t value;
-        struct
-        {
-            GLenum func = GL_ADD; // GL_ADD / GL_SUBTRACT / GL_REVERSE_SUBTRACT / GL_MIN / GL_MAX
-            GLenum src = GL_ONE; // GL_ZERO / GL_ONE / GL_SRC_COLOR / GL_ONE_MINUS_SRC_COLOR / GL_DST_COLOR / GL_ONE_MINUS_DST_COLOR / GL_SRC_ALPHA / GL_ONE_MINUS_SRC_ALPHA / GL_DST_ALPHA / GL_ONE_MINUS_DST_ALPHA / GL_CONSTANT_COLOR / GL_ONE_MINUS_CONSTANT_COLOR / GL_CONSTANT_ALPHA / GL_ONE_MINUS_CONSTANT_ALPHA / GL_SRC_ALPHA_SATURATE
-            GLenum dst = GL_ZERO; // GL_ZERO / GL_ONE / GL_SRC_COLOR / GL_ONE_MINUS_SRC_COLOR / GL_DST_COLOR / GL_ONE_MINUS_DST_COLOR / GL_SRC_ALPHA / GL_ONE_MINUS_SRC_ALPHA / GL_DST_ALPHA / GL_ONE_MINUS_DST_ALPHA / GL_CONSTANT_COLOR / GL_ONE_MINUS_CONSTANT_COLOR / GL_CONSTANT_ALPHA / GL_ONE_MINUS_CONSTANT_ALPHA / GL_SRC_ALPHA_SATURATE
-        } color, alpha;
     } colors[2];
     struct
     {
         rhi_texture_t texture;
         bool clear = false;
-        bool write = false;
         float value = 1.0f;
-        float bias = 0.0f;
-        float biasSlope = 0.0f;
-        float biasClamp = 0.0f;
-        GLenum func = GL_ALWAYS; // GL_NEVER / GL_LESS / GL_EQUAL / GL_LEQUAL / GL_GREATER / GL_NOTEQUAL / GL_GEQUAL / GL_ALWAYS
     } depth;
     struct
     {
         bool clear = false;
-        uint32_t read = 0xFFFFFFFF;
-        uint32_t write = 0xFFFFFFFF;
         int32_t value = -1;
         int32_t refer = 0;
-        struct
-        {
-            GLenum func = GL_ALWAYS; // GL_NEVER / GL_LESS / GL_EQUAL / GL_LEQUAL / GL_GREATER / GL_NOTEQUAL / GL_GEQUAL / GL_ALWAYS
-            GLenum sfail = GL_KEEP; // GL_KEEP / GL_ZERO / GL_REPLACE / GL_INCR / GL_INCR_WRAP / GL_DECR / GL_DECR_WRAP / GL_INVERT
-            GLenum zfail = GL_KEEP; // GL_KEEP / GL_ZERO / GL_REPLACE / GL_INCR / GL_INCR_WRAP / GL_DECR / GL_DECR_WRAP / GL_INVERT
-            GLenum zpass = GL_KEEP; // GL_KEEP / GL_ZERO / GL_REPLACE / GL_INCR / GL_INCR_WRAP / GL_DECR / GL_DECR_WRAP / GL_INVERT
-        } back, front;
     } stencil;
 
     // Screen Mode
@@ -181,7 +237,7 @@ struct rhi_pass_t
             rhi_color_t value;
             struct
             {
-                GLenum func = GL_ADD; // GL_ADD / GL_SUBTRACT / GL_REVERSE_SUBTRACT / GL_MIN / GL_MAX
+                GLenum func = GL_FUNC_ADD; // GL_FUNC_ADD / GL_FUNC_SUBTRACT / GL_FUNC_REVERSE_SUBTRACT / GL_MIN / GL_MAX
                 GLenum src = GL_ONE; // GL_ZERO / GL_ONE / GL_SRC_COLOR / GL_ONE_MINUS_SRC_COLOR / GL_DST_COLOR / GL_ONE_MINUS_DST_COLOR / GL_SRC_ALPHA / GL_ONE_MINUS_SRC_ALPHA / GL_DST_ALPHA / GL_ONE_MINUS_DST_ALPHA / GL_CONSTANT_COLOR / GL_ONE_MINUS_CONSTANT_COLOR / GL_CONSTANT_ALPHA / GL_ONE_MINUS_CONSTANT_ALPHA / GL_SRC_ALPHA_SATURATE
                 GLenum dst = GL_ZERO; // GL_ZERO / GL_ONE / GL_SRC_COLOR / GL_ONE_MINUS_SRC_COLOR / GL_DST_COLOR / GL_ONE_MINUS_DST_COLOR / GL_SRC_ALPHA / GL_ONE_MINUS_SRC_ALPHA / GL_DST_ALPHA / GL_ONE_MINUS_DST_ALPHA / GL_CONSTANT_COLOR / GL_ONE_MINUS_CONSTANT_COLOR / GL_CONSTANT_ALPHA / GL_ONE_MINUS_CONSTANT_ALPHA / GL_SRC_ALPHA_SATURATE
             } blend;
@@ -210,9 +266,6 @@ struct rhi_pass_t
         } stencil;
     } screen;
 
-    GLenum cull_mode = GL_BACK; // GL_NONE / GL_FRONT / GL_BACK / GL_FRONT_AND_BACK
-    GLenum front_face = GL_CCW; // GL_CW / GL_CCW
-    GLenum fill_mode = GL_FILL; // GL_POINT / GL_LINE / GL_FILL
     void* native = nullptr;
 };
 
@@ -268,11 +321,13 @@ extern rhi_sampler_t (*rhi_create_sampler)(rhi_sampler_desc_t const& info);
 extern void (*rhi_destroy_sampler)(rhi_sampler_t& sampler);
 extern void (*rhi_bind_sampler)(rhi_sampler_t sampler, rhi_sampler_bind_t bind);
 
-extern rhi_module_t (*rhi_create_module_compute)(const char* comp_src);
-extern rhi_module_t (*rhi_create_module_render)(const char* vert_src, const char* frag_src);
-extern rhi_module_t (*rhi_create_module_meshlet)(const char* task_src, const char* mesh_src, const char* frag_src);
+extern rhi_module_t (*rhi_create_module_compute)(const char* comp_src, rhi_compute_info_t const& info);
+extern rhi_module_t (*rhi_create_module_render)(const char* vert_src, const char* frag_src, rhi_render_info_t const& info);
+extern rhi_module_t (*rhi_create_module_meshlet)(const char* task_src, const char* mesh_src, const char* frag_src, rhi_render_info_t const& info);
 extern void (*rhi_destroy_module)(rhi_module_t& module);
 
+
+extern void (*rhi_push_constant)(uint8_t const* buffer, size_t length);
 extern void (*rhi_push_const_int)(const char* name, int32_t value);
 extern void (*rhi_push_const_uint)(const char* name, uint32_t value);
 extern void (*rhi_push_const_float)(const char* name, float value);
