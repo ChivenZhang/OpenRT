@@ -92,18 +92,16 @@ void gl_begin_transfer(rhi_pass_t& pass);
 void gl_end_transfer(rhi_pass_t& pass);
 void gl_copy_buffer(rhi_buffer_copy_t source, rhi_buffer_copy_t destination, size_t copySize);
 void gl_copy_buffer_data(rhi_buffer_data_t source, rhi_buffer_copy_t destination, size_t copySize);
-void gl_copy_buffer_texture(rhi_buffer_texel_t source, rhi_texture_copy_t destination, rhi_vec3_t copySize);
+void gl_copy_buffer_texture(rhi_texture_copy_t source, rhi_buffer_texel_t destination, rhi_vec3_t copySize);
 void gl_copy_texture(rhi_texture_copy_t source, rhi_texture_copy_t destination, rhi_vec3_t copySize);
 void gl_copy_texture_data(rhi_texture_data_t source, rhi_texture_copy_t destination, rhi_vec3_t copySize);
-void gl_copy_texture_buffer(rhi_texture_copy_t source, rhi_buffer_texel_t destination, rhi_vec3_t copySize);
+void gl_copy_texture_buffer(rhi_buffer_texel_t source, rhi_texture_copy_t destination, rhi_vec3_t copySize);
 
-gl_mesh_t gl_create_mesh(const float* vertices, const float* normals, const float* uvs, size_t vertex_count,
-                         const unsigned int* indices, size_t index_count);
+gl_mesh_t gl_create_mesh(const float* vertices, const float* normals, const float* uvs, size_t vertex_count, const unsigned int* indices, size_t index_count);
 void gl_destroy_mesh(gl_mesh_t& mesh);
 void gl_draw_mesh(gl_mesh_t const& mesh);
 
-gl_meshlet_t gl_create_meshlet(const float* vertices, const float* normals, const float* uvs, size_t vertex_count,
-                               const unsigned int* indices, size_t index_count);
+gl_meshlet_t gl_create_meshlet(const float* vertices, const float* normals, const float* uvs, size_t vertex_count, const unsigned int* indices, size_t index_count);
 void gl_destroy_meshlet(gl_meshlet_t& meshlet);
 void gl_draw_meshlet(gl_meshlet_t const& meshlet);
 

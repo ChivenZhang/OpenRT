@@ -137,22 +137,27 @@ void frame(int width, int height)
         static auto texture0 = []()
         {
             auto texture = rhi_load_texture_file("../../Earth.png");
-            std::vector<uint8_t> data (texture.width * texture.height * 3, 255);
 
             rhi_pass_t pass = {};
             rhi_begin_transfer(pass);
-            rhi_copy_texture_data(
-                {.data = data.data(), .size = data.size(), .bytesPerRow = texture.width * 3, .rowsPerImage = texture.height,},
+            auto buffer = rhi_create_buffer({.size = texture.width * texture.height * 3,});
+            rhi_copy_buffer_texture(
+                {.texture = texture, },
+                {.buffer = buffer, .bytesPerRow = texture.width * 3, .rowsPerImage = texture.height,},
+                {texture.width, texture.height, 1});
+            rhi_end_transfer(pass);
+
+            rhi_destroy_texture(texture);
+            texture = rhi_create_texture({.width = texture.width, .height = texture.height, .format = GL_RGB, .internal_format = GL_RGB8, });
+
+            rhi_begin_transfer(pass);
+            rhi_copy_texture_buffer(
+                {.buffer = buffer, .bytesPerRow = texture.width * 3, .rowsPerImage = texture.height,},
                 {.texture = texture,},
                 {texture.width, texture.height, 1});
             rhi_end_transfer(pass);
 
-            rhi_begin_transfer(pass);
-            auto texture2 = rhi_load_texture_file("../../Earth.png");
-            rhi_copy_texture({.texture = texture2,}, {.texture = texture,}, {texture.width, texture.height, 1});
-            rhi_destroy_texture(texture2);
-            rhi_end_transfer(pass);
-
+            rhi_destroy_buffer(buffer);
             return texture;
         }();
 

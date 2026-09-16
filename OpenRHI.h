@@ -57,8 +57,7 @@ struct rhi_texture_t
 
 struct rhi_texture_desc_t
 {
-    uint32_t width = 0;
-    uint32_t height = 0;
+    uint32_t width = 0, height = 0, depth = 1;
     GLenum target = GL_TEXTURE_2D;
     GLenum format = GL_RGBA;                // 数据格式
     GLenum internal_format = GL_RGBA8;      // 内部存储格式
@@ -398,10 +397,10 @@ extern void (*rhi_begin_transfer)(rhi_pass_t& pass);
 extern void (*rhi_end_transfer)(rhi_pass_t& pass);
 extern void (*rhi_copy_buffer)(rhi_buffer_copy_t source, rhi_buffer_copy_t destination, size_t copySize);
 extern void (*rhi_copy_buffer_data)(rhi_buffer_data_t source, rhi_buffer_copy_t destination, size_t copySize);
-extern void (*rhi_copy_buffer_texture)(rhi_buffer_texel_t source, rhi_texture_copy_t destination, rhi_vec3_t copySize);
+extern void (*rhi_copy_buffer_texture)(rhi_texture_copy_t source, rhi_buffer_texel_t destination, rhi_vec3_t copySize);
 extern void (*rhi_copy_texture)(rhi_texture_copy_t source, rhi_texture_copy_t destination, rhi_vec3_t copySize);
 extern void (*rhi_copy_texture_data)(rhi_texture_data_t source, rhi_texture_copy_t destination, rhi_vec3_t copySize);
-extern void (*rhi_copy_texture_buffer)(rhi_texture_copy_t source, rhi_buffer_texel_t destination, rhi_vec3_t copySize);
+extern void (*rhi_copy_texture_buffer)(rhi_buffer_texel_t source, rhi_texture_copy_t destination, rhi_vec3_t copySize);
 
 extern rhi_mesh_t (*rhi_create_mesh)(const float* vertices, const float* normals, const float* uvs, size_t vertex_count, const unsigned int* indices, size_t index_count);
 extern void (*rhi_destroy_mesh)(rhi_mesh_t& mesh);

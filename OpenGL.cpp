@@ -1315,13 +1315,6 @@ static void gl_transfer_format(gl_texture_t const& texture, GLenum aspect, bool 
     }
 }
 
-// 纹理指定 mip 层级的尺寸
-static void gl_mipmap_size(gl_texture_t const& texture, uint32_t level, uint32_t& width, uint32_t& height)
-{
-    width = std::max(1U, texture.width >> level);
-    height = std::max(1U, texture.height >> level);
-}
-
 // 校验纹理拷贝区域是否越界
 static bool gl_check_texture_region(rhi_texture_copy_t const& region, rhi_vec3_t copySize)
 {
@@ -1330,7 +1323,9 @@ static bool gl_check_texture_region(rhi_texture_copy_t const& region, rhi_vec3_t
     if (copySize.x == 0 || copySize.y == 0)
         return false;
     uint32_t width = 0, height = 0;
-    gl_mipmap_size(region.texture, region.mipLevel, width, height);
+    width = std::max(1U, region.texture.width >> region.mipLevel);
+    height = std::max(1U, region.texture.height >> region.mipLevel);
+
     if ((uint64_t)region.origin.x + copySize.x > width)
         return false;
     if ((uint64_t)region.origin.y + copySize.y > height)
@@ -1382,14 +1377,13 @@ void gl_begin_transfer(rhi_pass_t& pass)
         abort();
     }
     opengl.currentPipeline = &pass;
-    pass.handle = 0;
 }
 
 void gl_end_transfer(rhi_pass_t& pass)
 {
     GLint program = 0;
     glGetIntegerv(GL_CURRENT_PROGRAM, &program);
-    if (program && program != pass.module.handle)
+    if (program)
     {
         fprintf(stderr, "Pipeline not end\n");
         abort();
@@ -1443,57 +1437,39 @@ void gl_copy_buffer_data(rhi_buffer_data_t source, rhi_buffer_copy_t destination
                          source.data + source.offset);
 }
 
-void gl_copy_buffer_texture(rhi_buffer_texel_t source, rhi_texture_copy_t destination, rhi_vec3_t copySize)
+void gl_copy_buffer_texture(rhi_texture_copy_t source, rhi_buffer_texel_t destination, rhi_vec3_t copySize)
 {
     if (opengl.currentPipeline == nullptr)
     {
         fprintf(stderr, "Pipeline not begin\n");
         abort();
     }
-    if (source.buffer.handle == 0)
+    if (destination.buffer.handle == 0)
         return;
-    if (!gl_check_texture_region(destination, copySize))
+    if (!gl_check_texture_region(source, copySize))
         return;
 
     GLenum format = 0, type = 0;
-    gl_transfer_format(destination.texture, destination.aspect, false, format, type);
+    gl_transfer_format(source.texture, source.aspect, true, format, type);
     uint32_t bytesPerPixel = gl_bytes_per_pixel(format, type);
-    if (!gl_check_texel_layout(source.bytesPerRow, source.rowsPerImage, source.offset, source.buffer.size,
+    if (!gl_check_texel_layout(destination.bytesPerRow, destination.rowsPerImage, destination.offset, destination.buffer.size,
                                copySize, bytesPerPixel, type, true))
         return;
+    uint32_t depth = std::max(1U, copySize.z);
 
-    // PBO 模式下 data 参数被解释为缓冲区内的字节偏移
-    const void* data = (const void*)(uintptr_t)source.offset;
-
-    glBindBuffer(GL_PIXEL_UNPACK_BUFFER, source.buffer.handle);
-    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-    glPixelStorei(GL_UNPACK_ROW_LENGTH, (GLint)(source.bytesPerRow / bytesPerPixel));
-    glPixelStorei(GL_UNPACK_IMAGE_HEIGHT, (GLint)source.rowsPerImage);
-    if (destination.texture.target == GL_TEXTURE_2D)
-    {
-        glTextureSubImage2D(destination.texture.handle, (GLint)destination.mipLevel,
-                            (GLint)destination.origin.x, (GLint)destination.origin.y,
-                            (GLsizei)copySize.x, (GLsizei)copySize.y, format, type, data);
-
-        if (destination.texture.mipmaps) glGenerateTextureMipmap(destination.texture.handle);
-    }
-    else if (destination.texture.target == GL_TEXTURE_3D)
-    {
-        glTextureSubImage3D(destination.texture.handle, (GLint)destination.mipLevel,
-                            (GLint)destination.origin.x, (GLint)destination.origin.y, (GLint)destination.origin.z,
-                            (GLsizei)copySize.x, (GLsizei)copySize.y, (GLsizei)std::max(1U, copySize.z), format, type, data);
-
-        if (destination.texture.mipmaps) glGenerateTextureMipmap(destination.texture.handle);
-    }
-    else
-    {
-        fprintf(stderr, "Unsupported texture target\n");
-        abort();
-    }
-    glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
-    glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
-    glPixelStorei(GL_UNPACK_IMAGE_HEIGHT, 0);
-    glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
+    glBindBuffer(GL_PIXEL_PACK_BUFFER, destination.buffer.handle);
+    glPixelStorei(GL_PACK_ALIGNMENT, 1);
+    glPixelStorei(GL_PACK_ROW_LENGTH, (GLint)(destination.bytesPerRow / bytesPerPixel));
+    glPixelStorei(GL_PACK_IMAGE_HEIGHT, (GLint)destination.rowsPerImage);
+    glGetTextureSubImage(source.texture.handle, (GLint)source.mipLevel,
+                         (GLint)source.origin.x, (GLint)source.origin.y, (GLint)source.origin.z,
+                         (GLsizei)copySize.x, (GLsizei)copySize.y, (GLsizei)depth,
+                         format, type, (GLsizei)(destination.buffer.size - destination.offset),
+                         (void*)(uintptr_t)destination.offset);
+    glPixelStorei(GL_PACK_ALIGNMENT, 4);
+    glPixelStorei(GL_PACK_ROW_LENGTH, 0);
+    glPixelStorei(GL_PACK_IMAGE_HEIGHT, 0);
+    glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
 }
 
 void gl_copy_texture(rhi_texture_copy_t source, rhi_texture_copy_t destination, rhi_vec3_t copySize)
@@ -1569,39 +1545,57 @@ void gl_copy_texture_data(rhi_texture_data_t source, rhi_texture_copy_t destinat
     glPixelStorei(GL_UNPACK_IMAGE_HEIGHT, 0);
 }
 
-void gl_copy_texture_buffer(rhi_texture_copy_t source, rhi_buffer_texel_t destination, rhi_vec3_t copySize)
+void gl_copy_texture_buffer(rhi_buffer_texel_t source, rhi_texture_copy_t destination, rhi_vec3_t copySize)
 {
     if (opengl.currentPipeline == nullptr)
     {
         fprintf(stderr, "Pipeline not begin\n");
         abort();
     }
-    if (destination.buffer.handle == 0)
+    if (source.buffer.handle == 0)
         return;
-    if (!gl_check_texture_region(source, copySize))
+    if (!gl_check_texture_region(destination, copySize))
         return;
 
     GLenum format = 0, type = 0;
-    gl_transfer_format(source.texture, source.aspect, true, format, type);
+    gl_transfer_format(destination.texture, destination.aspect, false, format, type);
     uint32_t bytesPerPixel = gl_bytes_per_pixel(format, type);
-    if (!gl_check_texel_layout(destination.bytesPerRow, destination.rowsPerImage, destination.offset, destination.buffer.size,
+    if (!gl_check_texel_layout(source.bytesPerRow, source.rowsPerImage, source.offset, source.buffer.size,
                                copySize, bytesPerPixel, type, true))
         return;
-    uint32_t depth = std::max(1U, copySize.z);
 
-    glBindBuffer(GL_PIXEL_PACK_BUFFER, destination.buffer.handle);
-    glPixelStorei(GL_PACK_ALIGNMENT, 1);
-    glPixelStorei(GL_PACK_ROW_LENGTH, (GLint)(destination.bytesPerRow / bytesPerPixel));
-    glPixelStorei(GL_PACK_IMAGE_HEIGHT, (GLint)destination.rowsPerImage);
-    glGetTextureSubImage(source.texture.handle, (GLint)source.mipLevel,
-                         (GLint)source.origin.x, (GLint)source.origin.y, (GLint)source.origin.z,
-                         (GLsizei)copySize.x, (GLsizei)copySize.y, (GLsizei)depth,
-                         format, type, (GLsizei)(destination.buffer.size - destination.offset),
-                         (void*)(uintptr_t)destination.offset);
-    glPixelStorei(GL_PACK_ALIGNMENT, 4);
-    glPixelStorei(GL_PACK_ROW_LENGTH, 0);
-    glPixelStorei(GL_PACK_IMAGE_HEIGHT, 0);
-    glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
+    // PBO 模式下 data 参数被解释为缓冲区内的字节偏移
+    const void* data = (const void*)(uintptr_t)source.offset;
+
+    glBindBuffer(GL_PIXEL_UNPACK_BUFFER, source.buffer.handle);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    glPixelStorei(GL_UNPACK_ROW_LENGTH, (GLint)(source.bytesPerRow / bytesPerPixel));
+    glPixelStorei(GL_UNPACK_IMAGE_HEIGHT, (GLint)source.rowsPerImage);
+    if (destination.texture.target == GL_TEXTURE_2D)
+    {
+        glTextureSubImage2D(destination.texture.handle, (GLint)destination.mipLevel,
+                            (GLint)destination.origin.x, (GLint)destination.origin.y,
+                            (GLsizei)copySize.x, (GLsizei)copySize.y, format, type, data);
+
+        if (destination.texture.mipmaps) glGenerateTextureMipmap(destination.texture.handle);
+    }
+    else if (destination.texture.target == GL_TEXTURE_3D)
+    {
+        glTextureSubImage3D(destination.texture.handle, (GLint)destination.mipLevel,
+                            (GLint)destination.origin.x, (GLint)destination.origin.y, (GLint)destination.origin.z,
+                            (GLsizei)copySize.x, (GLsizei)copySize.y, (GLsizei)std::max(1U, copySize.z), format, type, data);
+
+        if (destination.texture.mipmaps) glGenerateTextureMipmap(destination.texture.handle);
+    }
+    else
+    {
+        fprintf(stderr, "Unsupported texture target\n");
+        abort();
+    }
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+    glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
+    glPixelStorei(GL_UNPACK_IMAGE_HEIGHT, 0);
+    glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
 }
 
 // ====================================================================

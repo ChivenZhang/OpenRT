@@ -47,6 +47,7 @@ static rhi_texture_t rhi_load_texture_file(const char* filename, bool flip)
     rhi_texture_desc_t info = {};
     info.width = (uint32_t)width;
     info.height = (uint32_t)height;
+    info.depth = 1;
     info.target = GL_TEXTURE_2D;
     info.type = type;
     info.data = data;
