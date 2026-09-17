@@ -21,7 +21,7 @@
 #define GL_1_PI 0.318309886183790671538 // 1/pi
 #define GL_2_PI 0.636619772367581343076 // 2/pi
 
-enum rhi_buffer_usage_t : uint32_t
+enum rt_buffer_usage_t : uint32_t
 {
     GL_BUFFER_USAGE_MAP_READ      = 0x0001,
     GL_BUFFER_USAGE_MAP_WRITE     = 0x0002,
@@ -34,29 +34,30 @@ enum rhi_buffer_usage_t : uint32_t
     GL_BUFFER_USAGE_INDIRECT      = 0x0100,
     GL_BUFFER_USAGE_QUERY_RESOLVE = 0x0200,
 };
+using rt_buffer_usages_t = uint32_t;
 
-struct rhi_buffer_t
+struct rt_buffer_t
 {
     GLuint handle = 0;
     size_t size = 0;
-    uint32_t usage = 0;
+    rt_buffer_usages_t usage = 0;
     void* native = nullptr;
 };
 
-struct rhi_buffer_desc_t
+struct rt_buffer_info_t
 {
     size_t size = 0;                    // 缓冲区大小（字节）
-    uint32_t usage = GL_BUFFER_USAGE_MAP_READ | GL_BUFFER_USAGE_MAP_WRITE | GL_BUFFER_USAGE_COPY_SRC | GL_BUFFER_USAGE_COPY_DST; // rhi_buffer_usage_t
+    rt_buffer_usages_t usage = GL_BUFFER_USAGE_MAP_READ | GL_BUFFER_USAGE_MAP_WRITE | GL_BUFFER_USAGE_COPY_SRC | GL_BUFFER_USAGE_COPY_DST; // rt_buffer_usage_t
     const void* data = nullptr;         // 初始数据指针，可为 nullptr
 };
 
-struct rhi_buffer_bind_t
+struct rt_buffer_bind_t
 {
     uint32_t binding = 0;
     GLenum target = GL_UNIFORM_BUFFER; // GL_UNIFORM_BUFFER / GL_SHADER_STORAGE_BUFFER
 };
 
-struct rhi_texture_t
+struct rt_texture_t
 {
     GLuint handle = 0;
     uint32_t width = 0, height = 0, depth = 1;
@@ -68,7 +69,7 @@ struct rhi_texture_t
     void* native = nullptr;
 };
 
-struct rhi_texture_desc_t
+struct rt_texture_info_t
 {
     uint32_t width = 0, height = 0, depth = 1;
     GLenum target = GL_TEXTURE_2D;
@@ -84,13 +85,13 @@ struct rhi_texture_desc_t
     const void* data = nullptr;
 };
 
-struct rhi_texture_bind_t
+struct rt_texture_bind_t
 {
     uint32_t binding = 0;
     GLenum aspect_mode = GL_DEPTH_COMPONENT; // GL_DEPTH_COMPONENT / GL_STENCIL_INDEX
 };
 
-struct rhi_texture_storage_bind_t
+struct rt_texture_storage_bind_t
 {
     uint32_t binding = 0;
     uint32_t base_level = 0;
@@ -100,13 +101,13 @@ struct rhi_texture_storage_bind_t
     GLenum access = GL_WRITE_ONLY; // GL_WRITE_ONLY / GL_READ_ONLY / GL_READ_WRITE
 };
 
-struct rhi_sampler_t
+struct rt_sampler_t
 {
     GLuint handle = 0;
     void* native = nullptr;
 };
 
-struct rhi_sampler_desc_t
+struct rt_sampler_info_t
 {
     GLenum min_filter = GL_LINEAR_MIPMAP_LINEAR;  // GL_NEAREST / GL_LINEAR / GL_NEAREST_MIPMAP_NEAREST / GL_LINEAR_MIPMAP_NEAREST / GL_NEAREST_MIPMAP_LINEAR / GL_LINEAR_MIPMAP_LINEAR
     GLenum mag_filter = GL_LINEAR;                // GL_NEAREST / GL_LINEAR
@@ -115,28 +116,28 @@ struct rhi_sampler_desc_t
     GLenum wrap_r = GL_REPEAT;                    // GL_REPEAT / GL_MIRRORED_REPEAT / GL_CLAMP_TO_EDGE / GL_CLAMP_TO_BORDER / GL_MIRROR_CLAMP_TO_EDGE
 };
 
-struct rhi_sampler_bind_t
+struct rt_sampler_bind_t
 {
     uint32_t binding = 0;
 };
 
-struct rhi_color_t
+struct rt_color_t
 {
     float r = 0, g = 0, b = 0, a = 0;
 };
 
-struct rhi_vertex_t
+struct rt_vertex_t
 {
     uint32_t location = 0;
     GLenum type = 0;
     GLenum count = 0;
     bool instance = false;
 };
-inline rhi_vertex_t rhi_vertex_layout{.location = 0, .type = GL_FLOAT, .count = 3,};
-inline rhi_vertex_t rhi_normal_layout{.location = 1, .type = GL_FLOAT, .count = 3,};
-inline rhi_vertex_t rhi_uv_layout{.location = 2, .type = GL_FLOAT, .count = 2,};
+inline rt_vertex_t rt_vertex_layout{.location = 0, .type = GL_FLOAT, .count = 3,};
+inline rt_vertex_t rt_normal_layout{.location = 1, .type = GL_FLOAT, .count = 3,};
+inline rt_vertex_t rt_uv_layout{.location = 2, .type = GL_FLOAT, .count = 2,};
 
-enum rhi_binding_t : uint32_t
+enum rt_layout_type_t : uint32_t
 {
     GL_BINDING_BUFFER = 1,
     GL_BINDING_TEXTURE = 2,
@@ -144,13 +145,13 @@ enum rhi_binding_t : uint32_t
     GL_BINDING_SAMPLER = 4,
 };
 
-struct rhi_layout_t
+struct rt_layout_t
 {
     uint32_t binding = 0;
-    GLenum type = GL_NONE;  // GL_BINDING_BUFFER / GL_BINDING_TEXTURE / GL_BINDING_STORAGE_TEXTURE / GL_BINDING_SAMPLER
+    rt_layout_type_t type = {};  // GL_BINDING_BUFFER / GL_BINDING_TEXTURE / GL_BINDING_STORAGE_TEXTURE / GL_BINDING_SAMPLER
 };
 
-struct rhi_render_info_t
+struct rt_render_info_t
 {
     struct
     {
@@ -182,9 +183,9 @@ struct rhi_render_info_t
         } back, front;
     } stencil;
 
-    rhi_layout_t layout[GL_MAX_BINDING_HANDLE_NUM];
-
-    rhi_vertex_t vertex[GL_MAX_VERTEX_BUFFER_NUM];
+    rt_layout_t layout[GL_MAX_BINDING_HANDLE_NUM];
+    rt_vertex_t vertex[GL_MAX_VERTEX_BUFFER_NUM];
+    GLenum index_type = GL_UNSIGNED_INT;
 
     GLenum cull_mode = GL_BACK; // GL_NONE / GL_FRONT / GL_BACK / GL_FRONT_AND_BACK
     GLenum front_face = GL_CCW; // GL_CW / GL_CCW
@@ -192,43 +193,47 @@ struct rhi_render_info_t
     GLenum primitive = GL_TRIANGLES;
 };
 
-struct rhi_compute_info_t
+struct rt_compute_info_t
 {
+    // Nothing
 };
 
-#define GL_MODULE_RENDER 1
-#define GL_MODULE_COMPUTE 2
-#define GL_MODULE_MESHLET 3
-#define GL_MODULE_TRANSFER 4
+enum rt_module_type_t : uint32_t
+{
+    GL_MODULE_RENDER = 1,
+    GL_MODULE_COMPUTE = 2,
+    GL_MODULE_MESHLET = 3,
+    GL_MODULE_TRANSFER = 4,
+};
 
-struct rhi_module_t
+struct rt_module_t
 {
     GLuint handle = 0;
-    GLenum target = GL_NONE;    // GL_MODULE_RENDER / GL_MODULE_COMPUTE / GL_MODULE_MESHLET / GL_MODULE_TRANSFER
+    rt_module_type_t target = {};
     union
     {
-        rhi_render_info_t render;
-        rhi_compute_info_t compute;
+        rt_render_info_t render;
+        rt_compute_info_t compute;
     };
     void* native = nullptr;
 };
 
-struct rhi_pass_t
+struct rt_pass_t
 {
     GLuint handle = 0;
-    rhi_module_t module;
+    rt_module_t module;
 
     // Offscreen Mode
 
     struct
     {
-        rhi_texture_t texture;
+        rt_texture_t texture;
         bool clear = false;
-        rhi_color_t value;
+        rt_color_t value;
     } colors[2];
     struct
     {
-        rhi_texture_t texture;
+        rt_texture_t texture;
         bool clear = false;
         float value = 1.0f;
     } depth;
@@ -246,7 +251,7 @@ struct rhi_pass_t
         struct
         {
             bool clear = false;
-            rhi_color_t value;
+            rt_color_t value;
             struct
             {
                 GLenum func = GL_FUNC_ADD; // GL_FUNC_ADD / GL_FUNC_SUBTRACT / GL_FUNC_REVERSE_SUBTRACT / GL_MIN / GL_MAX
@@ -281,28 +286,26 @@ struct rhi_pass_t
     void* native = nullptr;
 };
 
-struct rhi_mesh_t
+struct rt_mesh_t
 {
     GLuint handle = 0;
 
-    rhi_buffer_t vertex_vbo;
-    rhi_buffer_t normal_vbo;
-    rhi_buffer_t uv_vbo;
-    rhi_buffer_t index_vbo;
+    rt_buffer_t vertex_vbo;
+    rt_buffer_t normal_vbo;
+    rt_buffer_t uv_vbo;
+    rt_buffer_t index_vbo;
 
     GLsizei vertex_count = 0;
     GLsizei index_count = 0;
-    GLenum index_type = GL_UNSIGNED_INT;
-    GLenum primitive_type = GL_TRIANGLES;
     void* native = nullptr;
 };
 
-struct rhi_meshlet_t
+struct rt_meshlet_t
 {
-    rhi_buffer_t vertex_vbo;
-    rhi_buffer_t normal_vbo;
-    rhi_buffer_t uv_vbo;
-    rhi_buffer_t index_vbo;
+    rt_buffer_t vertex_vbo;
+    rt_buffer_t normal_vbo;
+    rt_buffer_t uv_vbo;
+    rt_buffer_t index_vbo;
 
     GLsizei vertex_count = 0;
     GLsizei index_count = 0;
@@ -311,41 +314,41 @@ struct rhi_meshlet_t
     void* native = nullptr;
 };
 
-struct rhi_vec3_t
+struct rt_size_t
 {
     uint32_t x = 0, y = 0, z = 0;
 };
 
-struct rhi_buffer_copy_t
+struct rt_buffer_copy_t
 {
-    rhi_buffer_t buffer;
+    rt_buffer_t buffer;
     size_t offset = 0;
 };
 
-struct rhi_buffer_data_t
+struct rt_buffer_data_t
 {
     const uint8_t* data = nullptr;
     size_t size = 0;
     size_t offset = 0;
 };
 
-struct rhi_buffer_texel_t
+struct rt_buffer_texel_t
 {
-    rhi_buffer_t buffer;
+    rt_buffer_t buffer;
     size_t offset = 0;
     uint32_t bytesPerRow = 0;
     uint32_t rowsPerImage = 0;
 };
 
-struct rhi_texture_copy_t
+struct rt_texture_copy_t
 {
-    rhi_texture_t texture;
+    rt_texture_t texture;
     GLenum aspect = GL_DEPTH_COMPONENT; // GL_DEPTH_COMPONENT / GL_STENCIL_INDEX / GL_ALL
     uint32_t mipLevel = 0;
-    rhi_vec3_t origin;
+    rt_size_t origin;
 };
 
-struct rhi_texture_data_t
+struct rt_texture_data_t
 {
     const uint8_t* data = nullptr;
     size_t size = 0;
@@ -356,65 +359,65 @@ struct rhi_texture_data_t
 
 // ====================================================================
 
-extern rhi_buffer_t (*rhi_create_buffer)(rhi_buffer_desc_t const& info);
-extern void (*rhi_destroy_buffer)(rhi_buffer_t& buffer);
-extern void (*rhi_bind_buffer)(rhi_buffer_t buffer, rhi_buffer_bind_t bind);
-extern void* (*rhi_map_buffer)(rhi_buffer_t& buffer, GLenum mode, size_t offset, size_t size); // mode: GL_READ_ONLY / GL_WRITE_ONLY / GL_READ_WRITE
-extern void (*rhi_unmap_buffer)(rhi_buffer_t& buffer);
+extern rt_buffer_t (*rt_create_buffer)(rt_buffer_info_t const& info);
+extern void (*rt_destroy_buffer)(rt_buffer_t& buffer);
+extern void (*rt_bind_buffer)(rt_buffer_t buffer, rt_buffer_bind_t bind);
+extern void* (*rt_map_buffer)(rt_buffer_t& buffer, GLenum mode, size_t offset, size_t size); // mode: GL_READ_ONLY / GL_WRITE_ONLY / GL_READ_WRITE
+extern void (*rt_unmap_buffer)(rt_buffer_t& buffer);
 
-extern rhi_texture_t (*rhi_create_texture)(rhi_texture_desc_t const& info);
-extern rhi_texture_t (*rhi_create_texture_color)(uint32_t width, uint32_t height, const void* data);
-extern rhi_texture_t (*rhi_create_texture_depth)(uint32_t width, uint32_t height, const void* data);
-extern rhi_texture_t (*rhi_create_texture_depth_stencil)(uint32_t width, uint32_t height, const void* data);
-extern void (*rhi_destroy_texture)(rhi_texture_t& texture);
-extern void (*rhi_bind_texture)(rhi_texture_t texture, rhi_texture_bind_t bind);
-extern void (*rhi_bind_texture_storage)(rhi_texture_t texture, rhi_texture_storage_bind_t bind);
+extern rt_texture_t (*rt_create_texture)(rt_texture_info_t const& info);
+extern rt_texture_t (*rt_create_texture_color)(uint32_t width, uint32_t height, const void* data);
+extern rt_texture_t (*rt_create_texture_depth)(uint32_t width, uint32_t height, const void* data);
+extern rt_texture_t (*rt_create_texture_depth_stencil)(uint32_t width, uint32_t height, const void* data);
+extern void (*rt_destroy_texture)(rt_texture_t& texture);
+extern void (*rt_bind_texture)(rt_texture_t texture, rt_texture_bind_t bind);
+extern void (*rt_bind_texture_storage)(rt_texture_t texture, rt_texture_storage_bind_t bind);
 
-extern rhi_sampler_t (*rhi_create_sampler)(rhi_sampler_desc_t const& info);
-extern void (*rhi_destroy_sampler)(rhi_sampler_t& sampler);
-extern void (*rhi_bind_sampler)(rhi_sampler_t sampler, rhi_sampler_bind_t bind);
+extern rt_sampler_t (*rt_create_sampler)(rt_sampler_info_t const& info);
+extern void (*rt_destroy_sampler)(rt_sampler_t& sampler);
+extern void (*rt_bind_sampler)(rt_sampler_t sampler, rt_sampler_bind_t bind);
 
-extern rhi_module_t (*rhi_create_module_compute)(const char* comp_src, rhi_compute_info_t const& info);
-extern rhi_module_t (*rhi_create_module_render)(const char* vert_src, const char* frag_src, rhi_render_info_t const& info);
-extern rhi_module_t (*rhi_create_module_meshlet)(const char* task_src, const char* mesh_src, const char* frag_src, rhi_render_info_t const& info);
-extern void (*rhi_destroy_module)(rhi_module_t& module);
+extern rt_module_t (*rt_create_module_compute)(const char* comp_src, rt_compute_info_t const& info);
+extern rt_module_t (*rt_create_module_render)(const char* vert_src, const char* frag_src, rt_render_info_t const& info);
+extern rt_module_t (*rt_create_module_meshlet)(const char* task_src, const char* mesh_src, const char* frag_src, rt_render_info_t const& info);
+extern void (*rt_destroy_module)(rt_module_t& module);
 
-extern void (*rhi_push_constant)(uint8_t const* buffer, size_t length);
-extern void (*rhi_push_const_int)(const char* name, int32_t value);
-extern void (*rhi_push_const_uint)(const char* name, uint32_t value);
-extern void (*rhi_push_const_float)(const char* name, float value);
-extern void (*rhi_push_const_vec2)(const char* name, const float* value);
-extern void (*rhi_push_const_vec3)(const char* name, const float* value);
-extern void (*rhi_push_const_vec4)(const char* name, const float* value);
-extern void (*rhi_push_const_mat3)(const char* name, const float* value);
-extern void (*rhi_push_const_mat4)(const char* name, const float* value);
+extern void (*rt_begin_compute)(rt_pass_t& pass);
+extern void (*rt_end_compute)(rt_pass_t& pass);
+extern void (*rt_dispatch_compute)(uint32_t groupX, uint32_t groupY, uint32_t groupZ);
 
-extern void (*rhi_begin_compute)(rhi_pass_t& pass);
-extern void (*rhi_end_compute)(rhi_pass_t& pass);
-extern void (*rhi_dispatch_compute)(uint32_t groupX, uint32_t groupY, uint32_t groupZ);
+extern void (*rt_begin_render)(rt_pass_t& pass);
+extern void (*rt_end_render)(rt_pass_t& pass);
+extern void (*rt_set_viewport)(int32_t x, int32_t y, int32_t width, int32_t height);
+extern void (*rt_set_scissor)(int32_t x, int32_t y, int32_t width, int32_t height);
+extern void (*rt_draw_mesh_task)(uint32_t groupX, uint32_t groupY, uint32_t groupZ);
 
-extern void (*rhi_begin_render)(rhi_pass_t& pass);
-extern void (*rhi_end_render)(rhi_pass_t& pass);
-extern void (*rhi_set_viewport)(int32_t x, int32_t y, int32_t width, int32_t height);
-extern void (*rhi_set_scissor)(int32_t x, int32_t y, int32_t width, int32_t height);
-extern void (*rhi_draw_mesh_task)(uint32_t groupX, uint32_t groupY, uint32_t groupZ);
+extern void (*rt_push_constant)(uint8_t const* buffer, size_t length);
+extern void (*rt_push_const_int)(const char* name, int32_t value);
+extern void (*rt_push_const_uint)(const char* name, uint32_t value);
+extern void (*rt_push_const_float)(const char* name, float value);
+extern void (*rt_push_const_vec2)(const char* name, const float* value);
+extern void (*rt_push_const_vec3)(const char* name, const float* value);
+extern void (*rt_push_const_vec4)(const char* name, const float* value);
+extern void (*rt_push_const_mat3)(const char* name, const float* value);
+extern void (*rt_push_const_mat4)(const char* name, const float* value);
 
-extern void (*rhi_begin_transfer)(rhi_pass_t& pass);
-extern void (*rhi_end_transfer)(rhi_pass_t& pass);
-extern void (*rhi_copy_buffer)(rhi_buffer_copy_t source, rhi_buffer_copy_t destination, size_t copySize);
-extern void (*rhi_copy_buffer_data)(rhi_buffer_data_t source, rhi_buffer_copy_t destination, size_t copySize);
-extern void (*rhi_copy_buffer_texture)(rhi_texture_copy_t source, rhi_buffer_texel_t destination, rhi_vec3_t copySize);
-extern void (*rhi_copy_texture)(rhi_texture_copy_t source, rhi_texture_copy_t destination, rhi_vec3_t copySize);
-extern void (*rhi_copy_texture_data)(rhi_texture_data_t source, rhi_texture_copy_t destination, rhi_vec3_t copySize);
-extern void (*rhi_copy_texture_buffer)(rhi_buffer_texel_t source, rhi_texture_copy_t destination, rhi_vec3_t copySize);
+extern void (*rt_begin_transfer)(rt_pass_t& pass);
+extern void (*rt_end_transfer)(rt_pass_t& pass);
+extern void (*rt_copy_buffer)(rt_buffer_copy_t source, rt_buffer_copy_t destination, size_t copySize);
+extern void (*rt_copy_buffer_data)(rt_buffer_data_t source, rt_buffer_copy_t destination, size_t copySize);
+extern void (*rt_copy_buffer_texture)(rt_texture_copy_t source, rt_buffer_texel_t destination, rt_size_t copySize);
+extern void (*rt_copy_texture)(rt_texture_copy_t source, rt_texture_copy_t destination, rt_size_t copySize);
+extern void (*rt_copy_texture_data)(rt_texture_data_t source, rt_texture_copy_t destination, rt_size_t copySize);
+extern void (*rt_copy_texture_buffer)(rt_buffer_texel_t source, rt_texture_copy_t destination, rt_size_t copySize);
 
-extern rhi_mesh_t (*rhi_create_mesh)(const float* vertices, const float* normals, const float* uvs, size_t vertex_count, const unsigned int* indices, size_t index_count);
-extern void (*rhi_destroy_mesh)(rhi_mesh_t& mesh);
-extern void (*rhi_draw_mesh)(rhi_mesh_t const& mesh);
+extern rt_mesh_t (*rt_create_mesh)(const float* vertices, const float* normals, const float* uvs, size_t vertex_count, const unsigned int* indices, size_t index_count);
+extern void (*rt_destroy_mesh)(rt_mesh_t& mesh);
+extern void (*rt_draw_mesh)(rt_mesh_t const& mesh);
 
-extern rhi_meshlet_t (*rhi_create_meshlet)(const float* vertices, const float* normals, const float* uvs, size_t vertex_count, const unsigned int* indices, size_t index_count);
-extern void (*rhi_destroy_meshlet)(rhi_meshlet_t& meshlet);
-extern void (*rhi_draw_meshlet)(rhi_meshlet_t const& meshlet);
+extern rt_meshlet_t (*rt_create_meshlet)(const float* vertices, const float* normals, const float* uvs, size_t vertex_count, const unsigned int* indices, size_t index_count);
+extern void (*rt_destroy_meshlet)(rt_meshlet_t& meshlet);
+extern void (*rt_draw_meshlet)(rt_meshlet_t const& meshlet);
 
-extern rhi_mesh_t (*rhi_create_mesh_screen)();
-extern void (*rhi_draw_screen)(int width, int height, rhi_texture_t texture, rhi_color_t clear);
+extern rt_mesh_t (*rt_create_mesh_screen)();
+extern void (*rt_draw_screen)(int width, int height, rt_texture_t texture, rt_color_t clear);

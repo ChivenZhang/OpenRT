@@ -1,5 +1,5 @@
-#define OPENGLX_IMPLEMENTATION
-#include "../OpenGLX.h"
+#define OPENRTX_IMPLEMENTATION
+#include "../OpenRTX.h"
 #include "../OpenGL.h"
 #include <SDL3/SDL.h>
 
@@ -126,55 +126,55 @@ void frame(int width, int height)
     auto viewMat = glm::lookAt(glm::vec3(0, 2, 5), glm::vec3(0, 0, 0), glm::vec3(0, 1, 0));
     auto meshMat = glm::rotate(glm::mat4(1.0f), (float)SDL_GetTicks() / 2000.0f, glm::vec3(0, 1, 0));
 
-    static auto module = rhi_create_module_render(VS, FS, {
+    static auto module = rt_create_module_render(VS, FS, {
         .depth = {.write = true, .func = GL_LEQUAL,},
         .layout = {{.binding = 0, .type = GL_BINDING_TEXTURE, }},
-        .vertex = {rhi_vertex_layout, rhi_normal_layout, rhi_uv_layout,},
+        .vertex = {rt_vertex_layout, rt_normal_layout, rt_uv_layout,},
     });
-    static auto pass_color = rhi_create_texture_color(width, height, nullptr);
-    static auto pass_depth = rhi_create_texture_depth(width, height, nullptr);
+    static auto pass_color = rt_create_texture_color(width, height, nullptr);
+    static auto pass_depth = rt_create_texture_depth(width, height, nullptr);
     {
         static auto texture0 = []()
         {
-            auto texture = rhi_load_texture_file("../../Earth.png");
+            auto texture = rt_load_texture_file("../../Earth.png");
 
-            rhi_pass_t pass = {};
-            rhi_begin_transfer(pass);
-            auto buffer = rhi_create_buffer({.size = texture.width * texture.height * 3, .usage = GL_BUFFER_USAGE_COPY_SRC | GL_BUFFER_USAGE_COPY_DST,});
-            rhi_copy_buffer_texture(
+            rt_pass_t pass = {};
+            rt_begin_transfer(pass);
+            auto buffer = rt_create_buffer({.size = texture.width * texture.height * 3, .usage = GL_BUFFER_USAGE_COPY_SRC | GL_BUFFER_USAGE_COPY_DST,});
+            rt_copy_buffer_texture(
                 {.texture = texture, },
                 {.buffer = buffer, .bytesPerRow = texture.width * 3, .rowsPerImage = texture.height,},
                 {texture.width, texture.height, 1});
-            rhi_end_transfer(pass);
+            rt_end_transfer(pass);
 
-            rhi_destroy_texture(texture);
-            texture = rhi_create_texture({.width = texture.width, .height = texture.height, .format = GL_RGB, .internal_format = GL_RGB8, });
+            rt_destroy_texture(texture);
+            texture = rt_create_texture({.width = texture.width, .height = texture.height, .format = GL_RGB, .internal_format = GL_RGB8, });
 
-            rhi_begin_transfer(pass);
-            rhi_copy_texture_buffer(
+            rt_begin_transfer(pass);
+            rt_copy_texture_buffer(
                 {.buffer = buffer, .bytesPerRow = texture.width * 3, .rowsPerImage = texture.height,},
                 {.texture = texture,},
                 {texture.width, texture.height, 1});
-            rhi_end_transfer(pass);
+            rt_end_transfer(pass);
 
-            rhi_destroy_buffer(buffer);
+            rt_destroy_buffer(buffer);
             return texture;
         }();
 
-        rhi_pass_t pass = {.module = module, .colors = {{.texture = pass_color, .clear = true,}}, .depth = {.texture = pass_depth, .clear = true,},};
-        rhi_begin_render(pass);
+        rt_pass_t pass = {.module = module, .colors = {{.texture = pass_color, .clear = true,}}, .depth = {.texture = pass_depth, .clear = true,},};
+        rt_begin_render(pass);
 
-        rhi_push_const_mat4("projMat", &projMat[0][0]);
-        rhi_push_const_mat4("viewMat", &viewMat[0][0]);
-        rhi_push_const_mat4("meshMat", &meshMat[0][0]);
+        rt_push_const_mat4("projMat", &projMat[0][0]);
+        rt_push_const_mat4("viewMat", &viewMat[0][0]);
+        rt_push_const_mat4("meshMat", &meshMat[0][0]);
 
-        rhi_bind_texture(texture0, {.binding = 0,});
+        rt_bind_texture(texture0, {.binding = 0,});
 
-        static auto mesh = rhi_create_mesh_sphere(2, 64, 32);
-        rhi_draw_mesh(mesh);
+        static auto mesh = rt_create_mesh_sphere(2, 64, 32);
+        rt_draw_mesh(mesh);
 
-        rhi_end_render(pass);
+        rt_end_render(pass);
     }
 
-    rhi_draw_screen(width, height, pass_color, {});
+    rt_draw_screen(width, height, pass_color, {});
 }

@@ -1,5 +1,5 @@
-#define OPENGLX_IMPLEMENTATION
-#include "../OpenGLX.h"
+#define OPENRTX_IMPLEMENTATION
+#include "../OpenRTX.h"
 #include "../OpenGL.h"
 #include <SDL3/SDL.h>
 #include <glm/glm.hpp>
@@ -279,29 +279,29 @@ void frame(int width, int height)
     auto viewMat = glm::lookAt(glm::vec3(0, 2, 5), glm::vec3(0, 0, 0), glm::vec3(0, 1, 0));
     auto meshMat = glm::rotate(glm::mat4(1.0f), (float)SDL_GetTicks() / 2000.0f, glm::vec3(0, 1, 0));
 
-    static auto module = rhi_create_module_meshlet(nullptr, MS, FS, {.depth = {.write = true, .func = GL_LEQUAL,}, .fill_mode = GL_FILL,});
-    static auto pass_color = rhi_create_texture_color(width, height, nullptr);
-    static auto pass_depth = rhi_create_texture_depth(width, height, nullptr);
+    static auto module = rt_create_module_meshlet(nullptr, MS, FS, {.depth = {.write = true, .func = GL_LEQUAL,}, .fill_mode = GL_FILL,});
+    static auto pass_color = rt_create_texture_color(width, height, nullptr);
+    static auto pass_depth = rt_create_texture_depth(width, height, nullptr);
     {
-        rhi_pass_t pass = {.module = module, .colors = {{.texture = pass_color, .clear = true,}}, .depth = {.texture = pass_depth, .clear = true,},};
-        rhi_begin_render(pass);
+        rt_pass_t pass = {.module = module, .colors = {{.texture = pass_color, .clear = true,}}, .depth = {.texture = pass_depth, .clear = true,},};
+        rt_begin_render(pass);
 
-        rhi_push_const_float("height", 2.5f);
-        rhi_push_const_mat4("projMat", &projMat[0][0]);
-        rhi_push_const_mat4("viewMat", &viewMat[0][0]);
-        rhi_push_const_mat4("meshMat", &meshMat[0][0]);
+        rt_push_const_float("height", 2.5f);
+        rt_push_const_mat4("projMat", &projMat[0][0]);
+        rt_push_const_mat4("viewMat", &viewMat[0][0]);
+        rt_push_const_mat4("meshMat", &meshMat[0][0]);
 
-        static auto texture0 = rhi_load_texture_file("../../DiffuseTerrain.png");
-        static auto texture1 = rhi_load_texture_file("../../HeightTerrain.png");
-        rhi_bind_texture(texture0, {.binding = 0,});
-        rhi_bind_texture(texture1, {.binding = 1,});
+        static auto texture0 = rt_load_texture_file("../../DiffuseTerrain.png");
+        static auto texture1 = rt_load_texture_file("../../HeightTerrain.png");
+        rt_bind_texture(texture0, {.binding = 0,});
+        rt_bind_texture(texture1, {.binding = 1,});
 
-        static auto meshlet = rhi_create_meshlet_plane(5, 100);
-        rhi_draw_meshlet(meshlet);
+        static auto meshlet = rt_create_meshlet_plane(5, 100);
+        rt_draw_meshlet(meshlet);
 
-        rhi_end_render(pass);
+        rt_end_render(pass);
     }
 
     gl_draw_screen(width, height, pass_color);
-    rhi_draw_screen(width, height, pass_color, {});
+    rt_draw_screen(width, height, pass_color, {});
 }

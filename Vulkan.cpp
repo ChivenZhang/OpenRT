@@ -70,7 +70,7 @@ static VkImageUsageFlags gl_to_vk_image_usage(GLenum format)
     }
 }
 
-static VkBufferUsageFlags rhi_to_vk_buffer_usage(uint32_t usage)
+static VkBufferUsageFlags rt_to_vk_buffer_usage(uint32_t usage)
 {
     VkBufferUsageFlags flags = 0;
     if (usage & GL_BUFFER_USAGE_COPY_SRC) flags |= VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
@@ -242,22 +242,22 @@ static uint32_t gl_to_vk_vertex_size(GLenum type, GLenum count)
 
 // ====================================================================
 
-struct rhi_buffer_native_t
+struct rt_buffer_native_t
 {
     VkBuffer handle = nullptr;
     VkDeviceMemory memory = nullptr;
 };
-struct rhi_texture_native_t
+struct rt_texture_native_t
 {
     VkImage handle = nullptr;
     VkDeviceMemory memory = nullptr;
     VkImageView imageView = nullptr;
 };
-struct rhi_sampler_native_t
+struct rt_sampler_native_t
 {
     VkSampler handle = nullptr;
 };
-struct rhi_module_native_t
+struct rt_module_native_t
 {
     VkShaderModule vshader = nullptr;   // Vertex Shader
     VkShaderModule tshader = nullptr;   // Task Shader
@@ -268,12 +268,12 @@ struct rhi_module_native_t
     VkPipelineLayout pipelineLayout = nullptr;
     VkDescriptorSetLayout descriptorSetLayout = nullptr;
 };
-struct rhi_mesh_native_t
+struct rt_mesh_native_t
 {
     VkVertexInputBindingDescription bindingDescription = {};
     VkVertexInputAttributeDescription attributeDescriptions[3] = {};
 };
-struct rhi_meshlet_native_t
+struct rt_meshlet_native_t
 {
 
 };
@@ -287,12 +287,12 @@ struct vk_native_t
     uint32_t meshID = 0;
     uint32_t meshletID = 0;
 
-    std::map<uint32_t, rhi_buffer_native_t> buffers;
-    std::map<uint32_t, rhi_texture_native_t> textures;
-    std::map<uint32_t, rhi_sampler_native_t> samplers;
-    std::map<uint32_t, rhi_module_native_t> modules;
-    std::map<uint32_t, rhi_mesh_native_t> meshes;
-    std::map<uint32_t, rhi_meshlet_native_t> meshlets;
+    std::map<uint32_t, rt_buffer_native_t> buffers;
+    std::map<uint32_t, rt_texture_native_t> textures;
+    std::map<uint32_t, rt_sampler_native_t> samplers;
+    std::map<uint32_t, rt_module_native_t> modules;
+    std::map<uint32_t, rt_mesh_native_t> meshes;
+    std::map<uint32_t, rt_meshlet_native_t> meshlets;
 
     VkInstance instance = nullptr;
     VkDevice device = nullptr;
@@ -310,28 +310,28 @@ struct vk_native_t
         {
             struct
             {
-                rhi_buffer_t* buffer;
-                rhi_buffer_bind_t buffer_bind;
+                rt_buffer_t* buffer;
+                rt_buffer_bind_t buffer_bind;
             };
             struct
             {
-                rhi_texture_t* texture;
-                rhi_texture_bind_t texture_bind;
+                rt_texture_t* texture;
+                rt_texture_bind_t texture_bind;
             };
             struct
             {
-                rhi_texture_t* storage_texture;
-                rhi_texture_storage_bind_t storage_texture_bind;
+                rt_texture_t* storage_texture;
+                rt_texture_storage_bind_t storage_texture_bind;
             };
             struct
             {
-                rhi_sampler_t* sampler;
-                rhi_sampler_bind_t sampler_bind;
+                rt_sampler_t* sampler;
+                rt_sampler_bind_t sampler_bind;
             };
         };
     } currentBinding[GL_MAX_BINDING_HANDLE_NUM] = {};
 
-    rhi_pass_t* currentPipeline = nullptr;
+    rt_pass_t* currentPipeline = nullptr;
 
 } static vulkan;
 
@@ -396,68 +396,68 @@ void vk_load_library(VkInstance instance, VkDevice device, uint32_t family)
     // ====================================================================
 
     // Buffer 相关
-    rhi_create_buffer = vk_create_buffer;
-    rhi_destroy_buffer = vk_destroy_buffer;
-    rhi_bind_buffer = vk_bind_buffer;
-    rhi_map_buffer = vk_map_buffer;
-    rhi_unmap_buffer = vk_unmap_buffer;
+    rt_create_buffer = vk_create_buffer;
+    rt_destroy_buffer = vk_destroy_buffer;
+    rt_bind_buffer = vk_bind_buffer;
+    rt_map_buffer = vk_map_buffer;
+    rt_unmap_buffer = vk_unmap_buffer;
 
     // Texture 相关
-    rhi_create_texture = vk_create_texture;
-    rhi_create_texture_color = vk_create_texture_color;
-    rhi_create_texture_depth = vk_create_texture_depth;
-    rhi_create_texture_depth_stencil = vk_create_texture_depth_stencil;
-    rhi_destroy_texture = vk_destroy_texture;
-    rhi_bind_texture = vk_bind_texture;
-    rhi_bind_texture_storage = vk_bind_texture_storage;
+    rt_create_texture = vk_create_texture;
+    rt_create_texture_color = vk_create_texture_color;
+    rt_create_texture_depth = vk_create_texture_depth;
+    rt_create_texture_depth_stencil = vk_create_texture_depth_stencil;
+    rt_destroy_texture = vk_destroy_texture;
+    rt_bind_texture = vk_bind_texture;
+    rt_bind_texture_storage = vk_bind_texture_storage;
 
     // Sampler 相关
-    rhi_create_sampler = vk_create_sampler;
-    rhi_destroy_sampler = vk_destroy_sampler;
-    rhi_bind_sampler = vk_bind_sampler;
+    rt_create_sampler = vk_create_sampler;
+    rt_destroy_sampler = vk_destroy_sampler;
+    rt_bind_sampler = vk_bind_sampler;
 
     // Module 相关
-    rhi_create_module_compute = vk_create_module_compute;
-    rhi_create_module_render = vk_create_module_render;
-    rhi_create_module_meshlet = vk_create_module_meshlet;
-    rhi_destroy_module = vk_destroy_module;
-
-    // Uniform 相关
-    rhi_push_constant = vk_push_constant;
-    rhi_push_const_int = vk_push_const_int;
-    rhi_push_const_uint = vk_push_const_uint;
-    rhi_push_const_float = vk_push_const_float;
-    rhi_push_const_vec2 = vk_push_const_vec2;
-    rhi_push_const_vec3 = vk_push_const_vec3;
-    rhi_push_const_vec4 = vk_push_const_vec4;
-    rhi_push_const_mat3 = vk_push_const_mat3;
-    rhi_push_const_mat4 = vk_push_const_mat4;
+    rt_create_module_compute = vk_create_module_compute;
+    rt_create_module_render = vk_create_module_render;
+    rt_create_module_meshlet = vk_create_module_meshlet;
+    rt_destroy_module = vk_destroy_module;
 
     // Compute Pass 相关
-    rhi_begin_compute = vk_begin_compute;
-    rhi_end_compute = vk_end_compute;
-    rhi_dispatch_compute = vk_dispatch_compute;
+    rt_begin_compute = vk_begin_compute;
+    rt_end_compute = vk_end_compute;
+    rt_dispatch_compute = vk_dispatch_compute;
 
     // Render Pass 相关
-    rhi_begin_render = vk_begin_render;
-    rhi_end_render = vk_end_render;
-    rhi_set_viewport = vk_set_viewport;
-    rhi_set_scissor = vk_set_scissor;
-    rhi_draw_mesh_task = vk_draw_mesh_task;
+    rt_begin_render = vk_begin_render;
+    rt_end_render = vk_end_render;
+    rt_set_viewport = vk_set_viewport;
+    rt_set_scissor = vk_set_scissor;
+    rt_draw_mesh_task = vk_draw_mesh_task;
+
+    // Uniform 相关
+    rt_push_constant = vk_push_constant;
+    rt_push_const_int = vk_push_const_int;
+    rt_push_const_uint = vk_push_const_uint;
+    rt_push_const_float = vk_push_const_float;
+    rt_push_const_vec2 = vk_push_const_vec2;
+    rt_push_const_vec3 = vk_push_const_vec3;
+    rt_push_const_vec4 = vk_push_const_vec4;
+    rt_push_const_mat3 = vk_push_const_mat3;
+    rt_push_const_mat4 = vk_push_const_mat4;
 
     // Mesh 相关
-    rhi_create_mesh = vk_create_mesh;
-    rhi_destroy_mesh = vk_destroy_mesh;
-    rhi_draw_mesh = vk_draw_mesh;
+    rt_create_mesh = vk_create_mesh;
+    rt_destroy_mesh = vk_destroy_mesh;
+    rt_draw_mesh = vk_draw_mesh;
 
     // Meshlet 相关
-    rhi_create_meshlet = vk_create_meshlet;
-    rhi_destroy_meshlet = vk_destroy_meshlet;
-    rhi_draw_meshlet = vk_draw_meshlet;
+    rt_create_meshlet = vk_create_meshlet;
+    rt_destroy_meshlet = vk_destroy_meshlet;
+    rt_draw_meshlet = vk_draw_meshlet;
 
     // Screen 相关
-    rhi_create_mesh_screen = vk_create_mesh_screen;
-    rhi_draw_screen = vk_draw_screen;
+    rt_create_mesh_screen = vk_create_mesh_screen;
+    rt_draw_screen = vk_draw_screen;
 }
 
 void vk_unload_library()
@@ -507,7 +507,7 @@ void vk_unload_library()
     vulkan.meshletID = 0;
 }
 
-rhi_buffer_t vk_create_buffer(rhi_buffer_desc_t const& info)
+rt_buffer_t vk_create_buffer(rt_buffer_info_t const& info)
 {
     if (info.usage == 0)
     {
@@ -515,14 +515,14 @@ rhi_buffer_t vk_create_buffer(rhi_buffer_desc_t const& info)
         abort();
     }
 
-    rhi_buffer_t result = {};
+    rt_buffer_t result = {};
     result.handle = vulkan.bufferID + 1;
     auto& native = vulkan.buffers[result.handle];
     result.native = &native;
     VkBufferCreateInfo vkInfo = {};
     vkInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
     vkInfo.size = info.size;
-    vkInfo.usage = rhi_to_vk_buffer_usage(info.usage);
+    vkInfo.usage = rt_to_vk_buffer_usage(info.usage);
     if (info.data)
         vkInfo.usage |= VK_BUFFER_USAGE_TRANSFER_DST_BIT;
     vkInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
@@ -535,7 +535,7 @@ rhi_buffer_t vk_create_buffer(rhi_buffer_desc_t const& info)
     return result;
 }
 
-void vk_destroy_buffer(rhi_buffer_t& buffer)
+void vk_destroy_buffer(rt_buffer_t& buffer)
 {
     if (vulkan.device && buffer.native)
     {
@@ -546,7 +546,7 @@ void vk_destroy_buffer(rhi_buffer_t& buffer)
     }
 }
 
-void vk_bind_buffer(rhi_buffer_t buffer, rhi_buffer_bind_t bind)
+void vk_bind_buffer(rt_buffer_t buffer, rt_buffer_bind_t bind)
 {
     if (vulkan.currentPipeline == nullptr)
     {
@@ -559,19 +559,19 @@ void vk_bind_buffer(rhi_buffer_t buffer, rhi_buffer_bind_t bind)
     vulkan.currentBinding[bind.binding].type = GL_BINDING_BUFFER;
 }
 
-void* vk_map_buffer(rhi_buffer_t& buffer, GLenum mode, size_t offset, size_t size)
+void* vk_map_buffer(rt_buffer_t& buffer, GLenum mode, size_t offset, size_t size)
 {
     return nullptr;
 }
 
-void vk_unmap_buffer(rhi_buffer_t& buffer)
+void vk_unmap_buffer(rt_buffer_t& buffer)
 {
 
 }
 
-rhi_texture_t vk_create_texture(rhi_texture_desc_t const& info)
+rt_texture_t vk_create_texture(rt_texture_info_t const& info)
 {
-    rhi_texture_t result = {};
+    rt_texture_t result = {};
     result.handle = vulkan.textureID + 1;
     result.width = info.width;
     result.height = info.height;
@@ -605,9 +605,9 @@ rhi_texture_t vk_create_texture(rhi_texture_desc_t const& info)
     return result;
 }
 
-rhi_texture_t vk_create_texture_color(uint32_t width, uint32_t height, const void* data)
+rt_texture_t vk_create_texture_color(uint32_t width, uint32_t height, const void* data)
 {
-    rhi_texture_desc_t desc = {};
+    rt_texture_info_t desc = {};
     desc.width = width;
     desc.height = height;
     desc.target = GL_TEXTURE_2D;
@@ -624,9 +624,9 @@ rhi_texture_t vk_create_texture_color(uint32_t width, uint32_t height, const voi
     return vk_create_texture(desc);
 }
 
-rhi_texture_t vk_create_texture_depth(uint32_t width, uint32_t height, const void* data)
+rt_texture_t vk_create_texture_depth(uint32_t width, uint32_t height, const void* data)
 {
-    rhi_texture_desc_t desc = {};
+    rt_texture_info_t desc = {};
     desc.width = width;
     desc.height = height;
     desc.target = GL_TEXTURE_2D;
@@ -643,9 +643,9 @@ rhi_texture_t vk_create_texture_depth(uint32_t width, uint32_t height, const voi
     return vk_create_texture(desc);
 }
 
-rhi_texture_t vk_create_texture_depth_stencil(uint32_t width, uint32_t height, const void* data)
+rt_texture_t vk_create_texture_depth_stencil(uint32_t width, uint32_t height, const void* data)
 {
-    rhi_texture_desc_t desc = {};
+    rt_texture_info_t desc = {};
     desc.width = width;
     desc.height = height;
     desc.target = GL_TEXTURE_2D;
@@ -662,7 +662,7 @@ rhi_texture_t vk_create_texture_depth_stencil(uint32_t width, uint32_t height, c
     return vk_create_texture(desc);
 }
 
-void vk_destroy_texture(rhi_texture_t& texture)
+void vk_destroy_texture(rt_texture_t& texture)
 {
     if (vulkan.device && texture.native)
     {
@@ -674,7 +674,7 @@ void vk_destroy_texture(rhi_texture_t& texture)
     }
 }
 
-void vk_bind_texture(rhi_texture_t texture, rhi_texture_bind_t bind)
+void vk_bind_texture(rt_texture_t texture, rt_texture_bind_t bind)
 {
     if (vulkan.currentPipeline == nullptr)
     {
@@ -687,7 +687,7 @@ void vk_bind_texture(rhi_texture_t texture, rhi_texture_bind_t bind)
     vulkan.currentBinding[bind.binding].type = GL_BINDING_TEXTURE;
 }
 
-void vk_bind_texture_storage(rhi_texture_t texture, rhi_texture_storage_bind_t bind)
+void vk_bind_texture_storage(rt_texture_t texture, rt_texture_storage_bind_t bind)
 {
     if (vulkan.currentPipeline == nullptr)
     {
@@ -700,9 +700,9 @@ void vk_bind_texture_storage(rhi_texture_t texture, rhi_texture_storage_bind_t b
     vulkan.currentBinding[bind.binding].type = GL_BINDING_STORAGE_TEXTURE;
 }
 
-rhi_sampler_t vk_create_sampler(rhi_sampler_desc_t const& info)
+rt_sampler_t vk_create_sampler(rt_sampler_info_t const& info)
 {
-    rhi_sampler_t result = {};
+    rt_sampler_t result = {};
     result.handle = vulkan.samplerID + 1;
     auto& native = vulkan.samplers[result.handle];
     result.native = &native;
@@ -731,7 +731,7 @@ rhi_sampler_t vk_create_sampler(rhi_sampler_desc_t const& info)
     return result;
 }
 
-void vk_destroy_sampler(rhi_sampler_t& sampler)
+void vk_destroy_sampler(rt_sampler_t& sampler)
 {
     if (vulkan.device && sampler.native)
     {
@@ -743,7 +743,7 @@ void vk_destroy_sampler(rhi_sampler_t& sampler)
     }
 }
 
-void vk_bind_sampler(rhi_sampler_t sampler, rhi_sampler_bind_t bind)
+void vk_bind_sampler(rt_sampler_t sampler, rt_sampler_bind_t bind)
 {
     if (vulkan.currentPipeline == nullptr)
     {
@@ -777,13 +777,13 @@ static VkShaderModule vk_create_shader_module(const char* source)
     return module;
 }
 
-rhi_module_t vk_create_module_compute(const char* comp_src, rhi_compute_info_t const& info)
+rt_module_t vk_create_module_compute(const char* comp_src, rt_compute_info_t const& info)
 {
-    rhi_module_t result = {};
+    rt_module_t result = {};
     if (!comp_src || !vulkan.device) return result;
     
     result.handle = vulkan.moduleID + 1;
-    result.target = GL_COMPUTE_SHADER;
+    result.target = GL_MODULE_COMPUTE;
     auto& native = vulkan.modules[result.handle];
     result.native = &native;
     result.compute = info;
@@ -834,13 +834,13 @@ rhi_module_t vk_create_module_compute(const char* comp_src, rhi_compute_info_t c
     return result;
 }
 
-rhi_module_t vk_create_module_render(const char* vert_src, const char* frag_src, rhi_render_info_t const& info)
+rt_module_t vk_create_module_render(const char* vert_src, const char* frag_src, rt_render_info_t const& info)
 {
-    rhi_module_t result = {};
+    rt_module_t result = {};
     if (!vulkan.device) return result;
     
     result.handle = vulkan.moduleID + 1;
-    result.target = GL_VERTEX_SHADER;
+    result.target = GL_MODULE_RENDER;
     auto& native = vulkan.modules[result.handle];
     result.native = &native;
     result.render = info;
@@ -1112,9 +1112,9 @@ rhi_module_t vk_create_module_render(const char* vert_src, const char* frag_src,
     return result;
 }
 
-rhi_module_t vk_create_module_meshlet(const char* task_src, const char* mesh_src, const char* frag_src, rhi_render_info_t const& info)
+rt_module_t vk_create_module_meshlet(const char* task_src, const char* mesh_src, const char* frag_src, rt_render_info_t const& info)
 {
-    rhi_module_t result = {};
+    rt_module_t result = {};
     if (!mesh_src || !vulkan.device) return result;
     
     result.handle = vulkan.moduleID + 1;
@@ -1375,11 +1375,11 @@ rhi_module_t vk_create_module_meshlet(const char* task_src, const char* mesh_src
     }
     
     vulkan.moduleID += 1;
-    result.target = GL_MESH_SHADER_NV;
+    result.target = GL_MODULE_MESHLET;
     return result;
 }
 
-void vk_destroy_module(rhi_module_t& module)
+void vk_destroy_module(rt_module_t& module)
 {
     if (vulkan.device && module.native)
     {
@@ -1410,7 +1410,7 @@ void vk_push_constant(uint8_t const* buffer, size_t length)
     if (!buffer || length == 0) return;
     auto& pass = *vulkan.currentPipeline;
     if (!pass.module.native) return;
-    auto mod = (rhi_module_native_t*)pass.module.native;
+    auto mod = (rt_module_native_t*)pass.module.native;
     if (!mod->pipelineLayout) return;
 
     VkShaderStageFlags stages = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT | VK_SHADER_STAGE_MESH_BIT_NV | VK_SHADER_STAGE_TASK_BIT_NV;
@@ -1465,7 +1465,7 @@ void vk_push_const_mat4(const char* name, const float* value)
     abort();
 }
 
-void vk_begin_compute(rhi_pass_t& pass)
+void vk_begin_compute(rt_pass_t& pass)
 {
     if (vulkan.currentPipeline)
     {
@@ -1481,7 +1481,7 @@ void vk_begin_compute(rhi_pass_t& pass)
     vkBeginCommandBuffer(vulkan.cmdBuffer, &beginInfo);
 }
 
-void vk_end_compute(rhi_pass_t& pass)
+void vk_end_compute(rt_pass_t& pass)
 {
     if (vulkan.currentPipeline == nullptr)
     {
@@ -1512,7 +1512,7 @@ void vk_dispatch_compute(uint32_t groupX, uint32_t groupY, uint32_t groupZ)
     vkCmdDispatch(vulkan.cmdBuffer, groupX, groupY, groupZ);
 }
 
-void vk_begin_render(rhi_pass_t& pass)
+void vk_begin_render(rt_pass_t& pass)
 {
     if (vulkan.currentPipeline)
     {
@@ -1528,7 +1528,7 @@ void vk_begin_render(rhi_pass_t& pass)
     vkBeginCommandBuffer(vulkan.cmdBuffer, &beginInfo);
 }
 
-void vk_end_render(rhi_pass_t& pass)
+void vk_end_render(rt_pass_t& pass)
 {
     if (vulkan.currentPipeline == nullptr)
     {
@@ -1593,23 +1593,21 @@ void vk_draw_mesh_task(uint32_t groupX, uint32_t groupY, uint32_t groupZ)
     // vkCmdDrawMeshTasksNV(vulkan.cmdBuffer, groupX * groupY * groupZ, 0);
 }
 
-rhi_mesh_t vk_create_mesh(const float* vertices, const float* normals, const float* uvs, size_t vertex_count, const unsigned int* indices, size_t index_count)
+rt_mesh_t vk_create_mesh(const float* vertices, const float* normals, const float* uvs, size_t vertex_count, const unsigned int* indices, size_t index_count)
 {
-    rhi_mesh_t result = {};
+    rt_mesh_t result = {};
     if (!vertices || vertex_count == 0) return result;
     
     result.handle = vulkan.meshID + 1;
     result.vertex_count = static_cast<GLsizei>(vertex_count);
     result.index_count = static_cast<GLsizei>(index_count);
-    result.index_type = GL_UNSIGNED_INT;
-    result.primitive_type = GL_TRIANGLES;
-    
+
     auto& native = vulkan.meshes[result.handle];
     result.native = &native;
     
     if (vertices)
     {
-        rhi_buffer_desc_t vertexDesc = {};
+        rt_buffer_info_t vertexDesc = {};
         vertexDesc.size = vertex_count * sizeof(float) * 3;
         vertexDesc.usage = GL_BUFFER_USAGE_VERTEX | GL_BUFFER_USAGE_COPY_DST;
         vertexDesc.data = vertices;
@@ -1618,7 +1616,7 @@ rhi_mesh_t vk_create_mesh(const float* vertices, const float* normals, const flo
     
     if (normals)
     {
-        rhi_buffer_desc_t normalDesc = {};
+        rt_buffer_info_t normalDesc = {};
         normalDesc.size = vertex_count * sizeof(float) * 3;
         normalDesc.usage = GL_BUFFER_USAGE_VERTEX | GL_BUFFER_USAGE_COPY_DST;
         normalDesc.data = normals;
@@ -1627,7 +1625,7 @@ rhi_mesh_t vk_create_mesh(const float* vertices, const float* normals, const flo
     
     if (uvs)
     {
-        rhi_buffer_desc_t uvDesc = {};
+        rt_buffer_info_t uvDesc = {};
         uvDesc.size = vertex_count * sizeof(float) * 2;
         uvDesc.usage = GL_BUFFER_USAGE_VERTEX | GL_BUFFER_USAGE_COPY_DST;
         uvDesc.data = uvs;
@@ -1636,7 +1634,7 @@ rhi_mesh_t vk_create_mesh(const float* vertices, const float* normals, const flo
     
     if (indices)
     {
-        rhi_buffer_desc_t indexDesc = {};
+        rt_buffer_info_t indexDesc = {};
         indexDesc.size = index_count * sizeof(unsigned int);
         indexDesc.usage = GL_BUFFER_USAGE_INDEX | GL_BUFFER_USAGE_COPY_DST;
         indexDesc.data = indices;
@@ -1647,7 +1645,7 @@ rhi_mesh_t vk_create_mesh(const float* vertices, const float* normals, const flo
     return result;
 }
 
-void vk_destroy_mesh(rhi_mesh_t& mesh)
+void vk_destroy_mesh(rt_mesh_t& mesh)
 {
     if (mesh.vertex_vbo.handle) vk_destroy_buffer(mesh.vertex_vbo);
     if (mesh.normal_vbo.handle) vk_destroy_buffer(mesh.normal_vbo);
@@ -1658,7 +1656,7 @@ void vk_destroy_mesh(rhi_mesh_t& mesh)
     mesh.handle = 0;
 }
 
-void vk_draw_mesh(rhi_mesh_t const& mesh)
+void vk_draw_mesh(rt_mesh_t const& mesh)
 {
     if (vulkan.currentPipeline == nullptr)
     {
@@ -1676,9 +1674,9 @@ void vk_draw_mesh(rhi_mesh_t const& mesh)
     }
 }
 
-rhi_meshlet_t vk_create_meshlet(const float* vertices, const float* normals, const float* uvs, size_t vertex_count, const unsigned int* indices, size_t index_count)
+rt_meshlet_t vk_create_meshlet(const float* vertices, const float* normals, const float* uvs, size_t vertex_count, const unsigned int* indices, size_t index_count)
 {
-    rhi_meshlet_t result = {};
+    rt_meshlet_t result = {};
     if (!vertices || vertex_count == 0) return result;
     
     result.vertex_count = static_cast<GLsizei>(vertex_count);
@@ -1688,7 +1686,7 @@ rhi_meshlet_t vk_create_meshlet(const float* vertices, const float* normals, con
     
     if (vertices)
     {
-        rhi_buffer_desc_t vertexDesc = {};
+        rt_buffer_info_t vertexDesc = {};
         vertexDesc.size = vertex_count * sizeof(float) * 4;
         vertexDesc.usage = GL_BUFFER_USAGE_STORAGE | GL_BUFFER_USAGE_COPY_DST;
         vertexDesc.data = vertices;
@@ -1697,7 +1695,7 @@ rhi_meshlet_t vk_create_meshlet(const float* vertices, const float* normals, con
     
     if (normals)
     {
-        rhi_buffer_desc_t normalDesc = {};
+        rt_buffer_info_t normalDesc = {};
         normalDesc.size = vertex_count * sizeof(float) * 4;
         normalDesc.usage = GL_BUFFER_USAGE_STORAGE | GL_BUFFER_USAGE_COPY_DST;
         normalDesc.data = normals;
@@ -1706,7 +1704,7 @@ rhi_meshlet_t vk_create_meshlet(const float* vertices, const float* normals, con
     
     if (uvs)
     {
-        rhi_buffer_desc_t uvDesc = {};
+        rt_buffer_info_t uvDesc = {};
         uvDesc.size = vertex_count * sizeof(float) * 2;
         uvDesc.usage = GL_BUFFER_USAGE_STORAGE | GL_BUFFER_USAGE_COPY_DST;
         uvDesc.data = uvs;
@@ -1715,7 +1713,7 @@ rhi_meshlet_t vk_create_meshlet(const float* vertices, const float* normals, con
     
     if (indices)
     {
-        rhi_buffer_desc_t indexDesc = {};
+        rt_buffer_info_t indexDesc = {};
         indexDesc.size = index_count * sizeof(unsigned int);
         indexDesc.usage = GL_BUFFER_USAGE_STORAGE | GL_BUFFER_USAGE_COPY_DST;
         indexDesc.data = indices;
@@ -1725,7 +1723,7 @@ rhi_meshlet_t vk_create_meshlet(const float* vertices, const float* normals, con
     return result;
 }
 
-void vk_destroy_meshlet(rhi_meshlet_t& meshlet)
+void vk_destroy_meshlet(rt_meshlet_t& meshlet)
 {
     if (meshlet.vertex_vbo.handle) vk_destroy_buffer(meshlet.vertex_vbo);
     if (meshlet.normal_vbo.handle) vk_destroy_buffer(meshlet.normal_vbo);
@@ -1735,7 +1733,7 @@ void vk_destroy_meshlet(rhi_meshlet_t& meshlet)
     vulkan.meshletID += 1;
 }
 
-void vk_draw_meshlet(rhi_meshlet_t const& meshlet)
+void vk_draw_meshlet(rt_meshlet_t const& meshlet)
 {
     if (vulkan.currentPipeline == nullptr)
     {
@@ -1744,9 +1742,9 @@ void vk_draw_meshlet(rhi_meshlet_t const& meshlet)
     }
 }
 
-rhi_mesh_t vk_create_mesh_screen()
+rt_mesh_t vk_create_mesh_screen()
 {
-    rhi_mesh_t result = {};
+    rt_mesh_t result = {};
     
     float vertices[] = {
         -1.0f, -1.0f, 0.0f,
@@ -1760,7 +1758,7 @@ rhi_mesh_t vk_create_mesh_screen()
     return result;
 }
 
-void vk_draw_screen(int width, int height, rhi_texture_t texture, rhi_color_t clear)
+void vk_draw_screen(int width, int height, rt_texture_t texture, rt_color_t clear)
 {
     constexpr auto VS = R"(
         #version 460
@@ -1792,8 +1790,8 @@ void vk_draw_screen(int width, int height, rhi_texture_t texture, rhi_color_t cl
             final = texture(texture0, uv);
         }
     )";
-    auto module = vk_create_module_render(VS, FS, {.vertex = {rhi_vertex_layout, rhi_normal_layout, rhi_uv_layout,},});
-    rhi_pass_t pass = {.module = module, .screen = {.color = { .clear = true, .value = clear, }}};
+    auto module = vk_create_module_render(VS, FS, {.vertex = {rt_vertex_layout, rt_normal_layout, rt_uv_layout,},});
+    rt_pass_t pass = {.module = module, .screen = {.color = { .clear = true, .value = clear, }}};
     vk_begin_render(pass);
     vk_set_viewport(0, 0, width, height);
     vk_bind_texture(texture, { .binding = 0, });

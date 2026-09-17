@@ -21,7 +21,7 @@ add_definitions(
 
 add_executable(OpenGL Example/default.cpp
         OpenGL.cpp
-        OpenRHI.cpp
+        OpenRT.cpp
         Vulkan.cpp
         Vulkan.h
 )
@@ -38,7 +38,7 @@ target_include_directories(OpenGL PRIVATE ${Stb_INCLUDE_DIR})
 
 add_executable(Terrain Example/terrain.cpp
         OpenGL.cpp
-        OpenRHI.cpp
+        OpenRT.cpp
         Vulkan.cpp
         Vulkan.h
 )

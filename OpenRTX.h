@@ -1,22 +1,22 @@
 #pragma once
-#include "OpenRHI.h"
+#include "OpenRT.h"
 
-rhi_texture_t rhi_load_texture_file(const char* filename, bool flip = false);
-rhi_mesh_t rhi_create_mesh_cube(float width, float height, float length);
-rhi_mesh_t rhi_create_mesh_plane(float size, int N = 1);
-rhi_mesh_t rhi_create_mesh_sphere(float radius, int rings, int slices);
-rhi_mesh_t rhi_create_mesh_capsule(float radius, float height, int rings, int slices);
-rhi_mesh_t rhi_create_mesh_footprint(float length, float width, float thickness, bool left_foot);
-rhi_meshlet_t rhi_create_meshlet_plane(float size, int N = 1);
-rhi_meshlet_t rhi_create_meshlet_sphere(float radius, int rings, int slices);
-rhi_meshlet_t rhi_create_meshlet_capsule(float radius, float height, int rings, int slices);
+rt_texture_t rt_load_texture_file(const char* filename, bool flip = false);
+rt_mesh_t rt_create_mesh_cube(float width, float height, float length);
+rt_mesh_t rt_create_mesh_plane(float size, int N = 1);
+rt_mesh_t rt_create_mesh_sphere(float radius, int rings, int slices);
+rt_mesh_t rt_create_mesh_capsule(float radius, float height, int rings, int slices);
+rt_mesh_t rt_create_mesh_footprint(float length, float width, float thickness, bool left_foot);
+rt_meshlet_t rt_create_meshlet_plane(float size, int N = 1);
+rt_meshlet_t rt_create_meshlet_sphere(float radius, int rings, int slices);
+rt_meshlet_t rt_create_meshlet_capsule(float radius, float height, int rings, int slices);
 
-#ifdef OPENGLX_IMPLEMENTATION
+#ifdef OPENRTX_IMPLEMENTATION
 
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb_image.h>
 
-static rhi_texture_t rhi_load_texture_file(const char* filename, bool flip)
+static rt_texture_t rt_load_texture_file(const char* filename, bool flip)
 {
     // stb 默认以左上角为原点，flip 为 true 时翻转为 OpenGL 的左下角原点
     stbi_set_flip_vertically_on_load(flip ? 1 : 0);
@@ -44,7 +44,7 @@ static rhi_texture_t rhi_load_texture_file(const char* filename, bool flip)
         return {};
     }
 
-    rhi_texture_desc_t info = {};
+    rt_texture_info_t info = {};
     info.width = (uint32_t)width;
     info.height = (uint32_t)height;
     info.depth = 1;
@@ -101,14 +101,14 @@ static rhi_texture_t rhi_load_texture_file(const char* filename, bool flip)
             return {};
     }
 
-    rhi_texture_t texture = rhi_create_texture(info);
+    rt_texture_t texture = rt_create_texture(info);
     stbi_image_free(data);
     return texture;
 }
 
 #include <vector>
 
-static rhi_mesh_t rhi_create_mesh_plane(float size, int N)
+static rt_mesh_t rt_create_mesh_plane(float size, int N)
 {
     int vertsX = N + 1;
     int vertsY = N + 1;
@@ -165,7 +165,7 @@ static rhi_mesh_t rhi_create_mesh_plane(float size, int N)
         }
     }
 
-    return rhi_create_mesh(
+    return rt_create_mesh(
         positions.data(),
         normals.data(),
         uvs.data(),
@@ -175,7 +175,7 @@ static rhi_mesh_t rhi_create_mesh_plane(float size, int N)
     );
 }
 
-static rhi_mesh_t rhi_create_mesh_cube(float width, float height, float length)
+static rt_mesh_t rt_create_mesh_cube(float width, float height, float length)
 {
     static const float v[24 * 3] = {
         // 前
@@ -243,13 +243,13 @@ static rhi_mesh_t rhi_create_mesh_cube(float width, float height, float length)
         uvs[i * 2 + 1] = uv[i * 2 + 1];
     }
 
-    return rhi_create_mesh(
+    return rt_create_mesh(
         positions.data(), normals.data(), uvs.data(),
         24, idx, 36
     );
 }
 
-static rhi_mesh_t rhi_create_mesh_footprint(
+static rt_mesh_t rt_create_mesh_footprint(
     float length,    // 鞋印长度（Z方向）
     float width,     // 鞋印宽度（X方向）
     float thickness, // 厚度（Y方向）
@@ -434,7 +434,7 @@ static rhi_mesh_t rhi_create_mesh_footprint(
         }
     }
 
-    return rhi_create_mesh(
+    return rt_create_mesh(
         positions.data(),
         normals.data(),
         uvs.data(),
@@ -444,7 +444,7 @@ static rhi_mesh_t rhi_create_mesh_footprint(
     );
 }
 
-static rhi_mesh_t rhi_create_mesh_sphere(float radius, int rings, int slices)
+static rt_mesh_t rt_create_mesh_sphere(float radius, int rings, int slices)
 {
     int vertex_count = (rings + 1) * (slices + 1);
     int index_count = rings * slices * 6;
@@ -501,13 +501,13 @@ static rhi_mesh_t rhi_create_mesh_sphere(float radius, int rings, int slices)
         }
     }
 
-    return rhi_create_mesh(
+    return rt_create_mesh(
         positions.data(), normals.data(), uvs.data(),
         vertex_count, indices.data(), index_count
     );
 }
 
-static rhi_mesh_t rhi_create_mesh_capsule(float radius, float height, int rings, int slices)
+static rt_mesh_t rt_create_mesh_capsule(float radius, float height, int rings, int slices)
 {
     // 半球纬度只用到 90°，所以 rings 参数复用
     // 上半球：从顶(0)到底(rings)
@@ -618,7 +618,7 @@ static rhi_mesh_t rhi_create_mesh_capsule(float radius, float height, int rings,
         }
     }
 
-    return rhi_create_mesh(
+    return rt_create_mesh(
         positions.data(), normals.data(), uvs.data(),
         vertexCount, indices.data(), indexCount
     );
@@ -626,7 +626,7 @@ static rhi_mesh_t rhi_create_mesh_capsule(float radius, float height, int rings,
 
 // ====================================================================
 
-static rhi_mesh_t rhi_create_mesh_quad(float width, float height)
+static rt_mesh_t rt_create_mesh_quad(float width, float height)
 {
     const size_t vertex_count = 4;
     const size_t index_count  = 6;
@@ -672,7 +672,7 @@ static rhi_mesh_t rhi_create_mesh_quad(float width, float height)
     indices[0] = 0; indices[1] = 1; indices[2] = 2;
     indices[3] = 0; indices[4] = 2; indices[5] = 3;
 
-    return rhi_create_mesh(
+    return rt_create_mesh(
         positions.data(),
         normals.data(),
         uvs.data(),
@@ -682,7 +682,7 @@ static rhi_mesh_t rhi_create_mesh_quad(float width, float height)
     );
 }
 
-static rhi_mesh_t rhi_create_mesh_circle(float radius, int segments)
+static rt_mesh_t rt_create_mesh_circle(float radius, int segments)
 {
     size_t vertex_count = segments + 1; // 中心点 + 边缘点
     size_t index_count  = segments * 3;
@@ -726,7 +726,7 @@ static rhi_mesh_t rhi_create_mesh_circle(float radius, int segments)
         indices[i * 3 + 2] = i + 2 > segments ? 1 : i + 2;
     }
 
-    return rhi_create_mesh(
+    return rt_create_mesh(
         positions.data(),
         normals.data(),
         uvs.data(),
@@ -736,7 +736,7 @@ static rhi_mesh_t rhi_create_mesh_circle(float radius, int segments)
     );
 }
 
-static rhi_mesh_t rhi_create_mesh_ring(
+static rt_mesh_t rt_create_mesh_ring(
     float inner_radius,
     float outer_radius,
     int segments)
@@ -796,7 +796,7 @@ static rhi_mesh_t rhi_create_mesh_ring(
         indices[idx++] = i1;
     }
 
-    return rhi_create_mesh(
+    return rt_create_mesh(
         positions.data(),
         normals.data(),
         uvs.data(),
@@ -808,7 +808,7 @@ static rhi_mesh_t rhi_create_mesh_ring(
 
 // ====================================================================
 
-static rhi_meshlet_t rhi_create_meshlet_plane(float size, int N)
+static rt_meshlet_t rt_create_meshlet_plane(float size, int N)
 {
     int vertsX = N + 1;
     int vertsY = N + 1;
@@ -865,7 +865,7 @@ static rhi_meshlet_t rhi_create_meshlet_plane(float size, int N)
         }
     }
 
-    return rhi_create_meshlet(
+    return rt_create_meshlet(
         positions.data(),
         normals.data(),
         uvs.data(),
@@ -875,7 +875,7 @@ static rhi_meshlet_t rhi_create_meshlet_plane(float size, int N)
     );
 }
 
-static rhi_meshlet_t rhi_create_meshlet_sphere(float radius, int rings, int slices)
+static rt_meshlet_t rt_create_meshlet_sphere(float radius, int rings, int slices)
 {
     int vertex_count = (rings + 1) * (slices + 1);
     int index_count = rings * slices * 6;
@@ -932,13 +932,13 @@ static rhi_meshlet_t rhi_create_meshlet_sphere(float radius, int rings, int slic
         }
     }
 
-    return rhi_create_meshlet(
+    return rt_create_meshlet(
         positions.data(), normals.data(), uvs.data(),
         vertex_count, indices.data(), index_count
     );
 }
 
-static rhi_meshlet_t rhi_create_meshlet_capsule(float radius, float height, int rings, int slices)
+static rt_meshlet_t rt_create_meshlet_capsule(float radius, float height, int rings, int slices)
 {
     // 半球纬度只用到 90°，所以 rings 参数复用
     // 上半球：从顶(0)到底(rings)
@@ -1049,7 +1049,7 @@ static rhi_meshlet_t rhi_create_meshlet_capsule(float radius, float height, int 
         }
     }
 
-    return rhi_create_meshlet(
+    return rt_create_meshlet(
         positions.data(), normals.data(), uvs.data(),
         vertexCount, indices.data(), indexCount
     );
