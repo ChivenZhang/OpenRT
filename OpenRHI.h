@@ -21,19 +21,32 @@
 #define GL_1_PI 0.318309886183790671538 // 1/pi
 #define GL_2_PI 0.636619772367581343076 // 2/pi
 
+enum rhi_buffer_usage_t : uint32_t
+{
+    GL_BUFFER_USAGE_MAP_READ      = 0x0001,
+    GL_BUFFER_USAGE_MAP_WRITE     = 0x0002,
+    GL_BUFFER_USAGE_COPY_SRC      = 0x0004,
+    GL_BUFFER_USAGE_COPY_DST      = 0x0008,
+    GL_BUFFER_USAGE_INDEX         = 0x0010,
+    GL_BUFFER_USAGE_VERTEX        = 0x0020,
+    GL_BUFFER_USAGE_UNIFORM       = 0x0040,
+    GL_BUFFER_USAGE_STORAGE       = 0x0080,
+    GL_BUFFER_USAGE_INDIRECT      = 0x0100,
+    GL_BUFFER_USAGE_QUERY_RESOLVE = 0x0200,
+};
+
 struct rhi_buffer_t
 {
     GLuint handle = 0;
     size_t size = 0;
-    GLenum usage = GL_STATIC_DRAW;
-    GLenum target = GL_ARRAY_BUFFER;
+    uint32_t usage = 0;
     void* native = nullptr;
 };
 
 struct rhi_buffer_desc_t
 {
     size_t size = 0;                    // 缓冲区大小（字节）
-    GLenum usage = GL_STATIC_DRAW;      // GL_STREAM_DRAW / GL_STREAM_READ / GL_STREAM_COPY / GL_STATIC_DRAW / GL_STATIC_READ / GL_STATIC_COPY / GL_DYNAMIC_DRAW / GL_DYNAMIC_READ / GL_DYNAMIC_COPY
+    uint32_t usage = GL_BUFFER_USAGE_MAP_READ | GL_BUFFER_USAGE_MAP_WRITE | GL_BUFFER_USAGE_COPY_SRC | GL_BUFFER_USAGE_COPY_DST; // rhi_buffer_usage_t
     const void* data = nullptr;         // 初始数据指针，可为 nullptr
 };
 
@@ -123,10 +136,13 @@ inline rhi_vertex_t rhi_vertex_layout{.location = 0, .type = GL_FLOAT, .count = 
 inline rhi_vertex_t rhi_normal_layout{.location = 1, .type = GL_FLOAT, .count = 3,};
 inline rhi_vertex_t rhi_uv_layout{.location = 2, .type = GL_FLOAT, .count = 2,};
 
-#define GL_BINDING_BUFFER 1
-#define GL_BINDING_TEXTURE 2
-#define GL_BINDING_STORAGE_TEXTURE 3
-#define GL_BINDING_SAMPLER 4
+enum rhi_binding_t : uint32_t
+{
+    GL_BINDING_BUFFER = 1,
+    GL_BINDING_TEXTURE = 2,
+    GL_BINDING_STORAGE_TEXTURE = 3,
+    GL_BINDING_SAMPLER = 4,
+};
 
 struct rhi_layout_t
 {

@@ -140,7 +140,7 @@ void frame(int width, int height)
 
             rhi_pass_t pass = {};
             rhi_begin_transfer(pass);
-            auto buffer = rhi_create_buffer({.size = texture.width * texture.height * 3,});
+            auto buffer = rhi_create_buffer({.size = texture.width * texture.height * 3, .usage = GL_BUFFER_USAGE_COPY_SRC | GL_BUFFER_USAGE_COPY_DST,});
             rhi_copy_buffer_texture(
                 {.texture = texture, },
                 {.buffer = buffer, .bytesPerRow = texture.width * 3, .rowsPerImage = texture.height,},

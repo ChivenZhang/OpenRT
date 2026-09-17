@@ -116,6 +116,7 @@ void gl_load_library()
 
 void gl_unload_library()
 {
+    opengl.currentPassType = GL_NONE;
     opengl.currentPipeline = nullptr;
 }
 
@@ -123,14 +124,28 @@ void gl_unload_library()
 
 rhi_buffer_t gl_create_buffer(rhi_buffer_desc_t const& info)
 {
+    if (info.usage == 0)
+    {
+        fprintf(stderr, "Buffer usage must not be 0");
+        abort();
+    }
+
     rhi_buffer_t result = {};
     glGenBuffers(1, &result.handle);
     glBindBuffer(GL_ARRAY_BUFFER, result.handle);
-    glBufferData(GL_ARRAY_BUFFER, (GLsizeiptr)info.size, info.data, info.usage);
+
+    GLbitfield flags = 0;
+    if (info.usage & GL_BUFFER_USAGE_MAP_READ)
+        flags |= GL_MAP_READ_BIT | GL_MAP_PERSISTENT_BIT | GL_MAP_COHERENT_BIT;
+    if (info.usage & GL_BUFFER_USAGE_MAP_WRITE)
+        flags |= GL_MAP_WRITE_BIT | GL_MAP_PERSISTENT_BIT | GL_MAP_COHERENT_BIT;
+    if (info.usage & GL_BUFFER_USAGE_COPY_DST)
+        flags |= GL_DYNAMIC_STORAGE_BIT;
+    glBufferStorage(GL_ARRAY_BUFFER, (GLsizeiptr)info.size, info.data, flags);
     glBindBuffer(GL_ARRAY_BUFFER, 0);
 
     result.size = info.size;
-    result.target = GL_ARRAY_BUFFER;
+    result.usage = info.usage;
     return result;
 }
 
@@ -188,6 +203,8 @@ void* gl_map_buffer(rhi_buffer_t& buffer, GLenum mode, size_t offset, size_t siz
         fprintf(stderr, "Unsupported buffer map mode");
         abort();
     }
+    if (buffer.usage & (GL_BUFFER_USAGE_MAP_READ | GL_BUFFER_USAGE_MAP_WRITE))
+        access |= GL_MAP_PERSISTENT_BIT | GL_MAP_COHERENT_BIT;
 
     glBindBuffer(GL_ARRAY_BUFFER, buffer.handle);
     void* ptr = glMapBufferRange(GL_ARRAY_BUFFER, (GLintptr)offset, (GLsizeiptr)size, access);
@@ -718,6 +735,11 @@ void gl_begin_compute(rhi_pass_t& pass)
         fprintf(stderr, "Pipeline module is not compute shader\n");
         abort();
     }
+    if (opengl.currentPipeline != nullptr)
+    {
+        fprintf(stderr, "Pipeline not end\n");
+        abort();
+    }
     opengl.currentPipeline = &pass;
     opengl.currentPassType = GL_MODULE_COMPUTE;
 
@@ -776,6 +798,11 @@ void gl_begin_render(rhi_pass_t& pass)
     if (pass.module.target != GL_MODULE_RENDER && pass.module.target != GL_MODULE_MESHLET)
     {
         fprintf(stderr, "Pipeline module is not render shader\n");
+        abort();
+    }
+    if (opengl.currentPipeline != nullptr)
+    {
+        fprintf(stderr, "Pipeline not end\n");
         abort();
     }
     opengl.currentPipeline = &pass;
@@ -1637,7 +1664,7 @@ rhi_mesh_t gl_create_mesh(const float* vertices, // vec3
 
     if (vertices)
     {
-        result.vertex_vbo = gl_create_buffer({.size = vertex_count * 3 * sizeof(float), .usage = GL_STATIC_DRAW, .data = vertices,});
+        result.vertex_vbo = gl_create_buffer({.size = vertex_count * 3 * sizeof(float), .usage = GL_BUFFER_USAGE_VERTEX | GL_BUFFER_USAGE_COPY_DST, .data = vertices,});
         glBindBuffer(GL_ARRAY_BUFFER, result.vertex_vbo.handle);
         glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
         glEnableVertexAttribArray(0);
@@ -1645,7 +1672,7 @@ rhi_mesh_t gl_create_mesh(const float* vertices, // vec3
 
     if (normals)
     {
-        result.normal_vbo = gl_create_buffer({.size = vertex_count * 3 * sizeof(float), .usage = GL_STATIC_DRAW, .data = normals,});
+        result.normal_vbo = gl_create_buffer({.size = vertex_count * 3 * sizeof(float), .usage = GL_BUFFER_USAGE_VERTEX | GL_BUFFER_USAGE_COPY_DST, .data = normals,});
         glBindBuffer(GL_ARRAY_BUFFER, result.normal_vbo.handle);
         glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
         glEnableVertexAttribArray(1);
@@ -1653,7 +1680,7 @@ rhi_mesh_t gl_create_mesh(const float* vertices, // vec3
 
     if (uvs)
     {
-        result.uv_vbo = gl_create_buffer({.size = vertex_count * 2 * sizeof(float), .usage = GL_STATIC_DRAW, .data = uvs,});
+        result.uv_vbo = gl_create_buffer({.size = vertex_count * 2 * sizeof(float), .usage = GL_BUFFER_USAGE_VERTEX | GL_BUFFER_USAGE_COPY_DST, .data = uvs,});
         glBindBuffer(GL_ARRAY_BUFFER, result.uv_vbo.handle);
         glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(float), (void*)0);
         glEnableVertexAttribArray(2);
@@ -1661,7 +1688,7 @@ rhi_mesh_t gl_create_mesh(const float* vertices, // vec3
 
     if (indices)
     {
-        result.index_vbo = gl_create_buffer({.size = index_count * sizeof(uint32_t), .usage = GL_STATIC_DRAW, .data = indices,});
+        result.index_vbo = gl_create_buffer({.size = index_count * sizeof(uint32_t), .usage = GL_BUFFER_USAGE_INDEX | GL_BUFFER_USAGE_COPY_DST, .data = indices,});
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, result.index_vbo.handle);
     }
 
@@ -1706,22 +1733,22 @@ rhi_meshlet_t gl_create_meshlet(const float* vertices, // vec4
 
     if (vertices)
     {
-        result.vertex_vbo = gl_create_buffer({.size = vertex_count * 4 * sizeof(float), .usage = GL_STATIC_DRAW, .data = vertices,});
+        result.vertex_vbo = gl_create_buffer({.size = vertex_count * 4 * sizeof(float), .usage = GL_BUFFER_USAGE_STORAGE | GL_BUFFER_USAGE_COPY_DST, .data = vertices,});
     }
 
     if (normals)
     {
-        result.normal_vbo = gl_create_buffer({.size = vertex_count * 4 * sizeof(float), .usage = GL_STATIC_DRAW, .data = normals,});
+        result.normal_vbo = gl_create_buffer({.size = vertex_count * 4 * sizeof(float), .usage = GL_BUFFER_USAGE_STORAGE | GL_BUFFER_USAGE_COPY_DST, .data = normals,});
     }
 
     if (uvs)
     {
-        result.uv_vbo = gl_create_buffer({.size = vertex_count * 2 * sizeof(float), .usage = GL_STATIC_DRAW, .data = uvs,});
+        result.uv_vbo = gl_create_buffer({.size = vertex_count * 2 * sizeof(float), .usage = GL_BUFFER_USAGE_STORAGE | GL_BUFFER_USAGE_COPY_DST, .data = uvs,});
     }
 
     if (indices)
     {
-        result.index_vbo = gl_create_buffer({.size = index_count * sizeof(uint32_t), .usage = GL_STATIC_DRAW, .data = indices,});
+        result.index_vbo = gl_create_buffer({.size = index_count * sizeof(uint32_t), .usage = GL_BUFFER_USAGE_STORAGE | GL_BUFFER_USAGE_COPY_DST, .data = indices,});
     }
 
     result.vertex_count = (GLsizei)vertex_count;

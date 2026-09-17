@@ -70,14 +70,17 @@ static VkImageUsageFlags gl_to_vk_image_usage(GLenum format)
     }
 }
 
-static VkBufferUsageFlags gl_to_rhi_buffer_usage(GLenum target)
+static VkBufferUsageFlags rhi_to_vk_buffer_usage(uint32_t usage)
 {
-    switch (target)
-    {
-        case GL_UNIFORM_BUFFER: return VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
-        case GL_SHADER_STORAGE_BUFFER: return VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
-        default: return VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
-    }
+    VkBufferUsageFlags flags = 0;
+    if (usage & GL_BUFFER_USAGE_COPY_SRC) flags |= VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+    if (usage & GL_BUFFER_USAGE_COPY_DST) flags |= VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+    if (usage & GL_BUFFER_USAGE_INDEX) flags |= VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
+    if (usage & GL_BUFFER_USAGE_VERTEX) flags |= VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+    if (usage & GL_BUFFER_USAGE_UNIFORM) flags |= VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
+    if (usage & GL_BUFFER_USAGE_STORAGE) flags |= VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+    if (usage & GL_BUFFER_USAGE_INDIRECT) flags |= VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT;
+    return flags;
 }
 
 static VkFormat gl_to_vk_vertex_format(GLenum type, GLenum count)
@@ -506,6 +509,12 @@ void vk_unload_library()
 
 rhi_buffer_t vk_create_buffer(rhi_buffer_desc_t const& info)
 {
+    if (info.usage == 0)
+    {
+        fprintf(stderr, "Buffer usage must not be 0");
+        abort();
+    }
+
     rhi_buffer_t result = {};
     result.handle = vulkan.bufferID + 1;
     auto& native = vulkan.buffers[result.handle];
@@ -513,14 +522,9 @@ rhi_buffer_t vk_create_buffer(rhi_buffer_desc_t const& info)
     VkBufferCreateInfo vkInfo = {};
     vkInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
     vkInfo.size = info.size;
-    vkInfo.usage =
-        VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
-        VK_BUFFER_USAGE_TRANSFER_DST_BIT |
-        VK_BUFFER_USAGE_VERTEX_BUFFER_BIT |
-        VK_BUFFER_USAGE_INDEX_BUFFER_BIT |
-        VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT |
-        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT |
-        VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT;
+    vkInfo.usage = rhi_to_vk_buffer_usage(info.usage);
+    if (info.data)
+        vkInfo.usage |= VK_BUFFER_USAGE_TRANSFER_DST_BIT;
     vkInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
     if (vkCreateBuffer(vulkan.device, &vkInfo, vulkan.allocator, &native.handle) != VK_SUCCESS) return {};
@@ -1607,6 +1611,7 @@ rhi_mesh_t vk_create_mesh(const float* vertices, const float* normals, const flo
     {
         rhi_buffer_desc_t vertexDesc = {};
         vertexDesc.size = vertex_count * sizeof(float) * 3;
+        vertexDesc.usage = GL_BUFFER_USAGE_VERTEX | GL_BUFFER_USAGE_COPY_DST;
         vertexDesc.data = vertices;
         result.vertex_vbo = vk_create_buffer(vertexDesc);
     }
@@ -1615,6 +1620,7 @@ rhi_mesh_t vk_create_mesh(const float* vertices, const float* normals, const flo
     {
         rhi_buffer_desc_t normalDesc = {};
         normalDesc.size = vertex_count * sizeof(float) * 3;
+        normalDesc.usage = GL_BUFFER_USAGE_VERTEX | GL_BUFFER_USAGE_COPY_DST;
         normalDesc.data = normals;
         result.normal_vbo = vk_create_buffer(normalDesc);
     }
@@ -1623,6 +1629,7 @@ rhi_mesh_t vk_create_mesh(const float* vertices, const float* normals, const flo
     {
         rhi_buffer_desc_t uvDesc = {};
         uvDesc.size = vertex_count * sizeof(float) * 2;
+        uvDesc.usage = GL_BUFFER_USAGE_VERTEX | GL_BUFFER_USAGE_COPY_DST;
         uvDesc.data = uvs;
         result.uv_vbo = vk_create_buffer(uvDesc);
     }
@@ -1631,6 +1638,7 @@ rhi_mesh_t vk_create_mesh(const float* vertices, const float* normals, const flo
     {
         rhi_buffer_desc_t indexDesc = {};
         indexDesc.size = index_count * sizeof(unsigned int);
+        indexDesc.usage = GL_BUFFER_USAGE_INDEX | GL_BUFFER_USAGE_COPY_DST;
         indexDesc.data = indices;
         result.index_vbo = vk_create_buffer(indexDesc);
     }
@@ -1682,6 +1690,7 @@ rhi_meshlet_t vk_create_meshlet(const float* vertices, const float* normals, con
     {
         rhi_buffer_desc_t vertexDesc = {};
         vertexDesc.size = vertex_count * sizeof(float) * 4;
+        vertexDesc.usage = GL_BUFFER_USAGE_STORAGE | GL_BUFFER_USAGE_COPY_DST;
         vertexDesc.data = vertices;
         result.vertex_vbo = vk_create_buffer(vertexDesc);
     }
@@ -1690,6 +1699,7 @@ rhi_meshlet_t vk_create_meshlet(const float* vertices, const float* normals, con
     {
         rhi_buffer_desc_t normalDesc = {};
         normalDesc.size = vertex_count * sizeof(float) * 4;
+        normalDesc.usage = GL_BUFFER_USAGE_STORAGE | GL_BUFFER_USAGE_COPY_DST;
         normalDesc.data = normals;
         result.normal_vbo = vk_create_buffer(normalDesc);
     }
@@ -1698,6 +1708,7 @@ rhi_meshlet_t vk_create_meshlet(const float* vertices, const float* normals, con
     {
         rhi_buffer_desc_t uvDesc = {};
         uvDesc.size = vertex_count * sizeof(float) * 2;
+        uvDesc.usage = GL_BUFFER_USAGE_STORAGE | GL_BUFFER_USAGE_COPY_DST;
         uvDesc.data = uvs;
         result.uv_vbo = vk_create_buffer(uvDesc);
     }
@@ -1706,6 +1717,7 @@ rhi_meshlet_t vk_create_meshlet(const float* vertices, const float* normals, con
     {
         rhi_buffer_desc_t indexDesc = {};
         indexDesc.size = index_count * sizeof(unsigned int);
+        indexDesc.usage = GL_BUFFER_USAGE_STORAGE | GL_BUFFER_USAGE_COPY_DST;
         indexDesc.data = indices;
         result.index_vbo = vk_create_buffer(indexDesc);
     }
