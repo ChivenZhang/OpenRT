@@ -14,7 +14,7 @@
 struct OpenGL
 {
     GLenum currentPassType = GL_NONE;
-    gl_pass_t* currentPipeline = nullptr;
+    rhi_pass_t* currentPipeline = nullptr;
 } static thread_local opengl;
 
 void gl_load_library()
@@ -123,9 +123,9 @@ void gl_unload_library()
 
 // ====================================================================
 
-gl_buffer_t gl_create_buffer(gl_buffer_desc_t const& info)
+rhi_buffer_t gl_create_buffer(rhi_buffer_desc_t const& info)
 {
-    gl_buffer_t result = {};
+    rhi_buffer_t result = {};
     glGenBuffers(1, &result.handle);
     glBindBuffer(GL_ARRAY_BUFFER, result.handle);
     glBufferData(GL_ARRAY_BUFFER, (GLsizeiptr)info.size, info.data, info.usage);
@@ -136,13 +136,13 @@ gl_buffer_t gl_create_buffer(gl_buffer_desc_t const& info)
     return result;
 }
 
-void gl_destroy_buffer(gl_buffer_t& buffer)
+void gl_destroy_buffer(rhi_buffer_t& buffer)
 {
     glDeleteBuffers(1, &buffer.handle);
     buffer.handle = 0;
 }
 
-void gl_bind_buffer(gl_buffer_t buffer, gl_buffer_bind_t bind)
+void gl_bind_buffer(rhi_buffer_t buffer, rhi_buffer_bind_t bind)
 {
     if (opengl.currentPipeline == nullptr)
     {
@@ -163,7 +163,7 @@ void gl_bind_buffer(gl_buffer_t buffer, gl_buffer_bind_t bind)
     }
 }
 
-void gl_read_buffer(gl_buffer_t buffer, size_t offset, size_t size, void* data)
+void gl_read_buffer(rhi_buffer_t buffer, size_t offset, size_t size, void* data)
 {
     if (!buffer.handle)
         return;
@@ -177,7 +177,7 @@ void gl_read_buffer(gl_buffer_t buffer, size_t offset, size_t size, void* data)
     glBindBuffer(GL_ARRAY_BUFFER, 0);
 }
 
-void gl_write_buffer(gl_buffer_t buffer, size_t offset, size_t size, const void* data)
+void gl_write_buffer(rhi_buffer_t buffer, size_t offset, size_t size, const void* data)
 {
     if (!buffer.handle)
         return;
@@ -193,9 +193,9 @@ void gl_write_buffer(gl_buffer_t buffer, size_t offset, size_t size, const void*
 
 // ====================================================================
 
-gl_texture_t gl_create_texture(gl_texture_desc_t const& info)
+rhi_texture_t gl_create_texture(rhi_texture_desc_t const& info)
 {
-    gl_texture_t result = {};
+    rhi_texture_t result = {};
 
     // 生成并绑定纹理
     glGenTextures(1, &result.handle);
@@ -281,9 +281,9 @@ gl_texture_t gl_create_texture(gl_texture_desc_t const& info)
     return result;
 }
 
-gl_texture_t gl_create_texture_color(uint32_t width, uint32_t height, const void* data)
+rhi_texture_t gl_create_texture_color(uint32_t width, uint32_t height, const void* data)
 {
-    gl_texture_desc_t info
+    rhi_texture_desc_t info
     {
         .width = width,
         .height = height,
@@ -300,9 +300,9 @@ gl_texture_t gl_create_texture_color(uint32_t width, uint32_t height, const void
     return gl_create_texture(info);
 }
 
-gl_texture_t gl_create_texture_depth(uint32_t width, uint32_t height, const void* data)
+rhi_texture_t gl_create_texture_depth(uint32_t width, uint32_t height, const void* data)
 {
-    gl_texture_desc_t info
+    rhi_texture_desc_t info
     {
         .width = width,
         .height = height,
@@ -320,9 +320,9 @@ gl_texture_t gl_create_texture_depth(uint32_t width, uint32_t height, const void
     return gl_create_texture(info);
 }
 
-gl_texture_t gl_create_texture_depth_stencil(uint32_t width, uint32_t height, const void* data)
+rhi_texture_t gl_create_texture_depth_stencil(uint32_t width, uint32_t height, const void* data)
 {
-    gl_texture_desc_t info
+    rhi_texture_desc_t info
     {
         .width = width,
         .height = height,
@@ -339,13 +339,13 @@ gl_texture_t gl_create_texture_depth_stencil(uint32_t width, uint32_t height, co
     return gl_create_texture(info);
 }
 
-void gl_destroy_texture(gl_texture_t& texture)
+void gl_destroy_texture(rhi_texture_t& texture)
 {
     glDeleteTextures(1, &texture.handle);
     texture.handle = 0;
 }
 
-void gl_bind_texture(gl_texture_t texture, gl_texture_bind_t bind)
+void gl_bind_texture(rhi_texture_t texture, rhi_texture_bind_t bind)
 {
     if (opengl.currentPipeline == nullptr)
     {
@@ -362,7 +362,7 @@ void gl_bind_texture(gl_texture_t texture, gl_texture_bind_t bind)
     }
 }
 
-void gl_bind_texture_storage(gl_texture_t texture, gl_texture_storage_bind_t bind)
+void gl_bind_texture_storage(rhi_texture_t texture, rhi_texture_storage_bind_t bind)
 {
     if (opengl.currentPipeline == nullptr)
     {
@@ -374,14 +374,14 @@ void gl_bind_texture_storage(gl_texture_t texture, gl_texture_storage_bind_t bin
                        (GLint)bind.base_layer, bind.access, texture.internal_format);
 }
 
-gl_texture_t gl_load_texture(gl_image_t const& image)
+rhi_texture_t gl_load_texture(rhi_image_t const& image)
 {
     return gl_create_texture_color(image.width, image.height, image.pixels);
 }
 
-gl_image_t gl_load_image(gl_texture_t const& texture, void* buffer, size_t length)
+rhi_image_t gl_load_image(rhi_texture_t const& texture, void* buffer, size_t length)
 {
-    gl_image_t result = {};
+    rhi_image_t result = {};
 
     if (texture.target == GL_TEXTURE_2D)
     {
@@ -402,9 +402,9 @@ gl_image_t gl_load_image(gl_texture_t const& texture, void* buffer, size_t lengt
 
 // ====================================================================
 
-gl_sampler_t gl_create_sampler(gl_sampler_desc_t const& info)
+rhi_sampler_t gl_create_sampler(rhi_sampler_desc_t const& info)
 {
-    gl_sampler_t result = {};
+    rhi_sampler_t result = {};
 
     glGenSamplers(1, &result.handle);
 
@@ -420,13 +420,13 @@ gl_sampler_t gl_create_sampler(gl_sampler_desc_t const& info)
     return result;
 }
 
-void gl_destroy_sampler(gl_sampler_t& sampler)
+void gl_destroy_sampler(rhi_sampler_t& sampler)
 {
     glDeleteSamplers(1, &sampler.handle);
     sampler.handle = 0;
 }
 
-void gl_bind_sampler(gl_sampler_t sampler, gl_sampler_bind_t bind)
+void gl_bind_sampler(rhi_sampler_t sampler, rhi_sampler_bind_t bind)
 {
     if (opengl.currentPipeline == nullptr)
     {
@@ -439,9 +439,9 @@ void gl_bind_sampler(gl_sampler_t sampler, gl_sampler_bind_t bind)
 
 // ====================================================================
 
-gl_module_t gl_create_module_compute(const char* comp_src, rhi_compute_info_t const& info)
+rhi_module_t gl_create_module_compute(const char* comp_src, rhi_compute_info_t const& info)
 {
-    gl_module_t result = {};
+    rhi_module_t result = {};
 
     GLuint cs = glCreateShader(GL_COMPUTE_SHADER);
     glShaderSource(cs, 1, &comp_src, nullptr);
@@ -477,9 +477,9 @@ gl_module_t gl_create_module_compute(const char* comp_src, rhi_compute_info_t co
     return result;
 }
 
-gl_module_t gl_create_module_render(const char* vert_src, const char* frag_src, rhi_render_info_t const& info)
+rhi_module_t gl_create_module_render(const char* vert_src, const char* frag_src, rhi_render_info_t const& info)
 {
-    gl_module_t result = {};
+    rhi_module_t result = {};
 
     // ---- Vertex Shader ----
     GLuint vs = 0;
@@ -543,9 +543,9 @@ gl_module_t gl_create_module_render(const char* vert_src, const char* frag_src, 
     return result;
 }
 
-gl_module_t gl_create_module_meshlet(const char* task_src, const char* mesh_src, const char* frag_src, rhi_render_info_t const& info)
+rhi_module_t gl_create_module_meshlet(const char* task_src, const char* mesh_src, const char* frag_src, rhi_render_info_t const& info)
 {
-    gl_module_t result = {};
+    rhi_module_t result = {};
 
     // ---- Task Shader（可选）----
     GLuint ts = 0;
@@ -619,7 +619,7 @@ gl_module_t gl_create_module_meshlet(const char* task_src, const char* mesh_src,
     return result;
 }
 
-void gl_destroy_module(gl_module_t& module)
+void gl_destroy_module(rhi_module_t& module)
 {
     glDeleteProgram(module.handle);
     module.handle = 0;
@@ -711,7 +711,7 @@ void gl_push_const_mat4(const char* name, const float* value)
 
 // ====================================================================
 
-void gl_begin_compute(gl_pass_t& pass)
+void gl_begin_compute(rhi_pass_t& pass)
 {
     GLint program = 0;
     glGetIntegerv(GL_CURRENT_PROGRAM, &program);
@@ -736,7 +736,7 @@ void gl_begin_compute(gl_pass_t& pass)
     glUseProgram(pass.module.handle);
 }
 
-void gl_end_compute(gl_pass_t& pass)
+void gl_end_compute(rhi_pass_t& pass)
 {
     GLint program = 0;
     glGetIntegerv(GL_CURRENT_PROGRAM, &program);
@@ -771,7 +771,7 @@ void gl_dispatch_compute(uint32_t groupX, uint32_t groupY, uint32_t groupZ)
     glDispatchCompute(std::max(1U, groupX), std::max(1U, groupY), std::max(1U, groupZ));
 }
 
-void gl_begin_render(gl_pass_t& pass)
+void gl_begin_render(rhi_pass_t& pass)
 {
     GLint program = 0;
     glGetIntegerv(GL_CURRENT_PROGRAM, &program);
@@ -1012,7 +1012,7 @@ void gl_begin_render(gl_pass_t& pass)
     glPolygonMode(GL_FRONT_AND_BACK, pass.module.render.fill_mode);
 }
 
-void gl_end_render(gl_pass_t& pass)
+void gl_end_render(rhi_pass_t& pass)
 {
     GLint program = 0;
     glGetIntegerv(GL_CURRENT_PROGRAM, &program);
@@ -1184,7 +1184,7 @@ static uint32_t gl_bytes_per_pixel(GLenum format, GLenum type)
 }
 
 // 根据 sized internal format 推导颜色纹理的传输格式与类型，未识别的格式返回 false
-static bool gl_color_transfer_format(GLenum internal_format, GLenum& format, GLenum& type)
+static bool rhi_color_transfer_format(GLenum internal_format, GLenum& format, GLenum& type)
 {
     switch (internal_format)
     {
@@ -1261,7 +1261,7 @@ static bool gl_color_transfer_format(GLenum internal_format, GLenum& format, GLe
 
 // 根据纹理与 aspect 决定传输使用的像素格式和类型
 // download 为 true 时允许从深度模板纹理中单独读取深度或模板
-static void gl_transfer_format(gl_texture_t const& texture, GLenum aspect, bool download, GLenum& format, GLenum& type)
+static void gl_transfer_format(rhi_texture_t const& texture, GLenum aspect, bool download, GLenum& format, GLenum& type)
 {
     switch (texture.format)
     {
@@ -1311,7 +1311,7 @@ static void gl_transfer_format(gl_texture_t const& texture, GLenum aspect, bool 
     default:
         // 优先根据 sized internal format 推导（可正确处理整数、半精度、打包等格式），
         // 未识别（如 unsized GL_RGBA）时回退到纹理创建时记录的 format/type
-        if (!gl_color_transfer_format(texture.internal_format, format, type))
+        if (!rhi_color_transfer_format(texture.internal_format, format, type))
         {
             format = texture.format;
             type = texture.type;
@@ -1637,12 +1637,12 @@ void gl_copy_texture_buffer(rhi_buffer_texel_t source, rhi_texture_copy_t destin
 
 // ====================================================================
 
-gl_mesh_t gl_create_mesh(const float* vertices, // vec3
+rhi_mesh_t gl_create_mesh(const float* vertices, // vec3
                                 const float* normals, // vec3
                                 const float* uvs, // vec2
                                 size_t vertex_count, const unsigned int* indices, size_t index_count)
 {
-    gl_mesh_t result = {};
+    rhi_mesh_t result = {};
 
     glGenVertexArrays(1, &result.handle);
     glBindVertexArray(result.handle);
@@ -1686,7 +1686,7 @@ gl_mesh_t gl_create_mesh(const float* vertices, // vec3
     return result;
 }
 
-void gl_destroy_mesh(gl_mesh_t& mesh)
+void gl_destroy_mesh(rhi_mesh_t& mesh)
 {
     gl_destroy_buffer(mesh.vertex_vbo);
     gl_destroy_buffer(mesh.normal_vbo);
@@ -1697,7 +1697,7 @@ void gl_destroy_mesh(gl_mesh_t& mesh)
     mesh.handle = 0;
 }
 
-void gl_draw_mesh(gl_mesh_t const& mesh)
+void gl_draw_mesh(rhi_mesh_t const& mesh)
 {
     glBindVertexArray(mesh.handle);
     if (mesh.index_count)
@@ -1709,12 +1709,12 @@ void gl_draw_mesh(gl_mesh_t const& mesh)
 
 // ====================================================================
 
-gl_meshlet_t gl_create_meshlet(const float* vertices, // vec4
+rhi_meshlet_t gl_create_meshlet(const float* vertices, // vec4
                                       const float* normals, // vec4
                                       const float* uvs, size_t vertex_count, const unsigned int* indices,
                                       size_t index_count)
 {
-    gl_meshlet_t result = {};
+    rhi_meshlet_t result = {};
 
     if (vertices)
     {
@@ -1743,7 +1743,7 @@ gl_meshlet_t gl_create_meshlet(const float* vertices, // vec4
     return result;
 }
 
-void gl_destroy_meshlet(gl_meshlet_t& meshlet)
+void gl_destroy_meshlet(rhi_meshlet_t& meshlet)
 {
     gl_destroy_buffer(meshlet.vertex_vbo);
     gl_destroy_buffer(meshlet.normal_vbo);
@@ -1751,7 +1751,7 @@ void gl_destroy_meshlet(gl_meshlet_t& meshlet)
     gl_destroy_buffer(meshlet.index_vbo);
 }
 
-void gl_draw_meshlet(gl_meshlet_t const& meshlet)
+void gl_draw_meshlet(rhi_meshlet_t const& meshlet)
 {
     gl_bind_buffer(meshlet.vertex_vbo, {.binding = 0, .target = GL_SHADER_STORAGE_BUFFER,});
     gl_bind_buffer(meshlet.normal_vbo, {.binding = 1, .target = GL_SHADER_STORAGE_BUFFER,});
@@ -1762,7 +1762,7 @@ void gl_draw_meshlet(gl_meshlet_t const& meshlet)
 
 // ====================================================================
 
-gl_mesh_t gl_create_mesh_screen()
+rhi_mesh_t gl_create_mesh_screen()
 {
     const float points[] = {
         -1.0f, -1.0f, 0.0f,
@@ -1774,11 +1774,11 @@ gl_mesh_t gl_create_mesh_screen()
         2.0f, 0.0f,
         0.0f, 2.0f,
     };
-    auto quad = gl_create_mesh(points, nullptr, uvs, 3, nullptr, 0);
+    static auto quad = gl_create_mesh(points, nullptr, uvs, 3, nullptr, 0);
     return quad;
 }
 
-void gl_draw_screen(int width, int height, gl_texture_t texture, gl_color_t clear)
+void gl_draw_screen(int width, int height, rhi_texture_t texture, rhi_color_t clear)
 {
     constexpr auto VS = R"(
         #version 460
@@ -1810,8 +1810,8 @@ void gl_draw_screen(int width, int height, gl_texture_t texture, gl_color_t clea
             final = texture(texture0, uv);
         }
     )";
-    auto module = gl_create_module_render(VS, FS, {.vertex = {rhi_vertex_layout, rhi_normal_layout, rhi_uv_layout,},});
-    gl_pass_t pass = {.module = module, .screen = {.color = { .clear = true, .value = clear, }}};
+    static auto module = gl_create_module_render(VS, FS, {.vertex = {rhi_vertex_layout, rhi_normal_layout, rhi_uv_layout,},});
+    rhi_pass_t pass = {.module = module, .screen = {.color = { .clear = true, .value = clear, }}};
     gl_begin_render(pass);
     gl_set_viewport(0, 0, width, height);
     gl_bind_texture(texture, { .binding = 0, });
