@@ -19,8 +19,8 @@ void gl_unload_library();
 rhi_buffer_t gl_create_buffer(rhi_buffer_desc_t const& info);
 void gl_destroy_buffer(rhi_buffer_t& buffer);
 void gl_bind_buffer(rhi_buffer_t buffer, rhi_buffer_bind_t bind = {});
-void gl_read_buffer(rhi_buffer_t buffer, size_t offset, size_t size, void* data);
-void gl_write_buffer(rhi_buffer_t buffer, size_t offset, size_t size, const void* data);
+void* gl_map_buffer(rhi_buffer_t& buffer, GLenum mode, size_t offset, size_t size);
+void gl_unmap_buffer(rhi_buffer_t& buffer);
 
 rhi_texture_t gl_create_texture(rhi_texture_desc_t const& info);
 rhi_texture_t gl_create_texture_color(uint32_t width, uint32_t height, const void* data);
@@ -29,8 +29,6 @@ rhi_texture_t gl_create_texture_depth_stencil(uint32_t width, uint32_t height, c
 void gl_destroy_texture(rhi_texture_t& texture);
 void gl_bind_texture(rhi_texture_t texture, rhi_texture_bind_t bind = {});
 void gl_bind_texture_storage(rhi_texture_t texture, rhi_texture_storage_bind_t bind = {});
-rhi_texture_t gl_load_texture(rhi_image_t const& image);
-rhi_image_t gl_load_image(rhi_texture_t const& texture, void* buffer, size_t length);
 
 rhi_sampler_t gl_create_sampler(rhi_sampler_desc_t const& info);
 void gl_destroy_sampler(rhi_sampler_t& sampler);

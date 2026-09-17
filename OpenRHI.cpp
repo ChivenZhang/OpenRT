@@ -15,6 +15,8 @@ void (*rhi_destroy_buffer)(rhi_buffer_t& buffer) = nullptr;
 void (*rhi_bind_buffer)(rhi_buffer_t buffer, rhi_buffer_bind_t bind) = nullptr;
 void (*rhi_read_buffer)(rhi_buffer_t buffer, size_t offset, size_t size, void* data) = nullptr;
 void (*rhi_write_buffer)(rhi_buffer_t buffer, size_t offset, size_t size, const void* data) = nullptr;
+void* (*rhi_map_buffer)(rhi_buffer_t& buffer, GLenum mode, size_t offset, size_t size) = nullptr; // mode: GL_READ_ONLY / GL_WRITE_ONLY / GL_READ_WRITE
+void (*rhi_unmap_buffer)(rhi_buffer_t& buffer) = nullptr;
 
 rhi_texture_t (*rhi_create_texture)(rhi_texture_desc_t const& info) = nullptr;
 rhi_texture_t (*rhi_create_texture_color)(uint32_t width, uint32_t height, const void* data) = nullptr;
@@ -23,8 +25,6 @@ rhi_texture_t (*rhi_create_texture_depth_stencil)(uint32_t width, uint32_t heigh
 void (*rhi_destroy_texture)(rhi_texture_t& texture) = nullptr;
 void (*rhi_bind_texture)(rhi_texture_t texture, rhi_texture_bind_t bind) = nullptr;
 void (*rhi_bind_texture_storage)(rhi_texture_t texture, rhi_texture_storage_bind_t bind) = nullptr;
-rhi_texture_t (*rhi_load_texture)(rhi_image_t const& image) = nullptr;
-rhi_image_t (*rhi_load_image)(rhi_texture_t const& texture, void* buffer, size_t length) = nullptr;
 
 rhi_sampler_t (*rhi_create_sampler)(rhi_sampler_desc_t const& info) = nullptr;
 void (*rhi_destroy_sampler)(rhi_sampler_t& sampler) = nullptr;

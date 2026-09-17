@@ -87,14 +87,6 @@ struct rhi_texture_storage_bind_t
     GLenum access = GL_WRITE_ONLY; // GL_WRITE_ONLY / GL_READ_ONLY / GL_READ_WRITE
 };
 
-struct rhi_image_t
-{
-    void* pixels = nullptr;
-    uint32_t width = 0, height = 0;
-    GLenum format = GL_RGBA;
-    void* native = nullptr;
-};
-
 struct rhi_sampler_t
 {
     GLuint handle = 0;
@@ -351,8 +343,8 @@ struct rhi_texture_data_t
 extern rhi_buffer_t (*rhi_create_buffer)(rhi_buffer_desc_t const& info);
 extern void (*rhi_destroy_buffer)(rhi_buffer_t& buffer);
 extern void (*rhi_bind_buffer)(rhi_buffer_t buffer, rhi_buffer_bind_t bind);
-extern void (*rhi_read_buffer)(rhi_buffer_t buffer, size_t offset, size_t size, void* data);
-extern void (*rhi_write_buffer)(rhi_buffer_t buffer, size_t offset, size_t size, const void* data);
+extern void* (*rhi_map_buffer)(rhi_buffer_t& buffer, GLenum mode, size_t offset, size_t size); // mode: GL_READ_ONLY / GL_WRITE_ONLY / GL_READ_WRITE
+extern void (*rhi_unmap_buffer)(rhi_buffer_t& buffer);
 
 extern rhi_texture_t (*rhi_create_texture)(rhi_texture_desc_t const& info);
 extern rhi_texture_t (*rhi_create_texture_color)(uint32_t width, uint32_t height, const void* data);
@@ -361,8 +353,6 @@ extern rhi_texture_t (*rhi_create_texture_depth_stencil)(uint32_t width, uint32_
 extern void (*rhi_destroy_texture)(rhi_texture_t& texture);
 extern void (*rhi_bind_texture)(rhi_texture_t texture, rhi_texture_bind_t bind);
 extern void (*rhi_bind_texture_storage)(rhi_texture_t texture, rhi_texture_storage_bind_t bind);
-extern rhi_texture_t (*rhi_load_texture)(rhi_image_t const& image);
-extern rhi_image_t (*rhi_load_image)(rhi_texture_t const& texture, void* buffer, size_t length);
 
 extern rhi_sampler_t (*rhi_create_sampler)(rhi_sampler_desc_t const& info);
 extern void (*rhi_destroy_sampler)(rhi_sampler_t& sampler);

@@ -43,8 +43,8 @@ void gl_load_library()
     rhi_create_buffer = gl_create_buffer;
     rhi_destroy_buffer = gl_destroy_buffer;
     rhi_bind_buffer = gl_bind_buffer;
-    rhi_read_buffer = gl_read_buffer;
-    rhi_write_buffer = gl_write_buffer;
+    rhi_map_buffer = gl_map_buffer;
+    rhi_unmap_buffer = gl_unmap_buffer;
 
     // Texture 相关
     rhi_create_texture = gl_create_texture;
@@ -54,8 +54,6 @@ void gl_load_library()
     rhi_destroy_texture = gl_destroy_texture;
     rhi_bind_texture = gl_bind_texture;
     rhi_bind_texture_storage = gl_bind_texture_storage;
-    rhi_load_texture = gl_load_texture;
-    rhi_load_image = gl_load_image;
 
     // Sampler 相关
     rhi_create_sampler = gl_create_sampler;
@@ -163,31 +161,47 @@ void gl_bind_buffer(rhi_buffer_t buffer, rhi_buffer_bind_t bind)
     }
 }
 
-void gl_read_buffer(rhi_buffer_t buffer, size_t offset, size_t size, void* data)
+void* gl_map_buffer(rhi_buffer_t& buffer, GLenum mode, size_t offset, size_t size)
 {
     if (!buffer.handle)
-        return;
-    if (!data || size == 0)
-        return;
-    if ((GLsizeiptr)(offset + size) > buffer.size)
-        return; // 越界保护
+        return nullptr;
+    if (offset > buffer.size)
+        return nullptr;
+    if (size == 0)
+        size = buffer.size - offset;
+    if (size == 0 || offset + size > buffer.size)
+        return nullptr;
+
+    GLbitfield access = 0;
+    switch (mode)
+    {
+    case GL_READ_ONLY:
+        access = GL_MAP_READ_BIT;
+        break;
+    case GL_WRITE_ONLY:
+        access = GL_MAP_WRITE_BIT;
+        break;
+    case GL_READ_WRITE:
+        access = GL_MAP_READ_BIT | GL_MAP_WRITE_BIT;
+        break;
+    default:
+        fprintf(stderr, "Unsupported buffer map mode");
+        abort();
+    }
 
     glBindBuffer(GL_ARRAY_BUFFER, buffer.handle);
-    glGetBufferSubData(GL_ARRAY_BUFFER, (GLintptr)offset, (GLsizeiptr)size, data);
+    void* ptr = glMapBufferRange(GL_ARRAY_BUFFER, (GLintptr)offset, (GLsizeiptr)size, access);
     glBindBuffer(GL_ARRAY_BUFFER, 0);
+    return ptr;
 }
 
-void gl_write_buffer(rhi_buffer_t buffer, size_t offset, size_t size, const void* data)
+void gl_unmap_buffer(rhi_buffer_t& buffer)
 {
     if (!buffer.handle)
         return;
-    if (!data || size == 0)
-        return;
-    if (offset + size > buffer.size)
-        return;
 
     glBindBuffer(GL_ARRAY_BUFFER, buffer.handle);
-    glBufferSubData(GL_ARRAY_BUFFER, (GLintptr)offset, (GLsizeiptr)size, data);
+    glUnmapBuffer(GL_ARRAY_BUFFER);
     glBindBuffer(GL_ARRAY_BUFFER, 0);
 }
 
@@ -372,32 +386,6 @@ void gl_bind_texture_storage(rhi_texture_t texture, rhi_texture_storage_bind_t b
 
     glBindImageTexture(bind.binding, texture.handle, (GLint)bind.base_level, 1 < bind.layer_count,
                        (GLint)bind.base_layer, bind.access, texture.internal_format);
-}
-
-rhi_texture_t gl_load_texture(rhi_image_t const& image)
-{
-    return gl_create_texture_color(image.width, image.height, image.pixels);
-}
-
-rhi_image_t gl_load_image(rhi_texture_t const& texture, void* buffer, size_t length)
-{
-    rhi_image_t result = {};
-
-    if (texture.target == GL_TEXTURE_2D)
-    {
-        if (length < texture.width * texture.height * sizeof(uint32_t))
-            return result;
-
-        glBindTexture(texture.target, texture.handle);
-        glGetTexImage(texture.target, 0, texture.format, texture.type, buffer);
-        glBindTexture(texture.target, 0);
-        result.pixels = buffer;
-        result.width = texture.width;
-        result.height = texture.height;
-        result.format = texture.format;
-    }
-
-    return result;
 }
 
 // ====================================================================
