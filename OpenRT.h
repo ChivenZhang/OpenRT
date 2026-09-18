@@ -26,7 +26,7 @@
 #endif
 
 #define GL_MAX_COLOR_TEXTURE_NUM 2
-#define GL_MAX_VERTEX_BUFFER_NUM 5
+#define GL_MAX_VERTEX_BUFFER_NUM 10
 #define GL_MAX_BINDING_HANDLE_NUM 16
 #define GL_PI 3.14159265358979323846    // pi
 #define GL_PI_2 1.57079632679489661923  // pi/2
@@ -321,7 +321,7 @@ struct rt_mesh_t
     GLuint handle = 0;
     rt_buffer_t index;
     rt_buffer_t vertex[GL_MAX_VERTEX_BUFFER_NUM];
-    uint32_t location[GL_MAX_VERTEX_BUFFER_NUM] = {0,1,2,3,4,};
+    uint32_t location[GL_MAX_VERTEX_BUFFER_NUM] = {};
     void* native = nullptr;
 };
 
@@ -330,7 +330,7 @@ struct rt_meshlet_t
     GLuint handle = 0;
     rt_buffer_t index;
     rt_buffer_t vertex[GL_MAX_VERTEX_BUFFER_NUM];
-    uint32_t location[GL_MAX_VERTEX_BUFFER_NUM + 1] = {0,1,2,3,4,5};
+    uint32_t location[GL_MAX_VERTEX_BUFFER_NUM + 1] = {};
     void* native = nullptr;
 };
 

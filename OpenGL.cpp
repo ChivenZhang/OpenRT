@@ -1719,6 +1719,7 @@ rt_mesh_t gl_create_mesh(const float* vertices, // vec3
     if (indices)
         result.index = gl_create_buffer({.size = index_count * sizeof(uint32_t), .usage = GL_BUFFER_USAGE_INDEX | GL_BUFFER_USAGE_COPY_DST, .data = indices,});
 
+    std::iota(result.location, result.location + std::size(result.location), 0);
     return result;
 }
 
@@ -1800,6 +1801,7 @@ rt_meshlet_t gl_create_meshlet(const float* vertices, // vec4
     if (indices)
         result.index = gl_create_buffer({.size = index_count * sizeof(uint32_t), .usage = GL_BUFFER_USAGE_STORAGE | GL_BUFFER_USAGE_COPY_DST, .data = indices,});
 
+    std::iota(result.location, result.location + std::size(result.location), 0);
     return result;
 }
 
