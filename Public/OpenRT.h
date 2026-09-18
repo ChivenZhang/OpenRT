@@ -17,7 +17,7 @@
 #    if defined(OPENRT_EXPORTS)
 #      define OPENRT_API __declspec(dllexport)
 #    else
-#      define OPENRT_API __declspec(dllimport)
+#      define OPENRT_API
 #    endif
 #  else
 #    define OPENRT_API __attribute__((visibility("default")))

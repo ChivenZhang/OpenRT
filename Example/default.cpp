@@ -130,8 +130,6 @@ void frame(int width, int height)
     static auto pass_color = rt_create_texture_color(width, height, nullptr);
     static auto pass_depth = rt_create_texture_depth(width, height, nullptr);
     {
-        static auto texture0 = rt_load_texture_file("../../Earth.png");
-
         rt_pass_t pass = {.module = module, .colors = {{.texture = pass_color, .clear = true,}}, .depth = {.texture = pass_depth, .clear = true,},};
         rt_begin_render(pass);
 
@@ -139,6 +137,7 @@ void frame(int width, int height)
         rt_push_const_mat4("viewMat", &viewMat[0][0]);
         rt_push_const_mat4("meshMat", &meshMat[0][0]);
 
+        static auto texture0 = rt_load_texture_file("../../Earth.png");
         rt_bind_texture(texture0, {.binding = 0,});
 
         static auto mesh = rt_create_mesh_sphere(2, 64, 32);
