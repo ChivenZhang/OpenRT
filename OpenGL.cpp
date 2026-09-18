@@ -11,10 +11,24 @@
 #include "OpenGL.h"
 #ifdef OPENGL_IMPLEMENTATION
 
+enum rt_module_type_t : uint32_t
+{
+    GL_MODULE_RENDER = 1,
+    GL_MODULE_COMPUTE = 2,
+    GL_MODULE_MESHLET = 3,
+    GL_MODULE_TRANSFER = 4,
+};
+
 struct OpenGL
 {
     GLenum currentPassType = GL_NONE;
-    rt_pass_t* currentPipeline = nullptr;
+    union
+    {
+        void* currentPipeline = nullptr;
+        rt_pass_render_t* currentRenderPass;
+        rt_pass_compute_t* currentComputePass;
+        rt_pass_transfer_t* currentTransferPass;
+    };
 } static thread_local opengl;
 
 void gl_load_library()
@@ -64,7 +78,8 @@ void gl_load_library()
     rt_create_module_compute = gl_create_module_compute;
     rt_create_module_render = gl_create_module_render;
     rt_create_module_meshlet = gl_create_module_meshlet;
-    rt_destroy_module = gl_destroy_module;
+    rt_destroy_module_render = gl_destroy_module_render;
+    rt_destroy_module_compute = gl_destroy_module_compute;
 
     // Compute Pass 相关
     rt_begin_compute = gl_begin_compute;
@@ -444,9 +459,9 @@ void gl_bind_sampler(rt_sampler_t sampler, rt_sampler_bind_t bind)
 
 // ====================================================================
 
-rt_module_t gl_create_module_compute(const char* comp_src, rt_compute_info_t const& info)
+rt_module_compute_t gl_create_module_compute(const char* comp_src, rt_module_compute_info_t const& info)
 {
-    rt_module_t result = {};
+    rt_module_compute_t result = {};
 
     GLuint cs = glCreateShader(GL_COMPUTE_SHADER);
     glShaderSource(cs, 1, &comp_src, nullptr);
@@ -477,14 +492,13 @@ rt_module_t gl_create_module_compute(const char* comp_src, rt_compute_info_t con
 
     glDeleteShader(cs);
 
-    result.target = GL_MODULE_COMPUTE;
-    result.compute = info;
+    result.desc = info;
     return result;
 }
 
-rt_module_t gl_create_module_render(const char* vert_src, const char* frag_src, rt_render_info_t const& info)
+rt_module_render_t gl_create_module_render(const char* vert_src, const char* frag_src, rt_module_render_info_t const& info)
 {
-    rt_module_t result = {};
+    rt_module_render_t result = {};
 
     // ---- Vertex Shader ----
     GLuint vs = 0;
@@ -543,14 +557,45 @@ rt_module_t gl_create_module_render(const char* vert_src, const char* frag_src, 
     glDeleteShader(vs);
     glDeleteShader(fs);
 
-    result.target = GL_MODULE_RENDER;
-    result.render = info;
+    // ---- Vertex Array ----
+    glGenVertexArrays(1, &result.vertex_vao);
+    glBindVertexArray(result.vertex_vao);
+    for (uint32_t i = 0; i < std::size(info.vertex); ++i)
+    {
+        auto& vertex = info.vertex[i];
+        if (vertex.type == GL_NONE || vertex.count == 0)
+            continue;
+
+        glEnableVertexAttribArray(vertex.location);
+        switch (vertex.type)
+        {
+        case GL_BYTE:
+        case GL_UNSIGNED_BYTE:
+        case GL_SHORT:
+        case GL_UNSIGNED_SHORT:
+        case GL_INT:
+        case GL_UNSIGNED_INT:
+            glVertexAttribIFormat(vertex.location, (GLint)vertex.count, vertex.type, 0);
+            break;
+        case GL_DOUBLE:
+            glVertexAttribLFormat(vertex.location, (GLint)vertex.count, vertex.type, 0);
+            break;
+        default:
+            glVertexAttribFormat(vertex.location, (GLint)vertex.count, vertex.type, GL_FALSE, 0);
+            break;
+        }
+        glVertexAttribBinding(vertex.location, i);
+        glVertexBindingDivisor(i, vertex.instance ? 1 : 0);
+    }
+    glBindVertexArray(0);
+
+    result.desc = info;
     return result;
 }
 
-rt_module_t gl_create_module_meshlet(const char* task_src, const char* mesh_src, const char* frag_src, rt_render_info_t const& info)
+rt_module_render_t gl_create_module_meshlet(const char* task_src, const char* mesh_src, const char* frag_src, rt_module_render_info_t const& info)
 {
-    rt_module_t result = {};
+    rt_module_render_t result = {};
 
     // ---- Task Shader（可选）----
     GLuint ts = 0;
@@ -619,12 +664,19 @@ rt_module_t gl_create_module_meshlet(const char* task_src, const char* mesh_src,
     glDeleteShader(ms);
     glDeleteShader(fs);
 
-    result.target = GL_MODULE_MESHLET;
-    result.render = info;
+    result.desc = info;
     return result;
 }
 
-void gl_destroy_module(rt_module_t& module)
+void gl_destroy_module_render(rt_module_render_t& module)
+{
+    if (module.vertex_vao) glDeleteVertexArrays(1, &module.vertex_vao);
+    module.vertex_vao = 0;
+    glDeleteProgram(module.handle);
+    module.handle = 0;
+}
+
+void gl_destroy_module_compute(rt_module_compute_t& module)
 {
     glDeleteProgram(module.handle);
     module.handle = 0;
@@ -716,23 +768,11 @@ void gl_push_const_mat4(const char* name, const float* value)
 
 // ====================================================================
 
-void gl_begin_compute(rt_pass_t& pass)
+void gl_begin_compute(rt_pass_compute_t& pass)
 {
-    GLint program = 0;
-    glGetIntegerv(GL_CURRENT_PROGRAM, &program);
-    if (program)
-    {
-        fprintf(stderr, "Pipeline not end\n");
-        abort();
-    }
     if (pass.module.handle == 0)
     {
         fprintf(stderr, "Pipeline module is not created\n");
-        abort();
-    }
-    if (pass.module.target != GL_MODULE_COMPUTE)
-    {
-        fprintf(stderr, "Pipeline module is not compute shader\n");
         abort();
     }
     if (opengl.currentPipeline != nullptr)
@@ -740,64 +780,51 @@ void gl_begin_compute(rt_pass_t& pass)
         fprintf(stderr, "Pipeline not end\n");
         abort();
     }
-    opengl.currentPipeline = &pass;
+    opengl.currentComputePass = &pass;
     opengl.currentPassType = GL_MODULE_COMPUTE;
 
     glUseProgram(pass.module.handle);
 }
 
-void gl_end_compute(rt_pass_t& pass)
+void gl_end_compute(rt_pass_compute_t& pass)
 {
-    GLint program = 0;
-    glGetIntegerv(GL_CURRENT_PROGRAM, &program);
-    if (program && program != pass.module.handle)
-    {
-        fprintf(stderr, "Pipeline not end\n");
-        abort();
-    }
     if (pass.module.handle == 0)
     {
         fprintf(stderr, "Pipeline module is not created\n");
         abort();
     }
-    if (pass.module.target != GL_MODULE_COMPUTE)
-    {
-        fprintf(stderr, "Pipeline module is not compute shader\n");
-        abort();
-    }
-    if (opengl.currentPipeline != &pass)
+    if (opengl.currentComputePass != &pass)
     {
         fprintf(stderr, "Pipeline not end\n");
         abort();
     }
-    opengl.currentPipeline = nullptr;
     opengl.currentPassType = GL_NONE;
+    opengl.currentComputePass = nullptr;
 
     glUseProgram(0);
 }
 
 void gl_dispatch_compute(uint32_t groupX, uint32_t groupY, uint32_t groupZ)
 {
+    if (opengl.currentPipeline == nullptr)
+    {
+        fprintf(stderr, "Pipeline not begin\n");
+        abort();
+    }
+    if (opengl.currentPassType != GL_MODULE_COMPUTE)
+    {
+        fprintf(stderr, "Pipeline not begin\n");
+        abort();
+    }
+
     glDispatchCompute(std::max(1U, groupX), std::max(1U, groupY), std::max(1U, groupZ));
 }
 
-void gl_begin_render(rt_pass_t& pass)
+void gl_begin_render(rt_pass_render_t& pass)
 {
-    GLint program = 0;
-    glGetIntegerv(GL_CURRENT_PROGRAM, &program);
-    if (program)
-    {
-        fprintf(stderr, "Pipeline not end\n");
-        abort();
-    }
     if (pass.module.handle == 0)
     {
         fprintf(stderr, "Pipeline module is not created\n");
-        abort();
-    }
-    if (pass.module.target != GL_MODULE_RENDER && pass.module.target != GL_MODULE_MESHLET)
-    {
-        fprintf(stderr, "Pipeline module is not render shader\n");
         abort();
     }
     if (opengl.currentPipeline != nullptr)
@@ -805,11 +832,12 @@ void gl_begin_render(rt_pass_t& pass)
         fprintf(stderr, "Pipeline not end\n");
         abort();
     }
-    opengl.currentPipeline = &pass;
     opengl.currentPassType = GL_MODULE_RENDER;
+    opengl.currentRenderPass = &pass;
 
     pass.handle = 0;
     glUseProgram(pass.module.handle);
+    glBindVertexArray(pass.module.vertex_vao);
 
     glDisable(GL_SCISSOR_TEST);
 
@@ -878,12 +906,12 @@ void gl_begin_render(rt_pass_t& pass)
                 if (pass.colors[i].clear)
                     glClearBufferfv(GL_COLOR, (int32_t)i, &pass.colors[i].value.r);
 
-                if (pass.module.render.colors[i].color.func != GL_ADD || pass.module.render.colors[i].color.src != GL_ONE ||
-                    pass.module.render.colors[i].color.dst != GL_ZERO || pass.module.render.colors[i].alpha.func != GL_ADD ||
-                    pass.module.render.colors[i].alpha.src != GL_ONE || pass.module.render.colors[i].alpha.dst != GL_ZERO)
+                if (pass.module.desc.colors[i].color.func != GL_ADD || pass.module.desc.colors[i].color.src != GL_ONE ||
+                    pass.module.desc.colors[i].color.dst != GL_ZERO || pass.module.desc.colors[i].alpha.func != GL_ADD ||
+                    pass.module.desc.colors[i].alpha.src != GL_ONE || pass.module.desc.colors[i].alpha.dst != GL_ZERO)
                     glEnable(GL_BLEND);
-                glBlendEquationSeparatei(i, pass.module.render.colors[i].color.func, pass.module.render.colors[i].alpha.func);
-                glBlendFuncSeparatei(i, pass.module.render.colors[i].color.src, pass.module.render.colors[i].color.dst, pass.module.render.colors[i].alpha.src, pass.module.render.colors[i].alpha.dst);
+                glBlendEquationSeparatei(i, pass.module.desc.colors[i].color.func, pass.module.desc.colors[i].alpha.func);
+                glBlendFuncSeparatei(i, pass.module.desc.colors[i].color.src, pass.module.desc.colors[i].color.dst, pass.module.desc.colors[i].alpha.src, pass.module.desc.colors[i].alpha.dst);
             }
         }
 
@@ -902,7 +930,7 @@ void gl_begin_render(rt_pass_t& pass)
 
         // Depth State
 
-        if (pass.module.render.depth.func == GL_ALWAYS && pass.module.render.depth.write == false)
+        if (pass.module.desc.depth.func == GL_ALWAYS && pass.module.desc.depth.write == false)
         {
             glDisable(GL_DEPTH_TEST);
             glDepthMask(GL_TRUE);
@@ -910,26 +938,26 @@ void gl_begin_render(rt_pass_t& pass)
         else
         {
             glEnable(GL_DEPTH_TEST);
-            glDepthMask(pass.module.render.depth.write);
+            glDepthMask(pass.module.desc.depth.write);
         }
-        glDepthFunc(pass.module.render.depth.func);
+        glDepthFunc(pass.module.desc.depth.func);
 
-        if (pass.module.render.depth.bias == 0 && pass.module.render.depth.biasSlope == 0)
+        if (pass.module.desc.depth.bias == 0 && pass.module.desc.depth.biasSlope == 0)
         {
             glDisable(GL_POLYGON_OFFSET_FILL);
         }
         else
         {
             glEnable(GL_POLYGON_OFFSET_FILL);
-            glPolygonOffsetClamp(pass.module.render.depth.biasSlope, pass.module.render.depth.bias, pass.module.render.depth.biasClamp);
+            glPolygonOffsetClamp(pass.module.desc.depth.biasSlope, pass.module.desc.depth.bias, pass.module.desc.depth.biasClamp);
         }
 
         // Stencil State
 
-        if (pass.module.render.stencil.back.func != GL_ALWAYS || pass.module.render.stencil.back.sfail != GL_KEEP ||
-            pass.module.render.stencil.back.zfail != GL_KEEP || pass.module.render.stencil.back.zpass != GL_KEEP ||
-            pass.module.render.stencil.front.func != GL_ALWAYS || pass.module.render.stencil.front.sfail != GL_KEEP ||
-            pass.module.render.stencil.front.zfail != GL_KEEP || pass.module.render.stencil.front.zpass != GL_KEEP)
+        if (pass.module.desc.stencil.back.func != GL_ALWAYS || pass.module.desc.stencil.back.sfail != GL_KEEP ||
+            pass.module.desc.stencil.back.zfail != GL_KEEP || pass.module.desc.stencil.back.zpass != GL_KEEP ||
+            pass.module.desc.stencil.front.func != GL_ALWAYS || pass.module.desc.stencil.front.sfail != GL_KEEP ||
+            pass.module.desc.stencil.front.zfail != GL_KEEP || pass.module.desc.stencil.front.zpass != GL_KEEP)
         {
             glEnable(GL_STENCIL_TEST);
         }
@@ -937,11 +965,11 @@ void gl_begin_render(rt_pass_t& pass)
         {
             glDisable(GL_STENCIL_TEST);
         }
-        glStencilMask(pass.module.render.stencil.write);
-        glStencilFuncSeparate(GL_BACK, pass.module.render.stencil.back.func, pass.stencil.refer, pass.module.render.stencil.read);
-        glStencilFuncSeparate(GL_FRONT, pass.module.render.stencil.front.func, pass.stencil.refer, pass.module.render.stencil.read);
-        glStencilOpSeparate(GL_BACK, pass.module.render.stencil.back.sfail, pass.module.render.stencil.back.zfail, pass.module.render.stencil.back.zpass);
-        glStencilOpSeparate(GL_FRONT, pass.module.render.stencil.front.sfail, pass.module.render.stencil.front.zfail, pass.module.render.stencil.front.zpass);
+        glStencilMask(pass.module.desc.stencil.write);
+        glStencilFuncSeparate(GL_BACK, pass.module.desc.stencil.back.func, pass.stencil.refer, pass.module.desc.stencil.read);
+        glStencilFuncSeparate(GL_FRONT, pass.module.desc.stencil.front.func, pass.stencil.refer, pass.module.desc.stencil.read);
+        glStencilOpSeparate(GL_BACK, pass.module.desc.stencil.back.sfail, pass.module.desc.stencil.back.zfail, pass.module.desc.stencil.back.zpass);
+        glStencilOpSeparate(GL_FRONT, pass.module.desc.stencil.front.sfail, pass.module.desc.stencil.front.zfail, pass.module.desc.stencil.front.zpass);
     }
     else
     {
@@ -1016,43 +1044,31 @@ void gl_begin_render(rt_pass_t& pass)
 
     // Primitive State
 
-    glFrontFace(pass.module.render.front_face);
-    if (pass.module.render.cull_mode)
-        glCullFace(pass.module.render.cull_mode);
-    if (pass.module.render.cull_mode)
+    glFrontFace(pass.module.desc.front_face);
+    if (pass.module.desc.cull_mode)
+        glCullFace(pass.module.desc.cull_mode);
+    if (pass.module.desc.cull_mode)
         glEnable(GL_CULL_FACE);
     else
         glDisable(GL_CULL_FACE);
 
-    glPolygonMode(GL_FRONT_AND_BACK, pass.module.render.fill_mode);
+    glPolygonMode(GL_FRONT_AND_BACK, pass.module.desc.fill_mode);
 }
 
-void gl_end_render(rt_pass_t& pass)
+void gl_end_render(rt_pass_render_t& pass)
 {
-    GLint program = 0;
-    glGetIntegerv(GL_CURRENT_PROGRAM, &program);
-    if (program && program != pass.module.handle)
-    {
-        fprintf(stderr, "Pipeline not end\n");
-        abort();
-    }
     if (pass.module.handle == 0)
     {
         fprintf(stderr, "Pipeline module is not created\n");
         abort();
     }
-    if (pass.module.target != GL_MODULE_RENDER && pass.module.target != GL_MODULE_MESHLET)
-    {
-        fprintf(stderr, "Pipeline module is not render shader\n");
-        abort();
-    }
-    if (opengl.currentPipeline != &pass)
+    if (opengl.currentRenderPass != &pass)
     {
         fprintf(stderr, "Pipeline not end\n");
         abort();
     }
-    opengl.currentPipeline = nullptr;
     opengl.currentPassType = GL_NONE;
+    opengl.currentRenderPass = nullptr;
 
     bool offscreen = pass.depth.texture.handle;
     for (size_t i = 0; i < std::size(pass.colors) && !offscreen; ++i)
@@ -1083,6 +1099,17 @@ void gl_set_scissor(int32_t x, int32_t y, int32_t width, int32_t height)
 
 void gl_draw_mesh_task(uint32_t groupX, uint32_t groupY, uint32_t groupZ)
 {
+    if (opengl.currentPipeline == nullptr)
+    {
+        fprintf(stderr, "Pipeline not begin\n");
+        abort();
+    }
+    if (opengl.currentPassType != GL_MODULE_RENDER)
+    {
+        fprintf(stderr, "Pipeline not begin\n");
+        abort();
+    }
+
     glDrawMeshTasksNV(0, std::max(1U, groupX) * std::max(1U, groupY) * std::max(1U, groupZ));
 }
 
@@ -1382,40 +1409,26 @@ static bool gl_check_texel_layout(uint32_t bytesPerRow, uint32_t rowsPerImage, s
     return true;
 }
 
-void gl_begin_transfer(rt_pass_t& pass)
+void gl_begin_transfer(rt_pass_transfer_t& pass)
 {
-    GLint program = 0;
-    glGetIntegerv(GL_CURRENT_PROGRAM, &program);
-    if (program)
-    {
-        fprintf(stderr, "Pipeline not end\n");
-        abort();
-    }
     if (opengl.currentPipeline != nullptr)
     {
         fprintf(stderr, "Pipeline not end\n");
         abort();
     }
-    opengl.currentPipeline = &pass;
     opengl.currentPassType = GL_MODULE_TRANSFER;
+    opengl.currentTransferPass = &pass;
 }
 
-void gl_end_transfer(rt_pass_t& pass)
+void gl_end_transfer(rt_pass_transfer_t& pass)
 {
-    GLint program = 0;
-    glGetIntegerv(GL_CURRENT_PROGRAM, &program);
-    if (program)
+    if (opengl.currentTransferPass != &pass)
     {
         fprintf(stderr, "Pipeline not end\n");
         abort();
     }
-    if (opengl.currentPipeline != &pass)
-    {
-        fprintf(stderr, "Pipeline not end\n");
-        abort();
-    }
-    opengl.currentPipeline = nullptr;
     opengl.currentPassType = GL_NONE;
+    opengl.currentTransferPass = nullptr;
 
     // 保证传输结果对后续的着色器读取、顶点拉取和纹理采样可见
     glMemoryBarrier(GL_BUFFER_UPDATE_BARRIER_BIT | GL_TEXTURE_UPDATE_BARRIER_BIT | GL_PIXEL_BUFFER_BARRIER_BIT |
@@ -1652,6 +1665,41 @@ void gl_copy_texture_buffer(rt_buffer_texel_t source, rt_texture_copy_t destinat
 
 // ====================================================================
 
+static GLsizei gl_vertex_type_size(GLenum type)
+{
+    switch (type)
+    {
+    case GL_BYTE:
+    case GL_UNSIGNED_BYTE:
+        return 1;
+    case GL_SHORT:
+    case GL_UNSIGNED_SHORT:
+    case GL_HALF_FLOAT:
+        return 2;
+    case GL_INT:
+    case GL_UNSIGNED_INT:
+    case GL_FLOAT:
+        return 4;
+    case GL_DOUBLE:
+        return 8;
+    default:
+        return 4;
+    }
+}
+
+static GLsizei gl_index_type_size(GLenum type)
+{
+    switch (type)
+    {
+    case GL_UNSIGNED_BYTE:
+        return 1;
+    case GL_UNSIGNED_SHORT:
+        return 2;
+    default:
+        return 4;
+    }
+}
+
 rt_mesh_t gl_create_mesh(const float* vertices, // vec3
                                 const float* normals, // vec3
                                 const float* uvs, // vec2
@@ -1659,58 +1707,26 @@ rt_mesh_t gl_create_mesh(const float* vertices, // vec3
 {
     rt_mesh_t result = {};
 
-    glGenVertexArrays(1, &result.handle);
-    glBindVertexArray(result.handle);
-
     if (vertices)
-    {
-        result.vertex_vbo = gl_create_buffer({.size = vertex_count * 3 * sizeof(float), .usage = GL_BUFFER_USAGE_VERTEX | GL_BUFFER_USAGE_COPY_DST, .data = vertices,});
-        glBindBuffer(GL_ARRAY_BUFFER, result.vertex_vbo.handle);
-        glEnableVertexAttribArray(0);
-        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
-        glVertexAttribDivisor(0, 0);
-    }
+        result.vertex[0] = gl_create_buffer({.size = vertex_count * 3 * sizeof(float), .usage = GL_BUFFER_USAGE_VERTEX | GL_BUFFER_USAGE_COPY_DST, .data = vertices,});
 
     if (normals)
-    {
-        result.normal_vbo = gl_create_buffer({.size = vertex_count * 3 * sizeof(float), .usage = GL_BUFFER_USAGE_VERTEX | GL_BUFFER_USAGE_COPY_DST, .data = normals,});
-        glBindBuffer(GL_ARRAY_BUFFER, result.normal_vbo.handle);
-        glEnableVertexAttribArray(1);
-        glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
-        glVertexAttribDivisor(1, 0);
-    }
+        result.vertex[1] = gl_create_buffer({.size = vertex_count * 3 * sizeof(float), .usage = GL_BUFFER_USAGE_VERTEX | GL_BUFFER_USAGE_COPY_DST, .data = normals,});
 
     if (uvs)
-    {
-        result.uv_vbo = gl_create_buffer({.size = vertex_count * 2 * sizeof(float), .usage = GL_BUFFER_USAGE_VERTEX | GL_BUFFER_USAGE_COPY_DST, .data = uvs,});
-        glBindBuffer(GL_ARRAY_BUFFER, result.uv_vbo.handle);
-        glEnableVertexAttribArray(2);
-        glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(float), (void*)0);
-        glVertexAttribDivisor(2, 0);
-    }
+        result.vertex[2] = gl_create_buffer({.size = vertex_count * 2 * sizeof(float), .usage = GL_BUFFER_USAGE_VERTEX | GL_BUFFER_USAGE_COPY_DST, .data = uvs,});
 
     if (indices)
-    {
-        result.index_vbo = gl_create_buffer({.size = index_count * sizeof(uint32_t), .usage = GL_BUFFER_USAGE_INDEX | GL_BUFFER_USAGE_COPY_DST, .data = indices,});
-        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, result.index_vbo.handle);
-    }
+        result.index = gl_create_buffer({.size = index_count * sizeof(uint32_t), .usage = GL_BUFFER_USAGE_INDEX | GL_BUFFER_USAGE_COPY_DST, .data = indices,});
 
-    glBindVertexArray(0);
-
-    result.vertex_count = (GLsizei)vertex_count;
-    result.index_count = (GLsizei)index_count;
     return result;
 }
 
 void gl_destroy_mesh(rt_mesh_t& mesh)
 {
-    gl_destroy_buffer(mesh.vertex_vbo);
-    gl_destroy_buffer(mesh.normal_vbo);
-    gl_destroy_buffer(mesh.uv_vbo);
-    gl_destroy_buffer(mesh.index_vbo);
-
-    glDeleteVertexArrays(1, &mesh.handle);
-    mesh.handle = 0;
+    for (auto& vertex : mesh.vertex)
+        gl_destroy_buffer(vertex);
+    gl_destroy_buffer(mesh.index);
 }
 
 void gl_draw_mesh(rt_mesh_t const& mesh)
@@ -1726,16 +1742,41 @@ void gl_draw_mesh(rt_mesh_t const& mesh)
         abort();
     }
 
-    glBindVertexArray(mesh.handle);
-    if (mesh.index_count)
+    rt_module_render_t const& module = opengl.currentRenderPass->module;
+
+    GLsizei vertex_count = 0;
+    for (uint32_t i = 0; i < std::size(module.desc.vertex); ++i)
     {
-        glDrawElements(opengl.currentPipeline->module.render.primitive, mesh.index_count, opengl.currentPipeline->module.render.index_type, (void*)0);
+        rt_vertex_t const& layout = module.desc.vertex[i];
+        if (layout.type == GL_NONE || layout.count == 0)
+            continue;
+
+        GLuint buffer = 0;
+        GLsizei stride = gl_vertex_type_size(layout.type) * (GLsizei)layout.count;
+        for (uint32_t k = 0; k < std::size(mesh.vertex); ++k)
+        {
+            if (mesh.vertex[k].handle == 0 || mesh.location[k] != layout.location)
+                continue;
+            buffer = mesh.vertex[k].handle;
+            if (vertex_count == 0 && stride > 0)
+                vertex_count = (GLsizei)(mesh.vertex[k].size / (size_t)stride);
+            glBindVertexBuffer(layout.location, buffer, 0, buffer ? stride : 0);
+            break;
+        }
+    }
+
+    if (mesh.index.handle)
+    {
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, mesh.index.handle);
+        GLsizei index_stride = gl_index_type_size(module.desc.index_type);
+        auto index_count = (GLsizei)(mesh.index.size / (size_t)index_stride);
+        glDrawElements(module.desc.primitive, index_count, module.desc.index_type, (void*)0);
     }
     else
     {
-        glDrawArrays(opengl.currentPipeline->module.render.primitive, 0, mesh.vertex_count);
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+        glDrawArrays(module.desc.primitive, 0, vertex_count);
     }
-    glBindVertexArray(0);
 }
 
 // ====================================================================
@@ -1748,38 +1789,25 @@ rt_meshlet_t gl_create_meshlet(const float* vertices, // vec4
     rt_meshlet_t result = {};
 
     if (vertices)
-    {
-        result.vertex_vbo = gl_create_buffer({.size = vertex_count * 4 * sizeof(float), .usage = GL_BUFFER_USAGE_STORAGE | GL_BUFFER_USAGE_COPY_DST, .data = vertices,});
-    }
+        result.vertex[0] = gl_create_buffer({.size = vertex_count * 4 * sizeof(float), .usage = GL_BUFFER_USAGE_STORAGE | GL_BUFFER_USAGE_COPY_DST, .data = vertices,});
 
     if (normals)
-    {
-        result.normal_vbo = gl_create_buffer({.size = vertex_count * 4 * sizeof(float), .usage = GL_BUFFER_USAGE_STORAGE | GL_BUFFER_USAGE_COPY_DST, .data = normals,});
-    }
+        result.vertex[1] = gl_create_buffer({.size = vertex_count * 4 * sizeof(float), .usage = GL_BUFFER_USAGE_STORAGE | GL_BUFFER_USAGE_COPY_DST, .data = normals,});
 
     if (uvs)
-    {
-        result.uv_vbo = gl_create_buffer({.size = vertex_count * 2 * sizeof(float), .usage = GL_BUFFER_USAGE_STORAGE | GL_BUFFER_USAGE_COPY_DST, .data = uvs,});
-    }
+        result.vertex[2] = gl_create_buffer({.size = vertex_count * 2 * sizeof(float), .usage = GL_BUFFER_USAGE_STORAGE | GL_BUFFER_USAGE_COPY_DST, .data = uvs,});
 
     if (indices)
-    {
-        result.index_vbo = gl_create_buffer({.size = index_count * sizeof(uint32_t), .usage = GL_BUFFER_USAGE_STORAGE | GL_BUFFER_USAGE_COPY_DST, .data = indices,});
-    }
+        result.index = gl_create_buffer({.size = index_count * sizeof(uint32_t), .usage = GL_BUFFER_USAGE_STORAGE | GL_BUFFER_USAGE_COPY_DST, .data = indices,});
 
-    result.vertex_count = (GLsizei)vertex_count;
-    result.index_count = (GLsizei)index_count;
-    result.index_type = GL_UNSIGNED_INT;
-    result.primitive_type = GL_TRIANGLES;
     return result;
 }
 
 void gl_destroy_meshlet(rt_meshlet_t& meshlet)
 {
-    gl_destroy_buffer(meshlet.vertex_vbo);
-    gl_destroy_buffer(meshlet.normal_vbo);
-    gl_destroy_buffer(meshlet.uv_vbo);
-    gl_destroy_buffer(meshlet.index_vbo);
+    for (auto& vertex : meshlet.vertex)
+        gl_destroy_buffer(vertex);
+    gl_destroy_buffer(meshlet.index);
 }
 
 void gl_draw_meshlet(rt_meshlet_t const& meshlet)
@@ -1795,11 +1823,33 @@ void gl_draw_meshlet(rt_meshlet_t const& meshlet)
         abort();
     }
 
-    gl_bind_buffer(meshlet.vertex_vbo, {.binding = 0, .target = GL_SHADER_STORAGE_BUFFER,});
-    gl_bind_buffer(meshlet.normal_vbo, {.binding = 1, .target = GL_SHADER_STORAGE_BUFFER,});
-    gl_bind_buffer(meshlet.uv_vbo, {.binding = 2, .target = GL_SHADER_STORAGE_BUFFER,});
-    gl_bind_buffer(meshlet.index_vbo, {.binding = 3, .target = GL_SHADER_STORAGE_BUFFER,});
-    glDrawMeshTasksNV(0, meshlet.index_count / 3);
+    rt_module_render_t const& module = opengl.currentRenderPass->module;
+
+    uint32_t index_binding = 0;
+    for (uint32_t i = 0; i < std::size(module.desc.vertex); ++i)
+    {
+        rt_vertex_t const& layout = module.desc.vertex[i];
+        if (layout.type == GL_NONE || layout.count == 0)
+            continue;
+
+        for (uint32_t k = 0; k < std::size(meshlet.vertex); ++k)
+        {
+            if (meshlet.vertex[k].handle == 0 || meshlet.location[k] != layout.location)
+                continue;
+            gl_bind_buffer(meshlet.vertex[k], {.binding = layout.location, .target = GL_SHADER_STORAGE_BUFFER,});
+            break;
+        }
+        if (layout.location + 1 > index_binding)
+            index_binding = layout.location + 1;
+    }
+
+    if (meshlet.index.handle)
+    {
+        gl_bind_buffer(meshlet.index, {.binding = index_binding, .target = GL_SHADER_STORAGE_BUFFER,});
+        GLsizei index_stride = gl_index_type_size(module.desc.index_type);
+        auto index_count = (GLsizei)(meshlet.index.size / (size_t)index_stride);
+        glDrawMeshTasksNV(0, index_count / 3);
+    }
 }
 
 // ====================================================================
@@ -1852,8 +1902,8 @@ void gl_draw_screen(int width, int height, rt_texture_t texture, rt_color_t clea
             final = texture(texture0, uv);
         }
     )";
-    static auto module = gl_create_module_render(VS, FS, {.vertex = {rt_vertex_layout, rt_normal_layout, rt_uv_layout,},});
-    rt_pass_t pass = {.module = module, .screen = {.color = { .clear = true, .value = clear, }}};
+    static auto module = gl_create_module_render(VS, FS, {.vertex = {rt_vertex_layout, {}, rt_uv_layout,},});
+    rt_pass_render_t pass = {.module = module, .screen = {.color = { .clear = true, .value = clear, }}};
     gl_begin_render(pass);
     gl_set_viewport(0, 0, width, height);
     gl_bind_texture(texture, { .binding = 0, });

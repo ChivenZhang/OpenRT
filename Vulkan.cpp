@@ -834,7 +834,7 @@ rt_module_t vk_create_module_compute(const char* comp_src, rt_compute_info_t con
     return result;
 }
 
-rt_module_t vk_create_module_render(const char* vert_src, const char* frag_src, rt_render_info_t const& info)
+rt_module_t vk_create_module_render(const char* vert_src, const char* frag_src, rt_module_render_info_t const& info)
 {
     rt_module_t result = {};
     if (!vulkan.device) return result;
@@ -1112,7 +1112,7 @@ rt_module_t vk_create_module_render(const char* vert_src, const char* frag_src, 
     return result;
 }
 
-rt_module_t vk_create_module_meshlet(const char* task_src, const char* mesh_src, const char* frag_src, rt_render_info_t const& info)
+rt_module_t vk_create_module_meshlet(const char* task_src, const char* mesh_src, const char* frag_src, rt_module_render_info_t const& info)
 {
     rt_module_t result = {};
     if (!mesh_src || !vulkan.device) return result;
@@ -1678,58 +1678,52 @@ rt_meshlet_t vk_create_meshlet(const float* vertices, const float* normals, cons
 {
     rt_meshlet_t result = {};
     if (!vertices || vertex_count == 0) return result;
-    
-    result.vertex_count = static_cast<GLsizei>(vertex_count);
-    result.index_count = static_cast<GLsizei>(index_count);
-    result.index_type = GL_UNSIGNED_INT;
-    result.primitive_type = GL_TRIANGLES;
-    
+
     if (vertices)
     {
         rt_buffer_info_t vertexDesc = {};
         vertexDesc.size = vertex_count * sizeof(float) * 4;
         vertexDesc.usage = GL_BUFFER_USAGE_STORAGE | GL_BUFFER_USAGE_COPY_DST;
         vertexDesc.data = vertices;
-        result.vertex_vbo = vk_create_buffer(vertexDesc);
+        result.vertex[0] = vk_create_buffer(vertexDesc);
     }
-    
+
     if (normals)
     {
         rt_buffer_info_t normalDesc = {};
         normalDesc.size = vertex_count * sizeof(float) * 4;
         normalDesc.usage = GL_BUFFER_USAGE_STORAGE | GL_BUFFER_USAGE_COPY_DST;
         normalDesc.data = normals;
-        result.normal_vbo = vk_create_buffer(normalDesc);
+        result.vertex[1] = vk_create_buffer(normalDesc);
     }
-    
+
     if (uvs)
     {
         rt_buffer_info_t uvDesc = {};
         uvDesc.size = vertex_count * sizeof(float) * 2;
         uvDesc.usage = GL_BUFFER_USAGE_STORAGE | GL_BUFFER_USAGE_COPY_DST;
         uvDesc.data = uvs;
-        result.uv_vbo = vk_create_buffer(uvDesc);
+        result.vertex[2] = vk_create_buffer(uvDesc);
     }
-    
+
     if (indices)
     {
         rt_buffer_info_t indexDesc = {};
         indexDesc.size = index_count * sizeof(unsigned int);
         indexDesc.usage = GL_BUFFER_USAGE_STORAGE | GL_BUFFER_USAGE_COPY_DST;
         indexDesc.data = indices;
-        result.index_vbo = vk_create_buffer(indexDesc);
+        result.index = vk_create_buffer(indexDesc);
     }
-    
+
     return result;
 }
 
 void vk_destroy_meshlet(rt_meshlet_t& meshlet)
 {
-    if (meshlet.vertex_vbo.handle) vk_destroy_buffer(meshlet.vertex_vbo);
-    if (meshlet.normal_vbo.handle) vk_destroy_buffer(meshlet.normal_vbo);
-    if (meshlet.uv_vbo.handle) vk_destroy_buffer(meshlet.uv_vbo);
-    if (meshlet.index_vbo.handle) vk_destroy_buffer(meshlet.index_vbo);
-    
+    for (auto& vertex : meshlet.vertex)
+        if (vertex.handle) vk_destroy_buffer(vertex);
+    if (meshlet.index.handle) vk_destroy_buffer(meshlet.index);
+
     vulkan.meshletID += 1;
 }
 

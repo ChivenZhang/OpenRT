@@ -35,8 +35,8 @@ void vk_destroy_sampler(rt_sampler_t& sampler);
 void vk_bind_sampler(rt_sampler_t sampler, rt_sampler_bind_t bind = {});
 
 rt_module_t vk_create_module_compute(const char* comp_src, rt_compute_info_t const& info);
-rt_module_t vk_create_module_render(const char* vert_src, const char* frag_src, rt_render_info_t const& info);
-rt_module_t vk_create_module_meshlet(const char* task_src, const char* mesh_src, const char* frag_src, rt_render_info_t const& info);
+rt_module_t vk_create_module_render(const char* vert_src, const char* frag_src, rt_module_render_info_t const& info);
+rt_module_t vk_create_module_meshlet(const char* task_src, const char* mesh_src, const char* frag_src, rt_module_render_info_t const& info);
 void vk_destroy_module(rt_module_t& module);
 
 void vk_push_constant(uint8_t const* buffer, size_t length);

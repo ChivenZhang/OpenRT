@@ -34,10 +34,11 @@ rt_sampler_t gl_create_sampler(rt_sampler_info_t const& info);
 void gl_destroy_sampler(rt_sampler_t& sampler);
 void gl_bind_sampler(rt_sampler_t sampler, rt_sampler_bind_t bind = {});
 
-rt_module_t gl_create_module_compute(const char* comp_src, rt_compute_info_t const& info);
-rt_module_t gl_create_module_render(const char* vert_src, const char* frag_src, rt_render_info_t const& info);
-rt_module_t gl_create_module_meshlet(const char* task_src, const char* mesh_src, const char* frag_src, rt_render_info_t const& info);
-void gl_destroy_module(rt_module_t& module);
+rt_module_compute_t gl_create_module_compute(const char* comp_src, rt_module_compute_info_t const& info);
+rt_module_render_t gl_create_module_render(const char* vert_src, const char* frag_src, rt_module_render_info_t const& info);
+rt_module_render_t gl_create_module_meshlet(const char* task_src, const char* mesh_src, const char* frag_src, rt_module_render_info_t const& info);
+void gl_destroy_module_render(rt_module_render_t& module);
+void gl_destroy_module_compute(rt_module_compute_t& module);
 
 void gl_push_constant(uint8_t const* buffer, size_t length);
 void gl_push_const_int(const char* name, int32_t value);
@@ -49,18 +50,18 @@ void gl_push_const_vec4(const char* name, const float* value);
 void gl_push_const_mat3(const char* name, const float* value);
 void gl_push_const_mat4(const char* name, const float* value);
 
-void gl_begin_compute(rt_pass_t& pass);
-void gl_end_compute(rt_pass_t& pass);
+void gl_begin_compute(rt_pass_compute_t& pass);
+void gl_end_compute(rt_pass_compute_t& pass);
 void gl_dispatch_compute(uint32_t groupX, uint32_t groupY, uint32_t groupZ);
 
-void gl_begin_render(rt_pass_t& pass);
-void gl_end_render(rt_pass_t& pass);
+void gl_begin_render(rt_pass_render_t& pass);
+void gl_end_render(rt_pass_render_t& pass);
 void gl_set_viewport(int32_t x, int32_t y, int32_t width, int32_t height);
 void gl_set_scissor(int32_t x, int32_t y, int32_t width, int32_t height);
 void gl_draw_mesh_task(uint32_t groupX, uint32_t groupY = 1, uint32_t groupZ = 1);
 
-void gl_begin_transfer(rt_pass_t& pass);
-void gl_end_transfer(rt_pass_t& pass);
+void gl_begin_transfer(rt_pass_transfer_t& pass);
+void gl_end_transfer(rt_pass_transfer_t& pass);
 void gl_copy_buffer(rt_buffer_copy_t source, rt_buffer_copy_t destination, size_t copySize);
 void gl_copy_buffer_data(rt_buffer_data_t source, rt_buffer_copy_t destination, size_t copySize);
 void gl_copy_buffer_texture(rt_texture_copy_t source, rt_buffer_texel_t destination, rt_size_t copySize);
