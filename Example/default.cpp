@@ -121,7 +121,7 @@ void frame(int width, int height)
 
     auto projMat = glm::perspective(glm::radians(60.0f), (float)width / (float)height, 0.1f, 100.0f);
     auto viewMat = glm::lookAt(glm::vec3(0, 2, 5), glm::vec3(0, 0, 0), glm::vec3(0, 1, 0));
-    auto meshMat = glm::rotate(glm::mat4(1.0f), (float)SDL_GetTicks() / 2000.0f, glm::vec3(0, 1, 0));
+    auto meshMat = glm::rotate(glm::rotate(glm::mat4(1), glm::radians(-23.5f), glm::vec3(0, 0, 1)), (float)SDL_GetTicks() / 2000.0f, glm::vec3(0, 1, 0));
 
     static auto module = rt_create_module_render(VS, FS, {.depth = {.write = true, .func = GL_LEQUAL,}, .vertex = {rt_vertex_vertex, rt_vertex_normal, rt_vertex_uv,}, });
     static auto pass_color = rt_create_texture_color(width, height, nullptr);
@@ -134,7 +134,7 @@ void frame(int width, int height)
         rt_push_const_mat4("viewMat", &viewMat[0][0]);
         rt_push_const_mat4("meshMat", &meshMat[0][0]);
 
-        static auto texture0 = rt_load_texture_file("../../Earth.png");
+        static auto texture0 = rt_load_texture_file("../../Earth.png", true);
         rt_bind_texture(texture0, {.binding = 0,});
 
         static auto mesh = rt_create_mesh_sphere(2, 64, 32);
