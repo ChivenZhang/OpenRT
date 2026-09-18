@@ -1,6 +1,6 @@
+#include "../OpenGL.h"
 #define OPENRTX_IMPLEMENTATION
 #include "../OpenRTX.h"
-#include "../OpenGL.h"
 #include <SDL3/SDL.h>
 
 void frame(int width, int height);
@@ -17,7 +17,7 @@ int main()
 
 // ====================================================================
 
-    gl_load_library();
+    rt_load_library();
 
     SDL_Event event;
     bool running = true;
@@ -126,40 +126,11 @@ void frame(int width, int height)
     auto viewMat = glm::lookAt(glm::vec3(0, 2, 5), glm::vec3(0, 0, 0), glm::vec3(0, 1, 0));
     auto meshMat = glm::rotate(glm::mat4(1.0f), (float)SDL_GetTicks() / 2000.0f, glm::vec3(0, 1, 0));
 
-    static auto module = rt_create_module_render(VS, FS, {
-        .depth = {.write = true, .func = GL_LEQUAL,},
-        .layout = {{.binding = 0, .type = GL_BINDING_TEXTURE, }},
-        .vertex = {rt_vertex_layout, rt_normal_layout, rt_uv_layout,},
-    });
+    static auto module = rt_create_module_render(VS, FS, { .depth = {.write = true, .func = GL_LEQUAL,}, });
     static auto pass_color = rt_create_texture_color(width, height, nullptr);
     static auto pass_depth = rt_create_texture_depth(width, height, nullptr);
     {
-        static auto texture0 = []()
-        {
-            auto texture = rt_load_texture_file("../../Earth.png");
-
-            rt_pass_t pass = {};
-            rt_begin_transfer(pass);
-            auto buffer = rt_create_buffer({.size = texture.width * texture.height * 3, .usage = GL_BUFFER_USAGE_COPY_SRC | GL_BUFFER_USAGE_COPY_DST,});
-            rt_copy_buffer_texture(
-                {.texture = texture, },
-                {.buffer = buffer, .bytesPerRow = texture.width * 3, .rowsPerImage = texture.height,},
-                {texture.width, texture.height, 1});
-            rt_end_transfer(pass);
-
-            rt_destroy_texture(texture);
-            texture = rt_create_texture({.width = texture.width, .height = texture.height, .format = GL_RGB, .internal_format = GL_RGB8, });
-
-            rt_begin_transfer(pass);
-            rt_copy_texture_buffer(
-                {.buffer = buffer, .bytesPerRow = texture.width * 3, .rowsPerImage = texture.height,},
-                {.texture = texture,},
-                {texture.width, texture.height, 1});
-            rt_end_transfer(pass);
-
-            rt_destroy_buffer(buffer);
-            return texture;
-        }();
+        static auto texture0 = rt_load_texture_file("../../Earth.png");
 
         rt_pass_t pass = {.module = module, .colors = {{.texture = pass_color, .clear = true,}}, .depth = {.texture = pass_depth, .clear = true,},};
         rt_begin_render(pass);

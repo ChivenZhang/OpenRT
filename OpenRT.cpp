@@ -9,6 +9,17 @@
 *
 * =================================================*/
 #include "OpenRT.h"
+#include "OpenGL.h"
+
+void rt_load_library(const char* backend)
+{
+    gl_load_library();
+}
+
+void rt_unload_library()
+{
+    gl_unload_library();
+}
 
 rt_buffer_t (*rt_create_buffer)(rt_buffer_info_t const& info) = nullptr;
 void (*rt_destroy_buffer)(rt_buffer_t& buffer) = nullptr;

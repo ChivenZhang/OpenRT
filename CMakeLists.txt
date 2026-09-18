@@ -19,12 +19,22 @@ add_definitions(
         -DVULKAN_IMPLEMENTATION
 )
 
-add_executable(OpenGL Example/default.cpp
+add_library(OpenRT SHARED
         OpenGL.cpp
         OpenRT.cpp
-        Vulkan.cpp
-        Vulkan.h
 )
+target_compile_definitions(OpenRT PRIVATE OPENRT_EXPORTS)
+find_package(GLEW CONFIG REQUIRED)
+target_link_libraries(OpenRT PRIVATE GLEW::GLEW)
+find_package(glm CONFIG REQUIRED)
+target_link_libraries(OpenRT PRIVATE glm::glm)
+find_package(Stb REQUIRED)
+target_include_directories(OpenRT PRIVATE ${Stb_INCLUDE_DIR})
+
+add_executable(OpenGL Example/default.cpp)
+add_dependencies(OpenGL OpenRT)
+target_link_libraries(OpenGL PRIVATE OpenRT)
+
 find_package(SDL3 CONFIG REQUIRED)
 target_link_libraries(OpenGL PRIVATE SDL3::SDL3)
 find_package(GLEW CONFIG REQUIRED)
