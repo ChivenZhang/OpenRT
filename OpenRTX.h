@@ -366,8 +366,8 @@ static rt_mesh_t rt_create_mesh_footprint(
         // 左右脚镜像
         if (!left_foot) px = -px;
 
-        px *= width;
-        pz *= length;
+        px *= width * 0.5f;
+        pz *= length * 0.5f;
 
         float u = (sole_profile[i][0] + 0.6f) / 1.2f;
         float v = (sole_profile[i][1] + 0.8f) / 1.6f;
