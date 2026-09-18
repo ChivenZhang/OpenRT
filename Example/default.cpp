@@ -1,4 +1,3 @@
-#include "../OpenGL.h"
 #define OPENRTX_IMPLEMENTATION
 #include "../OpenRTX.h"
 #include <SDL3/SDL.h>
@@ -14,26 +13,24 @@ int main()
     auto window = SDL_CreateWindow( "OpenGL Demo", 1000, 600, SDL_WINDOW_OPENGL);
     auto context = SDL_GL_CreateContext(window);
     SDL_GL_MakeCurrent(window, context);
-
-// ====================================================================
-
     rt_load_library();
 
-    SDL_Event event;
     bool running = true;
     while (running)
     {
+        SDL_Event event;
         while (SDL_PollEvent(&event)) if (event.type == SDL_EVENT_QUIT) running = false;
+        // ====================================================================
 
         int w, h;
         SDL_GetWindowSizeInPixels(window, &w, &h);
         frame(w, h);
 
+        // ====================================================================
         SDL_GL_SwapWindow(window);
     }
 
-// ====================================================================
-
+    rt_unload_library();
     SDL_GL_DestroyContext(context);
     SDL_DestroyWindow(window);
     SDL_Quit();

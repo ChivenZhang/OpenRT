@@ -37,19 +37,10 @@ target_link_libraries(OpenGL PRIVATE SDL3::SDL3)
 find_package(glm CONFIG REQUIRED)
 target_link_libraries(OpenGL PRIVATE glm::glm)
 
-add_executable(Terrain Example/terrain.cpp
-        OpenGL.cpp
-        OpenRT.cpp
-        Vulkan.cpp
-        Vulkan.h
-)
+add_executable(Terrain Example/terrain.cpp)
+add_dependencies(Terrain OpenRT)
+target_link_libraries(Terrain PRIVATE OpenRT)
 find_package(SDL3 CONFIG REQUIRED)
 target_link_libraries(Terrain PRIVATE SDL3::SDL3)
-find_package(GLEW CONFIG REQUIRED)
-target_link_libraries(Terrain PRIVATE GLEW::GLEW)
-find_package(Vulkan REQUIRED)
-target_link_libraries(Terrain PRIVATE Vulkan::Vulkan)
 find_package(glm CONFIG REQUIRED)
 target_link_libraries(Terrain PRIVATE glm::glm)
-find_package(Stb REQUIRED)
-target_include_directories(Terrain PRIVATE ${Stb_INCLUDE_DIR})
