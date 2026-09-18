@@ -123,7 +123,7 @@ void frame(int width, int height)
     auto viewMat = glm::lookAt(glm::vec3(0, 2, 5), glm::vec3(0, 0, 0), glm::vec3(0, 1, 0));
     auto meshMat = glm::rotate(glm::mat4(1.0f), (float)SDL_GetTicks() / 2000.0f, glm::vec3(0, 1, 0));
 
-    static auto module = rt_create_module_render(VS, FS, {.depth = {.write = true, .func = GL_LEQUAL,}, .vertex = {rt_vertex_layout, rt_normal_layout, rt_uv_layout,}, });
+    static auto module = rt_create_module_render(VS, FS, {.depth = {.write = true, .func = GL_LEQUAL,}, .vertex = {rt_vertex_vertex, rt_vertex_normal, rt_vertex_uv,}, });
     static auto pass_color = rt_create_texture_color(width, height, nullptr);
     static auto pass_depth = rt_create_texture_depth(width, height, nullptr);
     {

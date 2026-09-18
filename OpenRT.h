@@ -154,11 +154,11 @@ struct rt_vertex_t
     GLenum count = 0;
     bool instance = false;
 };
-inline rt_vertex_t rt_vertex_layout{.location = 0, .type = GL_FLOAT, .count = 3,};
-inline rt_vertex_t rt_normal_layout{.location = 1, .type = GL_FLOAT, .count = 3,};
-inline rt_vertex_t rt_uv_layout{.location = 2, .type = GL_FLOAT, .count = 2,};
+inline rt_vertex_t rt_vertex_vertex{.location = 0, .type = GL_FLOAT, .count = 3,};
+inline rt_vertex_t rt_vertex_normal{.location = 1, .type = GL_FLOAT, .count = 3,};
+inline rt_vertex_t rt_vertex_uv{.location = 2, .type = GL_FLOAT, .count = 2,};
 
-enum rt_layout_type_t : uint32_t
+enum rt_binding_type_t : uint32_t
 {
     GL_BINDING_BUFFER = 1,
     GL_BINDING_TEXTURE = 2,
@@ -169,7 +169,7 @@ enum rt_layout_type_t : uint32_t
 struct rt_binding_t
 {
     uint32_t binding = 0;
-    rt_layout_type_t type = {};  // GL_BINDING_BUFFER / GL_BINDING_TEXTURE / GL_BINDING_STORAGE_TEXTURE / GL_BINDING_SAMPLER
+    rt_binding_type_t type = {};  // GL_BINDING_BUFFER / GL_BINDING_TEXTURE / GL_BINDING_STORAGE_TEXTURE / GL_BINDING_SAMPLER
 };
 
 struct rt_module_render_info_t

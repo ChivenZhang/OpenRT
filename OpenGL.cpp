@@ -1902,7 +1902,7 @@ void gl_draw_screen(int width, int height, rt_texture_t texture, rt_color_t clea
             final = texture(texture0, uv);
         }
     )";
-    static auto module = gl_create_module_render(VS, FS, {.vertex = {rt_vertex_layout, {}, rt_uv_layout,},});
+    static auto module = gl_create_module_render(VS, FS, {.vertex = {rt_vertex_vertex, {}, rt_vertex_uv,},});
     rt_pass_render_t pass = {.module = module, .screen = {.color = { .clear = true, .value = clear, }}};
     gl_begin_render(pass);
     gl_set_viewport(0, 0, width, height);
