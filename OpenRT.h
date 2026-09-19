@@ -149,13 +149,7 @@ struct rt_module_compute_info_t
 struct rt_module_compute_t
 {
     GLuint handle = 0;
-    rt_module_compute_info_t desc;
     void* native = nullptr;
-};
-
-struct rt_color_t
-{
-    float r = 0, g = 0, b = 0, a = 0;
 };
 
 struct rt_vertex_t
@@ -165,9 +159,9 @@ struct rt_vertex_t
     GLenum count = 0;
     bool instance = false;
 };
-inline rt_vertex_t rt_vertex_vertex{.location = 0, .type = GL_FLOAT, .count = 3,};
-inline rt_vertex_t rt_vertex_normal{.location = 1, .type = GL_FLOAT, .count = 3,};
-inline rt_vertex_t rt_vertex_uv{.location = 2, .type = GL_FLOAT, .count = 2,};
+inline rt_vertex_t rt_vertex_vertex{.location = 0, .type = GL_FLOAT, .count = 3, .instance = false};
+inline rt_vertex_t rt_vertex_normal{.location = 1, .type = GL_FLOAT, .count = 3, .instance = false};
+inline rt_vertex_t rt_vertex_uv{.location = 2, .type = GL_FLOAT, .count = 2, .instance = false};
 
 enum rt_binding_type_t : uint32_t
 {
@@ -222,14 +216,55 @@ struct rt_module_render_info_t
     GLenum cull_mode = GL_BACK; // GL_NONE / GL_FRONT / GL_BACK / GL_FRONT_AND_BACK
     GLenum front_face = GL_CCW; // GL_CW / GL_CCW
     GLenum fill_mode = GL_FILL; // GL_POINT / GL_LINE / GL_FILL
-    GLenum primitive = GL_TRIANGLES;
+    GLenum primitive = GL_TRIANGLES; // GL_POINTS / GL_LINES / GL_LINE_LOOP / GL_LINE_STRIP / GL_TRIANGLES / GL_TRIANGLE_STRIP / GL_TRIANGLE_FAN
 };
 
 struct rt_module_render_t
 {
     GLuint handle = 0;
-    rt_module_render_info_t desc;
     GLuint vertex_vao = 0;   // VAO
+
+    // Same as rt_module_render_info_t
+
+    struct
+    {
+        struct
+        {
+            GLenum func = GL_FUNC_ADD;
+            GLenum src = GL_ONE;
+            GLenum dst = GL_ZERO;
+        } color, alpha;
+    } colors[GL_MAX_COLOR_TEXTURE_NUM];
+    struct
+    {
+        bool write = false;
+        float bias = 0.0f;
+        float biasSlope = 0.0f;
+        float biasClamp = 0.0f;
+        GLenum func = GL_ALWAYS;
+    } depth;
+    struct
+    {
+        uint32_t read = 0xFFFFFFFF;
+        uint32_t write = 0xFFFFFFFF;
+        struct
+        {
+            GLenum func = GL_ALWAYS;
+            GLenum sfail = GL_KEEP;
+            GLenum zfail = GL_KEEP;
+            GLenum zpass = GL_KEEP;
+        } back, front;
+    } stencil;
+
+    GLenum index_type = GL_UNSIGNED_INT;
+    rt_vertex_t vertex[GL_MAX_VERTEX_BUFFER_NUM];
+    rt_binding_t binding[GL_MAX_BINDING_HANDLE_NUM];
+
+    GLenum cull_mode = GL_BACK;
+    GLenum front_face = GL_CCW;
+    GLenum fill_mode = GL_FILL;
+    GLenum primitive = GL_TRIANGLES;
+
     void* native = nullptr;
 };
 
@@ -240,6 +275,11 @@ struct rt_pass_compute_t
     GLuint handle = 0;
     rt_module_compute_t module;
     void* native = nullptr;
+};
+
+struct rt_color_t
+{
+    float r = 0, g = 0, b = 0, a = 0;
 };
 
 struct rt_pass_render_t

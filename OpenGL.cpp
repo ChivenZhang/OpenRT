@@ -492,7 +492,6 @@ rt_module_compute_t gl_create_module_compute(const char* comp_src, rt_module_com
 
     glDeleteShader(cs);
 
-    result.desc = info;
     return result;
 }
 
@@ -589,7 +588,51 @@ rt_module_render_t gl_create_module_render(const char* vert_src, const char* fra
     }
     glBindVertexArray(0);
 
-    result.desc = info;
+    // result = info;
+
+    // Copy colors and other data
+
+    for (size_t i = 0; i < std::size(info.colors); ++i)
+    {
+        result.colors[i].color.func = info.colors[i].color.func;
+        result.colors[i].color.src = info.colors[i].color.src;
+        result.colors[i].color.dst = info.colors[i].color.dst;
+        result.colors[i].alpha.func = info.colors[i].alpha.func;
+        result.colors[i].alpha.src = info.colors[i].alpha.src;
+        result.colors[i].alpha.dst = info.colors[i].alpha.dst;
+    }
+    result.depth.write = info.depth.write;
+    result.depth.bias = info.depth.bias;
+    result.depth.biasSlope = info.depth.biasSlope;
+    result.depth.biasClamp = info.depth.biasClamp;
+    result.depth.func = info.depth.func;
+    result.stencil.read = info.stencil.read;
+    result.stencil.write = info.stencil.write;
+    result.stencil.back.func = info.stencil.back.func;
+    result.stencil.back.sfail = info.stencil.back.sfail;
+    result.stencil.back.zfail = info.stencil.back.zfail;
+    result.stencil.back.zpass = info.stencil.back.zpass;
+    result.stencil.front.func = info.stencil.front.func;
+    result.stencil.front.sfail = info.stencil.front.sfail;
+    result.stencil.front.zfail = info.stencil.front.zfail;
+    result.stencil.front.zpass = info.stencil.front.zpass;
+    result.index_type = info.index_type;
+    for (size_t i = 0; i < std::size(info.vertex); ++i)
+    {
+        result.vertex[i].location = info.vertex[i].location;
+        result.vertex[i].type = info.vertex[i].type;
+        result.vertex[i].count = info.vertex[i].count;
+        result.vertex[i].instance = info.vertex[i].instance;
+    }
+    for (size_t i = 0; i < std::size(info.binding); ++i)
+    {
+        result.binding[i].binding = info.binding[i].binding;
+        result.binding[i].type = info.binding[i].type;
+    }
+    result.cull_mode = info.cull_mode;
+    result.front_face = info.front_face;
+    result.fill_mode = info.fill_mode;
+    result.primitive = info.primitive;
     return result;
 }
 
@@ -664,7 +707,6 @@ rt_module_render_t gl_create_module_meshlet(const char* task_src, const char* me
     glDeleteShader(ms);
     glDeleteShader(fs);
 
-    result.desc = info;
     return result;
 }
 
@@ -906,12 +948,12 @@ void gl_begin_render(rt_pass_render_t& pass)
                 if (pass.colors[i].clear)
                     glClearBufferfv(GL_COLOR, (int32_t)i, &pass.colors[i].value.r);
 
-                if (pass.module.desc.colors[i].color.func != GL_ADD || pass.module.desc.colors[i].color.src != GL_ONE ||
-                    pass.module.desc.colors[i].color.dst != GL_ZERO || pass.module.desc.colors[i].alpha.func != GL_ADD ||
-                    pass.module.desc.colors[i].alpha.src != GL_ONE || pass.module.desc.colors[i].alpha.dst != GL_ZERO)
+                if (pass.module.colors[i].color.func != GL_ADD || pass.module.colors[i].color.src != GL_ONE ||
+                    pass.module.colors[i].color.dst != GL_ZERO || pass.module.colors[i].alpha.func != GL_ADD ||
+                    pass.module.colors[i].alpha.src != GL_ONE || pass.module.colors[i].alpha.dst != GL_ZERO)
                     glEnable(GL_BLEND);
-                glBlendEquationSeparatei(i, pass.module.desc.colors[i].color.func, pass.module.desc.colors[i].alpha.func);
-                glBlendFuncSeparatei(i, pass.module.desc.colors[i].color.src, pass.module.desc.colors[i].color.dst, pass.module.desc.colors[i].alpha.src, pass.module.desc.colors[i].alpha.dst);
+                glBlendEquationSeparatei(i, pass.module.colors[i].color.func, pass.module.colors[i].alpha.func);
+                glBlendFuncSeparatei(i, pass.module.colors[i].color.src, pass.module.colors[i].color.dst, pass.module.colors[i].alpha.src, pass.module.colors[i].alpha.dst);
             }
         }
 
@@ -930,7 +972,7 @@ void gl_begin_render(rt_pass_render_t& pass)
 
         // Depth State
 
-        if (pass.module.desc.depth.func == GL_ALWAYS && pass.module.desc.depth.write == false)
+        if (pass.module.depth.func == GL_ALWAYS && pass.module.depth.write == false)
         {
             glDisable(GL_DEPTH_TEST);
             glDepthMask(GL_TRUE);
@@ -938,26 +980,26 @@ void gl_begin_render(rt_pass_render_t& pass)
         else
         {
             glEnable(GL_DEPTH_TEST);
-            glDepthMask(pass.module.desc.depth.write);
+            glDepthMask(pass.module.depth.write);
         }
-        glDepthFunc(pass.module.desc.depth.func);
+        glDepthFunc(pass.module.depth.func);
 
-        if (pass.module.desc.depth.bias == 0 && pass.module.desc.depth.biasSlope == 0)
+        if (pass.module.depth.bias == 0 && pass.module.depth.biasSlope == 0)
         {
             glDisable(GL_POLYGON_OFFSET_FILL);
         }
         else
         {
             glEnable(GL_POLYGON_OFFSET_FILL);
-            glPolygonOffsetClamp(pass.module.desc.depth.biasSlope, pass.module.desc.depth.bias, pass.module.desc.depth.biasClamp);
+            glPolygonOffsetClamp(pass.module.depth.biasSlope, pass.module.depth.bias, pass.module.depth.biasClamp);
         }
 
         // Stencil State
 
-        if (pass.module.desc.stencil.back.func != GL_ALWAYS || pass.module.desc.stencil.back.sfail != GL_KEEP ||
-            pass.module.desc.stencil.back.zfail != GL_KEEP || pass.module.desc.stencil.back.zpass != GL_KEEP ||
-            pass.module.desc.stencil.front.func != GL_ALWAYS || pass.module.desc.stencil.front.sfail != GL_KEEP ||
-            pass.module.desc.stencil.front.zfail != GL_KEEP || pass.module.desc.stencil.front.zpass != GL_KEEP)
+        if (pass.module.stencil.back.func != GL_ALWAYS || pass.module.stencil.back.sfail != GL_KEEP ||
+            pass.module.stencil.back.zfail != GL_KEEP || pass.module.stencil.back.zpass != GL_KEEP ||
+            pass.module.stencil.front.func != GL_ALWAYS || pass.module.stencil.front.sfail != GL_KEEP ||
+            pass.module.stencil.front.zfail != GL_KEEP || pass.module.stencil.front.zpass != GL_KEEP)
         {
             glEnable(GL_STENCIL_TEST);
         }
@@ -965,11 +1007,11 @@ void gl_begin_render(rt_pass_render_t& pass)
         {
             glDisable(GL_STENCIL_TEST);
         }
-        glStencilMask(pass.module.desc.stencil.write);
-        glStencilFuncSeparate(GL_BACK, pass.module.desc.stencil.back.func, pass.stencil.refer, pass.module.desc.stencil.read);
-        glStencilFuncSeparate(GL_FRONT, pass.module.desc.stencil.front.func, pass.stencil.refer, pass.module.desc.stencil.read);
-        glStencilOpSeparate(GL_BACK, pass.module.desc.stencil.back.sfail, pass.module.desc.stencil.back.zfail, pass.module.desc.stencil.back.zpass);
-        glStencilOpSeparate(GL_FRONT, pass.module.desc.stencil.front.sfail, pass.module.desc.stencil.front.zfail, pass.module.desc.stencil.front.zpass);
+        glStencilMask(pass.module.stencil.write);
+        glStencilFuncSeparate(GL_BACK, pass.module.stencil.back.func, pass.stencil.refer, pass.module.stencil.read);
+        glStencilFuncSeparate(GL_FRONT, pass.module.stencil.front.func, pass.stencil.refer, pass.module.stencil.read);
+        glStencilOpSeparate(GL_BACK, pass.module.stencil.back.sfail, pass.module.stencil.back.zfail, pass.module.stencil.back.zpass);
+        glStencilOpSeparate(GL_FRONT, pass.module.stencil.front.sfail, pass.module.stencil.front.zfail, pass.module.stencil.front.zpass);
     }
     else
     {
@@ -1044,15 +1086,15 @@ void gl_begin_render(rt_pass_render_t& pass)
 
     // Primitive State
 
-    glFrontFace(pass.module.desc.front_face);
-    if (pass.module.desc.cull_mode)
-        glCullFace(pass.module.desc.cull_mode);
-    if (pass.module.desc.cull_mode)
+    glFrontFace(pass.module.front_face);
+    if (pass.module.cull_mode)
+        glCullFace(pass.module.cull_mode);
+    if (pass.module.cull_mode)
         glEnable(GL_CULL_FACE);
     else
         glDisable(GL_CULL_FACE);
 
-    glPolygonMode(GL_FRONT_AND_BACK, pass.module.desc.fill_mode);
+    glPolygonMode(GL_FRONT_AND_BACK, pass.module.fill_mode);
 }
 
 void gl_end_render(rt_pass_render_t& pass)
@@ -1746,9 +1788,9 @@ void gl_draw_mesh(rt_mesh_t const& mesh)
     rt_module_render_t const& module = opengl.currentRenderPass->module;
 
     GLsizei vertex_count = 0;
-    for (uint32_t i = 0; i < std::size(module.desc.vertex); ++i)
+    for (uint32_t i = 0; i < std::size(module.vertex); ++i)
     {
-        rt_vertex_t const& layout = module.desc.vertex[i];
+        rt_vertex_t const& layout = module.vertex[i];
         if (layout.type == GL_NONE || layout.count == 0)
             continue;
 
@@ -1769,14 +1811,14 @@ void gl_draw_mesh(rt_mesh_t const& mesh)
     if (mesh.index.handle)
     {
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, mesh.index.handle);
-        GLsizei index_stride = gl_index_type_size(module.desc.index_type);
+        GLsizei index_stride = gl_index_type_size(module.index_type);
         auto index_count = (GLsizei)(mesh.index.size / (size_t)index_stride);
-        glDrawElements(module.desc.primitive, index_count, module.desc.index_type, (void*)0);
+        glDrawElements(module.primitive, index_count, module.index_type, (void*)0);
     }
     else
     {
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
-        glDrawArrays(module.desc.primitive, 0, vertex_count);
+        glDrawArrays(module.primitive, 0, vertex_count);
     }
 }
 
@@ -1828,9 +1870,9 @@ void gl_draw_meshlet(rt_meshlet_t const& meshlet)
     rt_module_render_t const& module = opengl.currentRenderPass->module;
 
     uint32_t index_binding = 0;
-    for (uint32_t i = 0; i < std::size(module.desc.vertex); ++i)
+    for (uint32_t i = 0; i < std::size(module.vertex); ++i)
     {
-        rt_vertex_t const& layout = module.desc.vertex[i];
+        rt_vertex_t const& layout = module.vertex[i];
         if (layout.type == GL_NONE || layout.count == 0)
             continue;
 
@@ -1848,7 +1890,7 @@ void gl_draw_meshlet(rt_meshlet_t const& meshlet)
     if (meshlet.index.handle)
     {
         gl_bind_buffer(meshlet.index, {.binding = index_binding, .target = GL_SHADER_STORAGE_BUFFER,});
-        GLsizei index_stride = gl_index_type_size(module.desc.index_type);
+        GLsizei index_stride = gl_index_type_size(module.index_type);
         auto index_count = (GLsizei)(meshlet.index.size / (size_t)index_stride);
         glDrawMeshTasksNV(0, index_count / 3);
     }
