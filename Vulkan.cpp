@@ -8,8 +8,9 @@
 * Created by chivenzhang@gmail.com.
 *
 * =================================================*/
-#include "Vulkan.h"
 #ifdef VULKAN_IMPLEMENTATION
+#include "Vulkan.h"
+#include <iostream>
 #include <map>
 
 static VkFilter gl_to_vk_filter(GLenum filter)

@@ -10,8 +10,7 @@
 *
 * =================================================*/
 #include <GL/glew.h>
-#include <iostream>
-#include <numeric>
+#include <cstdint>
 
 #ifndef OPENRT_API
 #  ifdef OPENRT_STATIC

@@ -8,8 +8,10 @@
 * Created by chivenzhang@gmail.com.
 *
 * =================================================*/
-#include "OpenGL.h"
 #ifdef OPENGL_IMPLEMENTATION
+#include "OpenGL.h"
+#include <iostream>
+#include <numeric>
 
 enum rt_module_type_t : uint32_t
 {
