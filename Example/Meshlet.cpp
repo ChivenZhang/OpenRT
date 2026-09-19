@@ -278,7 +278,7 @@ int main()
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 6);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
-    auto window = SDL_CreateWindow( "Terrain", w, h, SDL_WINDOW_OPENGL);
+    auto window = SDL_CreateWindow( "Meshlet", w, h, SDL_WINDOW_OPENGL);
     auto context = SDL_GL_CreateContext(window);
     SDL_GL_MakeCurrent(window, context);
 
