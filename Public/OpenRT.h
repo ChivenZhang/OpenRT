@@ -11,6 +11,7 @@
 * =================================================*/
 #include <GL/glew.h>
 #include <iostream>
+#include <numeric>
 
 #ifndef OPENRT_API
 #  if defined(_WIN32)
@@ -25,13 +26,15 @@
 #endif
 
 #define GL_MAX_COLOR_TEXTURE_NUM 2
-#define GL_MAX_VERTEX_BUFFER_NUM 5
+#define GL_MAX_VERTEX_BUFFER_NUM 10
 #define GL_MAX_BINDING_HANDLE_NUM 16
 #define GL_PI 3.14159265358979323846    // pi
 #define GL_PI_2 1.57079632679489661923  // pi/2
 #define GL_PI_4 0.785398163397448309616 // pi/4
 #define GL_1_PI 0.318309886183790671538 // 1/pi
 #define GL_2_PI 0.636619772367581343076 // 2/pi
+
+// ====================================================================
 
 enum rt_buffer_usage_t : uint32_t
 {
@@ -68,6 +71,8 @@ struct rt_buffer_bind_t
     uint32_t binding = 0;
     GLenum target = GL_UNIFORM_BUFFER; // GL_UNIFORM_BUFFER / GL_SHADER_STORAGE_BUFFER
 };
+
+// ====================================================================
 
 struct rt_texture_t
 {
@@ -113,6 +118,8 @@ struct rt_texture_storage_bind_t
     GLenum access = GL_WRITE_ONLY; // GL_WRITE_ONLY / GL_READ_ONLY / GL_READ_WRITE
 };
 
+// ====================================================================
+
 struct rt_sampler_t
 {
     GLuint handle = 0;
@@ -133,6 +140,19 @@ struct rt_sampler_bind_t
     uint32_t binding = 0;
 };
 
+// ====================================================================
+
+struct rt_module_compute_info_t
+{
+};
+
+struct rt_module_compute_t
+{
+    GLuint handle = 0;
+    rt_module_compute_info_t desc;
+    void* native = nullptr;
+};
+
 struct rt_color_t
 {
     float r = 0, g = 0, b = 0, a = 0;
@@ -141,15 +161,15 @@ struct rt_color_t
 struct rt_vertex_t
 {
     uint32_t location = 0;
-    GLenum type = 0;
+    GLenum type = 0;    // GL_BYTE / GL_UNSIGNED_BYTE / GL_SHORT / GL_UNSIGNED_SHORT / GL_INT / GL_UNSIGNED_INT / GL_FLOAT / GL_DOUBLE
     GLenum count = 0;
     bool instance = false;
 };
-inline rt_vertex_t rt_vertex_layout{.location = 0, .type = GL_FLOAT, .count = 3,};
-inline rt_vertex_t rt_normal_layout{.location = 1, .type = GL_FLOAT, .count = 3,};
-inline rt_vertex_t rt_uv_layout{.location = 2, .type = GL_FLOAT, .count = 2,};
+inline rt_vertex_t rt_vertex_vertex{.location = 0, .type = GL_FLOAT, .count = 3,};
+inline rt_vertex_t rt_vertex_normal{.location = 1, .type = GL_FLOAT, .count = 3,};
+inline rt_vertex_t rt_vertex_uv{.location = 2, .type = GL_FLOAT, .count = 2,};
 
-enum rt_layout_type_t : uint32_t
+enum rt_binding_type_t : uint32_t
 {
     GL_BINDING_BUFFER = 1,
     GL_BINDING_TEXTURE = 2,
@@ -157,13 +177,13 @@ enum rt_layout_type_t : uint32_t
     GL_BINDING_SAMPLER = 4,
 };
 
-struct rt_layout_t
+struct rt_binding_t
 {
     uint32_t binding = 0;
-    rt_layout_type_t type = {};  // GL_BINDING_BUFFER / GL_BINDING_TEXTURE / GL_BINDING_STORAGE_TEXTURE / GL_BINDING_SAMPLER
+    rt_binding_type_t type = {};  // GL_BINDING_BUFFER / GL_BINDING_TEXTURE / GL_BINDING_STORAGE_TEXTURE / GL_BINDING_SAMPLER
 };
 
-struct rt_render_info_t
+struct rt_module_render_info_t
 {
     struct
     {
@@ -195,7 +215,7 @@ struct rt_render_info_t
         } back, front;
     } stencil;
 
-    rt_layout_t layout[GL_MAX_BINDING_HANDLE_NUM];
+    rt_binding_t binding[GL_MAX_BINDING_HANDLE_NUM];
     rt_vertex_t vertex[GL_MAX_VERTEX_BUFFER_NUM];
     GLenum index_type = GL_UNSIGNED_INT;
 
@@ -205,44 +225,34 @@ struct rt_render_info_t
     GLenum primitive = GL_TRIANGLES;
 };
 
-struct rt_compute_info_t
-{
-    // Nothing
-};
-
-enum rt_module_type_t : uint32_t
-{
-    GL_MODULE_RENDER = 1,
-    GL_MODULE_COMPUTE = 2,
-    GL_MODULE_MESHLET = 3,
-    GL_MODULE_TRANSFER = 4,
-};
-
-struct rt_module_t
+struct rt_module_render_t
 {
     GLuint handle = 0;
-    rt_module_type_t target = {};
-    union
-    {
-        rt_render_info_t render;
-        rt_compute_info_t compute;
-    };
+    rt_module_render_info_t desc;
+    GLuint vertex_vao = 0;   // VAO
     void* native = nullptr;
 };
 
-struct rt_pass_t
+// ====================================================================
+
+struct rt_pass_compute_t
 {
     GLuint handle = 0;
-    rt_module_t module;
+    rt_module_compute_t module;
+    void* native = nullptr;
+};
 
-    // Offscreen Mode
+struct rt_pass_render_t
+{
+    GLuint handle = 0;
+    rt_module_render_t module;
 
     struct
     {
         rt_texture_t texture;
         bool clear = false;
         rt_color_t value;
-    } colors[2];
+    } colors[GL_MAX_COLOR_TEXTURE_NUM];
     struct
     {
         rt_texture_t texture;
@@ -298,33 +308,33 @@ struct rt_pass_t
     void* native = nullptr;
 };
 
+struct rt_pass_transfer_t
+{
+    GLuint handle = 0;
+    void* native = nullptr;
+};
+
+// ====================================================================
+
 struct rt_mesh_t
 {
     GLuint handle = 0;
-
-    rt_buffer_t vertex_vbo;
-    rt_buffer_t normal_vbo;
-    rt_buffer_t uv_vbo;
-    rt_buffer_t index_vbo;
-
-    GLsizei vertex_count = 0;
-    GLsizei index_count = 0;
+    rt_buffer_t index;
+    rt_buffer_t vertex[GL_MAX_VERTEX_BUFFER_NUM];
+    uint32_t location[GL_MAX_VERTEX_BUFFER_NUM] = {};
     void* native = nullptr;
 };
 
 struct rt_meshlet_t
 {
-    rt_buffer_t vertex_vbo;
-    rt_buffer_t normal_vbo;
-    rt_buffer_t uv_vbo;
-    rt_buffer_t index_vbo;
-
-    GLsizei vertex_count = 0;
-    GLsizei index_count = 0;
-    GLenum index_type = GL_UNSIGNED_INT;
-    GLenum primitive_type = GL_TRIANGLES;
+    GLuint handle = 0;
+    rt_buffer_t index;
+    rt_buffer_t vertex[GL_MAX_VERTEX_BUFFER_NUM];
+    uint32_t location[GL_MAX_VERTEX_BUFFER_NUM + 1] = {};
     void* native = nullptr;
 };
+
+// ====================================================================
 
 struct rt_size_t
 {
@@ -392,17 +402,18 @@ extern OPENRT_API rt_sampler_t (*rt_create_sampler)(rt_sampler_info_t const& inf
 extern OPENRT_API void (*rt_destroy_sampler)(rt_sampler_t& sampler);
 extern OPENRT_API void (*rt_bind_sampler)(rt_sampler_t sampler, rt_sampler_bind_t bind);
 
-extern OPENRT_API rt_module_t (*rt_create_module_compute)(const char* comp_src, rt_compute_info_t const& info);
-extern OPENRT_API rt_module_t (*rt_create_module_render)(const char* vert_src, const char* frag_src, rt_render_info_t const& info);
-extern OPENRT_API rt_module_t (*rt_create_module_meshlet)(const char* task_src, const char* mesh_src, const char* frag_src, rt_render_info_t const& info);
-extern OPENRT_API void (*rt_destroy_module)(rt_module_t& module);
+extern OPENRT_API rt_module_compute_t (*rt_create_module_compute)(const char* comp_src, rt_module_compute_info_t const& info);
+extern OPENRT_API rt_module_render_t (*rt_create_module_render)(const char* vert_src, const char* frag_src, rt_module_render_info_t const& info);
+extern OPENRT_API rt_module_render_t (*rt_create_module_meshlet)(const char* task_src, const char* mesh_src, const char* frag_src, rt_module_render_info_t const& info);
+extern OPENRT_API void (*rt_destroy_module_render)(rt_module_render_t& module);
+extern OPENRT_API void (*rt_destroy_module_compute)(rt_module_compute_t& module);
 
-extern OPENRT_API void (*rt_begin_compute)(rt_pass_t& pass);
-extern OPENRT_API void (*rt_end_compute)(rt_pass_t& pass);
+extern OPENRT_API void (*rt_begin_compute)(rt_pass_compute_t& pass);
+extern OPENRT_API void (*rt_end_compute)(rt_pass_compute_t& pass);
 extern OPENRT_API void (*rt_dispatch_compute)(uint32_t groupX, uint32_t groupY, uint32_t groupZ);
 
-extern OPENRT_API void (*rt_begin_render)(rt_pass_t& pass);
-extern OPENRT_API void (*rt_end_render)(rt_pass_t& pass);
+extern OPENRT_API void (*rt_begin_render)(rt_pass_render_t& pass);
+extern OPENRT_API void (*rt_end_render)(rt_pass_render_t& pass);
 extern OPENRT_API void (*rt_set_viewport)(int32_t x, int32_t y, int32_t width, int32_t height);
 extern OPENRT_API void (*rt_set_scissor)(int32_t x, int32_t y, int32_t width, int32_t height);
 extern OPENRT_API void (*rt_draw_mesh_task)(uint32_t groupX, uint32_t groupY, uint32_t groupZ);
@@ -417,8 +428,8 @@ extern OPENRT_API void (*rt_push_const_vec4)(const char* name, const float* valu
 extern OPENRT_API void (*rt_push_const_mat3)(const char* name, const float* value);
 extern OPENRT_API void (*rt_push_const_mat4)(const char* name, const float* value);
 
-extern OPENRT_API void (*rt_begin_transfer)(rt_pass_t& pass);
-extern OPENRT_API void (*rt_end_transfer)(rt_pass_t& pass);
+extern OPENRT_API void (*rt_begin_transfer)(rt_pass_transfer_t& pass);
+extern OPENRT_API void (*rt_end_transfer)(rt_pass_transfer_t& pass);
 extern OPENRT_API void (*rt_copy_buffer)(rt_buffer_copy_t source, rt_buffer_copy_t destination, size_t copySize);
 extern OPENRT_API void (*rt_copy_buffer_data)(rt_buffer_data_t source, rt_buffer_copy_t destination, size_t copySize);
 extern OPENRT_API void (*rt_copy_buffer_texture)(rt_texture_copy_t source, rt_buffer_texel_t destination, rt_size_t copySize);

@@ -15,7 +15,6 @@ rt_meshlet_t rt_create_meshlet_capsule(float radius, float height, int rings, in
 
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb_image.h>
-
 static rt_texture_t rt_load_texture_file(const char* filename, bool flip)
 {
     // stb 默认以左上角为原点，flip 为 true 时翻转为 OpenGL 的左下角原点
@@ -107,7 +106,6 @@ static rt_texture_t rt_load_texture_file(const char* filename, bool flip)
 }
 
 #include <vector>
-
 static rt_mesh_t rt_create_mesh_plane(float size, int N)
 {
     int vertsX = N + 1;

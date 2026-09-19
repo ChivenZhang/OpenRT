@@ -142,6 +142,17 @@ struct rt_sampler_bind_t
 
 // ====================================================================
 
+struct rt_module_compute_info_t
+{
+};
+
+struct rt_module_compute_t
+{
+    GLuint handle = 0;
+    rt_module_compute_info_t desc;
+    void* native = nullptr;
+};
+
 struct rt_color_t
 {
     float r = 0, g = 0, b = 0, a = 0;
@@ -204,25 +215,14 @@ struct rt_module_render_info_t
         } back, front;
     } stencil;
 
-    rt_binding_t binding[GL_MAX_BINDING_HANDLE_NUM];
-    rt_vertex_t vertex[GL_MAX_VERTEX_BUFFER_NUM];
     GLenum index_type = GL_UNSIGNED_INT;
+    rt_vertex_t vertex[GL_MAX_VERTEX_BUFFER_NUM];
+    rt_binding_t binding[GL_MAX_BINDING_HANDLE_NUM];
 
     GLenum cull_mode = GL_BACK; // GL_NONE / GL_FRONT / GL_BACK / GL_FRONT_AND_BACK
     GLenum front_face = GL_CCW; // GL_CW / GL_CCW
     GLenum fill_mode = GL_FILL; // GL_POINT / GL_LINE / GL_FILL
     GLenum primitive = GL_TRIANGLES;
-};
-
-struct rt_module_compute_info_t
-{
-};
-
-struct rt_module_compute_t
-{
-    GLuint handle = 0;
-    rt_module_compute_info_t desc;
-    void* native = nullptr;
 };
 
 struct rt_module_render_t
@@ -365,7 +365,7 @@ struct rt_buffer_texel_t
 struct rt_texture_copy_t
 {
     rt_texture_t texture;
-    GLenum aspect = GL_DEPTH_COMPONENT; // GL_DEPTH_COMPONENT / GL_STENCIL_INDEX / GL_ALL
+    GLenum aspect = GL_DEPTH_COMPONENT; // GL_DEPTH_COMPONENT / GL_STENCIL_INDEX
     uint32_t mipLevel = 0;
     rt_size_t origin;
 };
