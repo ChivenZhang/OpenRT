@@ -1,4 +1,4 @@
-# Light Weight RHI in C
+# Light Weight WebGPU-like RHI in C
 
 #### 1 Support OpenGL backend
 #### 2 Support Vulkan/DirectX/Metal in future
