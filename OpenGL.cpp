@@ -498,12 +498,19 @@ void gl_bind_sampler(rt_sampler_t sampler, rt_sampler_bind_t bind)
 
 // ====================================================================
 
-rt_module_compute_t gl_create_module_compute(const char* comp_src, rt_module_compute_info_t const& info)
+rt_module_compute_t gl_create_module_compute(rt_module_compute_info_t const& info)
 {
     rt_module_compute_t result = {};
 
+    if (!info.cshader)
+    {
+        fprintf(stderr, "Compute shader source is empty\n");
+        abort();
+    }
+
     GLuint cs = glCreateShader(GL_COMPUTE_SHADER);
-    glShaderSource(cs, 1, &comp_src, nullptr);
+    GLint clength = (GLint)info.clength;
+    glShaderSource(cs, 1, &info.cshader, info.clength ? &clength : nullptr);
     glCompileShader(cs);
 
     GLint success = 0;
@@ -534,16 +541,17 @@ rt_module_compute_t gl_create_module_compute(const char* comp_src, rt_module_com
     return result;
 }
 
-rt_module_render_t gl_create_module_render(const char* vert_src, const char* frag_src, rt_module_render_info_t const& info)
+rt_module_render_t gl_create_module_render(rt_module_render_info_t const& info)
 {
     rt_module_render_t result = {};
 
     // ---- Vertex Shader ----
     GLuint vs = 0;
-    if (vert_src)
+    if (info.vshader)
     {
         vs = glCreateShader(GL_VERTEX_SHADER);
-        glShaderSource(vs, 1, &vert_src, nullptr);
+        GLint vlength = (GLint)info.vlength;
+        glShaderSource(vs, 1, &info.vshader, info.vlength ? &vlength : nullptr);
         glCompileShader(vs);
         GLint success = 0;
         glGetShaderiv(vs, GL_COMPILE_STATUS, &success);
@@ -551,17 +559,18 @@ rt_module_render_t gl_create_module_render(const char* vert_src, const char* fra
         {
             char log[1024];
             glGetShaderInfoLog(vs, sizeof(log), nullptr, log);
-            fprintf(stderr, "vs compile error:\n%s\n", log);
+            fprintf(stderr, "Vertex shader compile error:\n%s\n", log);
             abort();
         }
     }
 
     // ---- Fragment Shader ----
     GLuint fs = 0;
-    if (frag_src)
+    if (info.fshader)
     {
         fs = glCreateShader(GL_FRAGMENT_SHADER);
-        glShaderSource(fs, 1, &frag_src, nullptr);
+        GLint flength = (GLint)info.flength;
+        glShaderSource(fs, 1, &info.fshader, info.flength ? &flength : nullptr);
         glCompileShader(fs);
         GLint success = 0;
         glGetShaderiv(fs, GL_COMPILE_STATUS, &success);
@@ -569,7 +578,7 @@ rt_module_render_t gl_create_module_render(const char* vert_src, const char* fra
         {
             char log[1024];
             glGetShaderInfoLog(fs, sizeof(log), nullptr, log);
-            fprintf(stderr, "vs compile error:\n%s\n", log);
+            fprintf(stderr, "Fragment shader compile error:\n%s\n", log);
             abort();
         }
     }
@@ -671,16 +680,17 @@ rt_module_render_t gl_create_module_render(const char* vert_src, const char* fra
     return result;
 }
 
-rt_module_render_t gl_create_module_meshlet(const char* task_src, const char* mesh_src, const char* frag_src, rt_module_render_info_t const& info)
+rt_module_render_t gl_create_module_meshlet(rt_module_render_info_t const& info)
 {
     rt_module_render_t result = {};
 
     // ---- Task Shader（可选）----
     GLuint ts = 0;
-    if (task_src)
+    if (info.tshader)
     {
         ts = glCreateShader(GL_TASK_SHADER_NV);
-        glShaderSource(ts, 1, &task_src, nullptr);
+        GLint tlength = (GLint)info.tlength;
+        glShaderSource(ts, 1, &info.tshader, info.tlength ? &tlength : nullptr);
         glCompileShader(ts);
         GLint success = 0;
         glGetShaderiv(ts, GL_COMPILE_STATUS, &success);
@@ -694,8 +704,14 @@ rt_module_render_t gl_create_module_meshlet(const char* task_src, const char* me
     }
 
     // ---- Mesh Shader ----
+    if (!info.mshader)
+    {
+        fprintf(stderr, "Mesh shader source is empty\n");
+        abort();
+    }
     GLuint ms = glCreateShader(GL_MESH_SHADER_NV);
-    glShaderSource(ms, 1, &mesh_src, nullptr);
+    GLint mlength = (GLint)info.mlength;
+    glShaderSource(ms, 1, &info.mshader, info.mlength ? &mlength : nullptr);
     glCompileShader(ms);
     GLint success = 0;
     glGetShaderiv(ms, GL_COMPILE_STATUS, &success);
@@ -708,16 +724,21 @@ rt_module_render_t gl_create_module_meshlet(const char* task_src, const char* me
     }
 
     // ---- Fragment Shader ----
-    GLuint fs = glCreateShader(GL_FRAGMENT_SHADER);
-    glShaderSource(fs, 1, &frag_src, nullptr);
-    glCompileShader(fs);
-    glGetShaderiv(fs, GL_COMPILE_STATUS, &success);
-    if (!success)
+    GLuint fs = 0;
+    if (info.fshader)
     {
-        char log[1024];
-        glGetShaderInfoLog(fs, sizeof(log), nullptr, log);
-        fprintf(stderr, "Fragment shader compile error:\n%s\n", log);
-        abort();
+        fs = glCreateShader(GL_FRAGMENT_SHADER);
+        GLint flength = (GLint)info.flength;
+        glShaderSource(fs, 1, &info.fshader, info.flength ? &flength : nullptr);
+        glCompileShader(fs);
+        glGetShaderiv(fs, GL_COMPILE_STATUS, &success);
+        if (!success)
+        {
+            char log[1024];
+            glGetShaderInfoLog(fs, sizeof(log), nullptr, log);
+            fprintf(stderr, "Fragment shader compile error:\n%s\n", log);
+            abort();
+        }
     }
 
     // ---- Program ----
@@ -725,7 +746,8 @@ rt_module_render_t gl_create_module_meshlet(const char* task_src, const char* me
     if (ts)
         glAttachShader(result.handle, ts);
     glAttachShader(result.handle, ms);
-    glAttachShader(result.handle, fs);
+    if (fs)
+        glAttachShader(result.handle, fs);
     glLinkProgram(result.handle);
 
     glGetProgramiv(result.handle, GL_LINK_STATUS, &success);
@@ -742,6 +764,47 @@ rt_module_render_t gl_create_module_meshlet(const char* task_src, const char* me
     glDeleteShader(ms);
     glDeleteShader(fs);
 
+    for (size_t i = 0; i < std::size(info.colors); ++i)
+    {
+        result.colors[i].color.func = info.colors[i].color.func;
+        result.colors[i].color.src = info.colors[i].color.src;
+        result.colors[i].color.dst = info.colors[i].color.dst;
+        result.colors[i].alpha.func = info.colors[i].alpha.func;
+        result.colors[i].alpha.src = info.colors[i].alpha.src;
+        result.colors[i].alpha.dst = info.colors[i].alpha.dst;
+    }
+    result.depth.write = info.depth.write;
+    result.depth.bias = info.depth.bias;
+    result.depth.biasSlope = info.depth.biasSlope;
+    result.depth.biasClamp = info.depth.biasClamp;
+    result.depth.func = info.depth.func;
+    result.stencil.read = info.stencil.read;
+    result.stencil.write = info.stencil.write;
+    result.stencil.back.func = info.stencil.back.func;
+    result.stencil.back.sfail = info.stencil.back.sfail;
+    result.stencil.back.zfail = info.stencil.back.zfail;
+    result.stencil.back.zpass = info.stencil.back.zpass;
+    result.stencil.front.func = info.stencil.front.func;
+    result.stencil.front.sfail = info.stencil.front.sfail;
+    result.stencil.front.zfail = info.stencil.front.zfail;
+    result.stencil.front.zpass = info.stencil.front.zpass;
+    result.index_type = info.index_type;
+    for (size_t i = 0; i < std::size(info.vertex); ++i)
+    {
+        result.vertex[i].location = info.vertex[i].location;
+        result.vertex[i].type = info.vertex[i].type;
+        result.vertex[i].count = info.vertex[i].count;
+        result.vertex[i].instance = info.vertex[i].instance;
+    }
+    for (size_t i = 0; i < std::size(info.binding); ++i)
+    {
+        result.binding[i].binding = info.binding[i].binding;
+        result.binding[i].type = info.binding[i].type;
+    }
+    result.cull_mode = info.cull_mode;
+    result.front_face = info.front_face;
+    result.fill_mode = info.fill_mode;
+    result.primitive = info.primitive;
     return result;
 }
 
@@ -1165,11 +1228,33 @@ void gl_end_render(rt_pass_render_t& pass)
 
 void gl_set_viewport(int32_t x, int32_t y, int32_t width, int32_t height)
 {
+    if (opengl.currentPipeline == nullptr)
+    {
+        fprintf(stderr, "Pipeline not begin\n");
+        abort();
+    }
+    if (opengl.currentPassType != GL_MODULE_RENDER)
+    {
+        fprintf(stderr, "Pipeline not begin\n");
+        abort();
+    }
+
     glViewport(x, y, width, height);
 }
 
 void gl_set_scissor(int32_t x, int32_t y, int32_t width, int32_t height)
 {
+    if (opengl.currentPipeline == nullptr)
+    {
+        fprintf(stderr, "Pipeline not begin\n");
+        abort();
+    }
+    if (opengl.currentPassType != GL_MODULE_RENDER)
+    {
+        fprintf(stderr, "Pipeline not begin\n");
+        abort();
+    }
+
     glEnable(GL_SCISSOR_TEST);
     glScissor(x, y, width, height);
 }
@@ -1981,7 +2066,7 @@ void gl_draw_screen(int width, int height, rt_texture_t texture, rt_color_t clea
             final = texture(texture0, uv);
         }
     )";
-    static auto module = gl_create_module_render(VS, FS, {.vertex = {rt_vertex_vertex, {}, rt_vertex_uv,},});
+    static auto module = gl_create_module_render({.vshader = VS, .fshader = FS, .vertex = {rt_vertex_vertex, {}, rt_vertex_uv,},});
     rt_pass_render_t pass = {.module = module, .screen = {.color = { .clear = true, .value = clear, }}};
     gl_begin_render(pass);
     gl_set_viewport(0, 0, width, height);

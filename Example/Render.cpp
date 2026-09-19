@@ -83,7 +83,7 @@ void frame(int width, int height)
         }
     )";
 
-    static auto module = rt_create_module_render(VS, FS, {.depth = {.write = true, .func = GL_LEQUAL,}, .vertex = {rt_vertex_vertex, rt_vertex_normal, rt_vertex_uv,}, });
+    static auto module = rt_create_module_render({.vshader = VS, .fshader = FS, .depth = {.write = true, .func = GL_LEQUAL,}, .vertex = {rt_vertex_vertex, rt_vertex_normal, rt_vertex_uv,}, });
     static auto pass_color = rt_create_texture_color(width, height, nullptr);
     static auto pass_depth = rt_create_texture_depth(width, height, nullptr);
     {

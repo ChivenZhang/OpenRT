@@ -147,7 +147,8 @@ struct rt_sampler_bind_t
 
 struct rt_module_compute_info_t
 {
-    // Nothing
+    const char* cshader = nullptr;
+    uint32_t clength = 0;
 };
 
 struct rt_module_compute_t
@@ -183,6 +184,15 @@ struct rt_binding_t
 
 struct rt_module_render_info_t
 {
+    const char* vshader = nullptr;
+    uint32_t vlength = 0;
+    const char* tshader = nullptr;
+    uint32_t tlength = 0;
+    const char* mshader = nullptr;
+    uint32_t mlength = 0;
+    const char* fshader = nullptr;
+    uint32_t flength = 0;
+
     struct
     {
         struct
@@ -227,8 +237,6 @@ struct rt_module_render_t
 {
     GLuint handle = 0;
     GLuint vertex_vao = 0;   // VAO
-
-    // same as rt_module_render_info_t
 
     struct
     {
@@ -446,9 +454,9 @@ OPENRT_API rt_sampler_t (*rt_create_sampler)(rt_sampler_info_t const& info);
 OPENRT_API void (*rt_destroy_sampler)(rt_sampler_t& sampler);
 OPENRT_API void (*rt_bind_sampler)(rt_sampler_t sampler, rt_sampler_bind_t bind);
 
-OPENRT_API rt_module_compute_t (*rt_create_module_compute)(const char* comp_src, rt_module_compute_info_t const& info);
-OPENRT_API rt_module_render_t (*rt_create_module_render)(const char* vert_src, const char* frag_src, rt_module_render_info_t const& info);
-OPENRT_API rt_module_render_t (*rt_create_module_meshlet)(const char* task_src, const char* mesh_src, const char* frag_src, rt_module_render_info_t const& info);
+OPENRT_API rt_module_compute_t (*rt_create_module_compute)(rt_module_compute_info_t const& info);
+OPENRT_API rt_module_render_t (*rt_create_module_render)(rt_module_render_info_t const& info);
+OPENRT_API rt_module_render_t (*rt_create_module_meshlet)(rt_module_render_info_t const& info);
 OPENRT_API void (*rt_destroy_module_render)(rt_module_render_t& module);
 OPENRT_API void (*rt_destroy_module_compute)(rt_module_compute_t& module);
 

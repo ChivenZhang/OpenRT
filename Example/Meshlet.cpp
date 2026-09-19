@@ -241,7 +241,7 @@ void frame(int width, int height)
         }
     )";
 
-    static auto module = rt_create_module_meshlet(nullptr, MS, FS, {.depth = {.write = true, .func = GL_LEQUAL,}, .vertex = {rt_vertex_vertex, rt_vertex_normal, rt_vertex_uv,}, .fill_mode = GL_FILL,});
+    static auto module = rt_create_module_meshlet({.mshader = MS, .fshader = FS, .depth = {.write = true, .func = GL_LEQUAL,}, .vertex = {rt_vertex_vertex, rt_vertex_normal, rt_vertex_uv,}, .fill_mode = GL_FILL,});
     static auto pass_color = rt_create_texture_color(width, height, nullptr);
     static auto pass_depth = rt_create_texture_depth(width, height, nullptr);
     {

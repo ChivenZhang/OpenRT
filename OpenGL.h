@@ -34,9 +34,9 @@ rt_sampler_t gl_create_sampler(rt_sampler_info_t const& info);
 void gl_destroy_sampler(rt_sampler_t& sampler);
 void gl_bind_sampler(rt_sampler_t sampler, rt_sampler_bind_t bind = {});
 
-rt_module_compute_t gl_create_module_compute(const char* comp_src, rt_module_compute_info_t const& info);
-rt_module_render_t gl_create_module_render(const char* vert_src, const char* frag_src, rt_module_render_info_t const& info);
-rt_module_render_t gl_create_module_meshlet(const char* task_src, const char* mesh_src, const char* frag_src, rt_module_render_info_t const& info);
+rt_module_compute_t gl_create_module_compute(rt_module_compute_info_t const& info);
+rt_module_render_t gl_create_module_render(rt_module_render_info_t const& info);
+rt_module_render_t gl_create_module_meshlet(rt_module_render_info_t const& info);
 void gl_destroy_module_render(rt_module_render_t& module);
 void gl_destroy_module_compute(rt_module_compute_t& module);
 

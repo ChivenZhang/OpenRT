@@ -41,9 +41,9 @@ rt_sampler_t (*rt_create_sampler)(rt_sampler_info_t const& info) = nullptr;
 void (*rt_destroy_sampler)(rt_sampler_t& sampler) = nullptr;
 void (*rt_bind_sampler)(rt_sampler_t sampler, rt_sampler_bind_t bind) = nullptr;
 
-rt_module_compute_t (*rt_create_module_compute)(const char* comp_src, rt_module_compute_info_t const& info) = nullptr;
-rt_module_render_t (*rt_create_module_render)(const char* vert_src, const char* frag_src, rt_module_render_info_t const& info) = nullptr;
-rt_module_render_t (*rt_create_module_meshlet)(const char* task_src, const char* mesh_src, const char* frag_src, rt_module_render_info_t const& info) = nullptr;
+rt_module_compute_t (*rt_create_module_compute)(rt_module_compute_info_t const& info) = nullptr;
+rt_module_render_t (*rt_create_module_render)(rt_module_render_info_t const& info) = nullptr;
+rt_module_render_t (*rt_create_module_meshlet)(rt_module_render_info_t const& info) = nullptr;
 void (*rt_destroy_module_render)(rt_module_render_t& module) = nullptr;
 void (*rt_destroy_module_compute)(rt_module_compute_t& module) = nullptr;
 

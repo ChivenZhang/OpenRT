@@ -23,7 +23,7 @@ add_definitions(
 add_library(OpenRT STATIC
         OpenRT.cpp
         OpenGL.cpp
-#        Vulkan.cpp
+        Vulkan.cpp
 #        DirectX.cpp
 #        Metal.cpp
 )
@@ -32,6 +32,8 @@ find_package(Stb REQUIRED)
 target_include_directories(OpenRT PRIVATE ${Stb_INCLUDE_DIR})
 find_package(GLEW CONFIG REQUIRED)
 target_link_libraries(OpenRT PRIVATE GLEW::GLEW)
+find_package(Vulkan REQUIRED)
+target_link_libraries(OpenRT PRIVATE Vulkan::Vulkan)
 
 add_executable(Default Example/Default.cpp)
 add_dependencies(Default OpenRT)

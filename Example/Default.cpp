@@ -41,7 +41,7 @@ void frame(int width, int height)
         }
     )";
 
-    static auto module = rt_create_module_render(VS, FS, {.vertex = {rt_vertex_vertex, rt_vertex_normal, rt_vertex_uv,}, });
+    static auto module = rt_create_module_render({.vshader = VS, .fshader = FS, .vertex = {rt_vertex_vertex, rt_vertex_normal, rt_vertex_uv,}, });
     static auto pass_color = rt_create_texture_color(width, height, nullptr);
     {
         rt_pass_render_t pass = {.module = module, .colors = {{.texture = pass_color, .clear = true,}},};
