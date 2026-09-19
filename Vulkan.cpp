@@ -1793,4 +1793,8 @@ void vk_draw_screen(int width, int height, rt_texture_t texture, rt_color_t clea
     vk_end_render(pass);
 }
 
+void vk_submit()
+{
+}
+
 #endif

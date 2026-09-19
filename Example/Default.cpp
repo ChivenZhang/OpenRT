@@ -54,6 +54,8 @@ void frame(int width, int height)
     }
 
     rt_draw_screen(width, height, pass_color, {});
+
+    rt_submit();
 }
 
 int main()

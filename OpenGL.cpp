@@ -53,14 +53,11 @@ void gl_load_library()
 
     // ====================================================================
 
-    // Buffer 相关
     rt_create_buffer = gl_create_buffer;
     rt_destroy_buffer = gl_destroy_buffer;
     rt_bind_buffer = gl_bind_buffer;
     rt_map_buffer = gl_map_buffer;
     rt_unmap_buffer = gl_unmap_buffer;
-
-    // Texture 相关
     rt_create_texture = gl_create_texture;
     rt_create_texture_color = gl_create_texture_color;
     rt_create_texture_depth = gl_create_texture_depth;
@@ -68,32 +65,22 @@ void gl_load_library()
     rt_destroy_texture = gl_destroy_texture;
     rt_bind_texture = gl_bind_texture;
     rt_bind_texture_storage = gl_bind_texture_storage;
-
-    // Sampler 相关
     rt_create_sampler = gl_create_sampler;
     rt_destroy_sampler = gl_destroy_sampler;
     rt_bind_sampler = gl_bind_sampler;
-
-    // Module 相关
     rt_create_module_compute = gl_create_module_compute;
     rt_create_module_render = gl_create_module_render;
     rt_create_module_meshlet = gl_create_module_meshlet;
     rt_destroy_module_render = gl_destroy_module_render;
     rt_destroy_module_compute = gl_destroy_module_compute;
-
-    // Compute Pass 相关
     rt_begin_compute = gl_begin_compute;
     rt_end_compute = gl_end_compute;
     rt_dispatch_compute = gl_dispatch_compute;
-
-    // Render Pass 相关
     rt_begin_render = gl_begin_render;
     rt_end_render = gl_end_render;
     rt_set_viewport = gl_set_viewport;
     rt_set_scissor = gl_set_scissor;
     rt_draw_mesh_task = gl_draw_mesh_task;
-
-    // Uniform 相关
     rt_push_constant = gl_push_constant;
     rt_push_const_int = gl_push_const_int;
     rt_push_const_uint = gl_push_const_uint;
@@ -103,8 +90,6 @@ void gl_load_library()
     rt_push_const_vec4 = gl_push_const_vec4;
     rt_push_const_mat3 = gl_push_const_mat3;
     rt_push_const_mat4 = gl_push_const_mat4;
-
-    // Transfer Pass 相关
     rt_begin_transfer = gl_begin_transfer;
     rt_end_transfer = gl_end_transfer;
     rt_copy_buffer = gl_copy_buffer;
@@ -113,26 +98,78 @@ void gl_load_library()
     rt_copy_texture = gl_copy_texture;
     rt_copy_texture_data = gl_copy_texture_data;
     rt_copy_texture_buffer = gl_copy_texture_buffer;
-
-    // Mesh 相关
     rt_create_mesh = gl_create_mesh;
     rt_destroy_mesh = gl_destroy_mesh;
     rt_draw_mesh = gl_draw_mesh;
-
-    // Meshlet 相关
     rt_create_meshlet = gl_create_meshlet;
     rt_destroy_meshlet = gl_destroy_meshlet;
     rt_draw_meshlet = gl_draw_meshlet;
-
-    // Screen 相关
     rt_create_mesh_screen = gl_create_mesh_screen;
     rt_draw_screen = gl_draw_screen;
+    rt_submit = gl_submit;
 }
 
 void gl_unload_library()
 {
     opengl.currentPassType = GL_NONE;
     opengl.currentPipeline = nullptr;
+
+    // ====================================================================
+
+    if(rt_create_buffer == gl_create_buffer) rt_create_buffer = nullptr;
+    if(rt_destroy_buffer == gl_destroy_buffer) rt_destroy_buffer = nullptr;
+    if(rt_bind_buffer == gl_bind_buffer) rt_bind_buffer = nullptr;
+    if(rt_map_buffer == gl_map_buffer) rt_map_buffer = nullptr;
+    if(rt_unmap_buffer == gl_unmap_buffer) rt_unmap_buffer = nullptr;
+    if(rt_create_texture == gl_create_texture) rt_create_texture = nullptr;
+    if(rt_create_texture_color == gl_create_texture_color) rt_create_texture_color = nullptr;
+    if(rt_create_texture_depth == gl_create_texture_depth) rt_create_texture_depth = nullptr;
+    if(rt_create_texture_depth_stencil == gl_create_texture_depth_stencil) rt_create_texture_depth_stencil = nullptr;
+    if(rt_destroy_texture == gl_destroy_texture) rt_destroy_texture = nullptr;
+    if(rt_bind_texture == gl_bind_texture) rt_bind_texture = nullptr;
+    if(rt_bind_texture_storage == gl_bind_texture_storage) rt_bind_texture_storage = nullptr;
+    if(rt_create_sampler == gl_create_sampler) rt_create_sampler = nullptr;
+    if(rt_destroy_sampler == gl_destroy_sampler) rt_destroy_sampler = nullptr;
+    if(rt_bind_sampler == gl_bind_sampler) rt_bind_sampler = nullptr;
+    if(rt_create_module_compute == gl_create_module_compute) rt_create_module_compute = nullptr;
+    if(rt_create_module_render == gl_create_module_render) rt_create_module_render = nullptr;
+    if(rt_create_module_meshlet == gl_create_module_meshlet) rt_create_module_meshlet = nullptr;
+    if(rt_destroy_module_render == gl_destroy_module_render) rt_destroy_module_render = nullptr;
+    if(rt_destroy_module_compute == gl_destroy_module_compute) rt_destroy_module_compute = nullptr;
+    if(rt_begin_compute == gl_begin_compute) rt_begin_compute = nullptr;
+    if(rt_end_compute == gl_end_compute) rt_end_compute = nullptr;
+    if(rt_dispatch_compute == gl_dispatch_compute) rt_dispatch_compute = nullptr;
+    if(rt_begin_render == gl_begin_render) rt_begin_render = nullptr;
+    if(rt_end_render == gl_end_render) rt_end_render = nullptr;
+    if(rt_set_viewport == gl_set_viewport) rt_set_viewport = nullptr;
+    if(rt_set_scissor == gl_set_scissor) rt_set_scissor = nullptr;
+    if(rt_draw_mesh_task == gl_draw_mesh_task) rt_draw_mesh_task = nullptr;
+    if(rt_push_constant == gl_push_constant) rt_push_constant = nullptr;
+    if(rt_push_const_int == gl_push_const_int) rt_push_const_int = nullptr;
+    if(rt_push_const_uint == gl_push_const_uint) rt_push_const_uint = nullptr;
+    if(rt_push_const_float == gl_push_const_float) rt_push_const_float = nullptr;
+    if(rt_push_const_vec2 == gl_push_const_vec2) rt_push_const_vec2 = nullptr;
+    if(rt_push_const_vec3 == gl_push_const_vec3) rt_push_const_vec3 = nullptr;
+    if(rt_push_const_vec4 == gl_push_const_vec4) rt_push_const_vec4 = nullptr;
+    if(rt_push_const_mat3 == gl_push_const_mat3) rt_push_const_mat3 = nullptr;
+    if(rt_push_const_mat4 == gl_push_const_mat4) rt_push_const_mat4 = nullptr;
+    if(rt_begin_transfer == gl_begin_transfer) rt_begin_transfer = nullptr;
+    if(rt_end_transfer == gl_end_transfer) rt_end_transfer = nullptr;
+    if(rt_copy_buffer == gl_copy_buffer) rt_copy_buffer = nullptr;
+    if(rt_copy_buffer_data == gl_copy_buffer_data) rt_copy_buffer_data = nullptr;
+    if(rt_copy_buffer_texture == gl_copy_buffer_texture) rt_copy_buffer_texture = nullptr;
+    if(rt_copy_texture == gl_copy_texture) rt_copy_texture = nullptr;
+    if(rt_copy_texture_data == gl_copy_texture_data) rt_copy_texture_data = nullptr;
+    if(rt_copy_texture_buffer == gl_copy_texture_buffer) rt_copy_texture_buffer = nullptr;
+    if(rt_create_mesh == gl_create_mesh) rt_create_mesh = nullptr;
+    if(rt_destroy_mesh == gl_destroy_mesh) rt_destroy_mesh = nullptr;
+    if(rt_draw_mesh == gl_draw_mesh) rt_draw_mesh = nullptr;
+    if(rt_create_meshlet == gl_create_meshlet) rt_create_meshlet = nullptr;
+    if(rt_destroy_meshlet == gl_destroy_meshlet) rt_destroy_meshlet = nullptr;
+    if(rt_draw_meshlet == gl_draw_meshlet) rt_draw_meshlet = nullptr;
+    if(rt_create_mesh_screen == gl_create_mesh_screen) rt_create_mesh_screen = nullptr;
+    if(rt_draw_screen == gl_draw_screen) rt_draw_screen = nullptr;
+    if(rt_submit == gl_submit) rt_submit = nullptr;
 }
 
 // ====================================================================
@@ -1949,6 +1986,11 @@ void gl_draw_screen(int width, int height, rt_texture_t texture, rt_color_t clea
     gl_bind_texture(texture, { .binding = 0, });
     gl_draw_mesh(gl_create_mesh_screen());
     gl_end_render(pass);
+}
+
+void gl_submit()
+{
+    glFlush();
 }
 
 #endif
