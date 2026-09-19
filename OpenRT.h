@@ -492,3 +492,5 @@ OPENRT_API void (*rt_draw_meshlet)(rt_meshlet_t const& meshlet);
 
 OPENRT_API rt_mesh_t (*rt_create_mesh_screen)();
 OPENRT_API void (*rt_draw_screen)(int width, int height, rt_texture_t texture, rt_color_t clear);
+
+OPENRT_API void (*rt_submit)();

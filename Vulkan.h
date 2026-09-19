@@ -70,4 +70,6 @@ void vk_draw_meshlet(rt_meshlet_t const& meshlet);
 rt_mesh_t vk_create_mesh_screen();
 void vk_draw_screen(int width, int height, rt_texture_t texture, rt_color_t clear = {});
 
+void vk_submit();
+
 #endif

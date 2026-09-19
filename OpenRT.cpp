@@ -86,3 +86,5 @@ void (*rt_draw_meshlet)(rt_meshlet_t const& meshlet) = nullptr;
 
 rt_mesh_t (*rt_create_mesh_screen)() = nullptr;
 void (*rt_draw_screen)(int width, int height, rt_texture_t texture, rt_color_t clear) = nullptr;
+
+void (*rt_submit)() = nullptr;
