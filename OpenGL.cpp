@@ -588,10 +588,6 @@ rt_module_render_t gl_create_module_render(const char* vert_src, const char* fra
     }
     glBindVertexArray(0);
 
-    // result = info;
-
-    // Copy colors and other data
-
     for (size_t i = 0; i < std::size(info.colors); ++i)
     {
         result.colors[i].color.func = info.colors[i].color.func;

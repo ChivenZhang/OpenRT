@@ -14,14 +14,18 @@
 #include <numeric>
 
 #ifndef OPENRT_API
-#  if defined(_WIN32)
-#    if defined(OPENRT_EXPORTS)
-#      define OPENRT_API __declspec(dllexport)
-#    else
-#      define OPENRT_API
-#    endif
+#  ifdef OPENRT_STATIC
+#    define OPENRT_API extern "C"
 #  else
-#    define OPENRT_API __attribute__((visibility("default")))
+#    ifdef _WIN32
+#      ifdef OPENRT_EXPORTS
+#        define OPENRT_API extern "C" __declspec(dllexport)
+#      else
+#        define OPENRT_API extern "C" __declspec(dllimport)
+#      endif
+#    else
+#      define OPENRT_API extern "C" __attribute__((visibility("default")))
+#    endif
 #  endif
 #endif
 
@@ -144,6 +148,7 @@ struct rt_sampler_bind_t
 
 struct rt_module_compute_info_t
 {
+    // Nothing
 };
 
 struct rt_module_compute_t
@@ -224,7 +229,7 @@ struct rt_module_render_t
     GLuint handle = 0;
     GLuint vertex_vao = 0;   // VAO
 
-    // Same as rt_module_render_info_t
+    // same as rt_module_render_info_t
 
     struct
     {
@@ -421,69 +426,69 @@ struct rt_texture_data_t
 
 // ====================================================================
 
-extern OPENRT_API void rt_load_library(const char* backend = nullptr);
-extern OPENRT_API void rt_unload_library();
+OPENRT_API void rt_load_library(const char* backend = nullptr);
+OPENRT_API void rt_unload_library();
 
-extern OPENRT_API rt_buffer_t (*rt_create_buffer)(rt_buffer_info_t const& info);
-extern OPENRT_API void (*rt_destroy_buffer)(rt_buffer_t& buffer);
-extern OPENRT_API void (*rt_bind_buffer)(rt_buffer_t buffer, rt_buffer_bind_t bind);
-extern OPENRT_API void* (*rt_map_buffer)(rt_buffer_t& buffer, GLenum mode, size_t offset, size_t size); // mode: GL_READ_ONLY / GL_WRITE_ONLY / GL_READ_WRITE
-extern OPENRT_API void (*rt_unmap_buffer)(rt_buffer_t& buffer);
+OPENRT_API rt_buffer_t (*rt_create_buffer)(rt_buffer_info_t const& info);
+OPENRT_API void (*rt_destroy_buffer)(rt_buffer_t& buffer);
+OPENRT_API void (*rt_bind_buffer)(rt_buffer_t buffer, rt_buffer_bind_t bind);
+OPENRT_API void* (*rt_map_buffer)(rt_buffer_t& buffer, GLenum mode, size_t offset, size_t size); // mode: GL_READ_ONLY / GL_WRITE_ONLY / GL_READ_WRITE
+OPENRT_API void (*rt_unmap_buffer)(rt_buffer_t& buffer);
 
-extern OPENRT_API rt_texture_t (*rt_create_texture)(rt_texture_info_t const& info);
-extern OPENRT_API rt_texture_t (*rt_create_texture_color)(uint32_t width, uint32_t height, const void* data);
-extern OPENRT_API rt_texture_t (*rt_create_texture_depth)(uint32_t width, uint32_t height, const void* data);
-extern OPENRT_API rt_texture_t (*rt_create_texture_depth_stencil)(uint32_t width, uint32_t height, const void* data);
-extern OPENRT_API void (*rt_destroy_texture)(rt_texture_t& texture);
-extern OPENRT_API void (*rt_bind_texture)(rt_texture_t texture, rt_texture_bind_t bind);
-extern OPENRT_API void (*rt_bind_texture_storage)(rt_texture_t texture, rt_texture_storage_bind_t bind);
+OPENRT_API rt_texture_t (*rt_create_texture)(rt_texture_info_t const& info);
+OPENRT_API rt_texture_t (*rt_create_texture_color)(uint32_t width, uint32_t height, const void* data);
+OPENRT_API rt_texture_t (*rt_create_texture_depth)(uint32_t width, uint32_t height, const void* data);
+OPENRT_API rt_texture_t (*rt_create_texture_depth_stencil)(uint32_t width, uint32_t height, const void* data);
+OPENRT_API void (*rt_destroy_texture)(rt_texture_t& texture);
+OPENRT_API void (*rt_bind_texture)(rt_texture_t texture, rt_texture_bind_t bind);
+OPENRT_API void (*rt_bind_texture_storage)(rt_texture_t texture, rt_texture_storage_bind_t bind);
 
-extern OPENRT_API rt_sampler_t (*rt_create_sampler)(rt_sampler_info_t const& info);
-extern OPENRT_API void (*rt_destroy_sampler)(rt_sampler_t& sampler);
-extern OPENRT_API void (*rt_bind_sampler)(rt_sampler_t sampler, rt_sampler_bind_t bind);
+OPENRT_API rt_sampler_t (*rt_create_sampler)(rt_sampler_info_t const& info);
+OPENRT_API void (*rt_destroy_sampler)(rt_sampler_t& sampler);
+OPENRT_API void (*rt_bind_sampler)(rt_sampler_t sampler, rt_sampler_bind_t bind);
 
-extern OPENRT_API rt_module_compute_t (*rt_create_module_compute)(const char* comp_src, rt_module_compute_info_t const& info);
-extern OPENRT_API rt_module_render_t (*rt_create_module_render)(const char* vert_src, const char* frag_src, rt_module_render_info_t const& info);
-extern OPENRT_API rt_module_render_t (*rt_create_module_meshlet)(const char* task_src, const char* mesh_src, const char* frag_src, rt_module_render_info_t const& info);
-extern OPENRT_API void (*rt_destroy_module_render)(rt_module_render_t& module);
-extern OPENRT_API void (*rt_destroy_module_compute)(rt_module_compute_t& module);
+OPENRT_API rt_module_compute_t (*rt_create_module_compute)(const char* comp_src, rt_module_compute_info_t const& info);
+OPENRT_API rt_module_render_t (*rt_create_module_render)(const char* vert_src, const char* frag_src, rt_module_render_info_t const& info);
+OPENRT_API rt_module_render_t (*rt_create_module_meshlet)(const char* task_src, const char* mesh_src, const char* frag_src, rt_module_render_info_t const& info);
+OPENRT_API void (*rt_destroy_module_render)(rt_module_render_t& module);
+OPENRT_API void (*rt_destroy_module_compute)(rt_module_compute_t& module);
 
-extern OPENRT_API void (*rt_begin_compute)(rt_pass_compute_t& pass);
-extern OPENRT_API void (*rt_end_compute)(rt_pass_compute_t& pass);
-extern OPENRT_API void (*rt_dispatch_compute)(uint32_t groupX, uint32_t groupY, uint32_t groupZ);
+OPENRT_API void (*rt_begin_compute)(rt_pass_compute_t& pass);
+OPENRT_API void (*rt_end_compute)(rt_pass_compute_t& pass);
+OPENRT_API void (*rt_dispatch_compute)(uint32_t groupX, uint32_t groupY, uint32_t groupZ);
 
-extern OPENRT_API void (*rt_begin_render)(rt_pass_render_t& pass);
-extern OPENRT_API void (*rt_end_render)(rt_pass_render_t& pass);
-extern OPENRT_API void (*rt_set_viewport)(int32_t x, int32_t y, int32_t width, int32_t height);
-extern OPENRT_API void (*rt_set_scissor)(int32_t x, int32_t y, int32_t width, int32_t height);
-extern OPENRT_API void (*rt_draw_mesh_task)(uint32_t groupX, uint32_t groupY, uint32_t groupZ);
+OPENRT_API void (*rt_begin_render)(rt_pass_render_t& pass);
+OPENRT_API void (*rt_end_render)(rt_pass_render_t& pass);
+OPENRT_API void (*rt_set_viewport)(int32_t x, int32_t y, int32_t width, int32_t height);
+OPENRT_API void (*rt_set_scissor)(int32_t x, int32_t y, int32_t width, int32_t height);
+OPENRT_API void (*rt_draw_mesh_task)(uint32_t groupX, uint32_t groupY, uint32_t groupZ);
 
-extern OPENRT_API void (*rt_push_constant)(uint8_t const* buffer, size_t length);
-extern OPENRT_API void (*rt_push_const_int)(const char* name, int32_t value);
-extern OPENRT_API void (*rt_push_const_uint)(const char* name, uint32_t value);
-extern OPENRT_API void (*rt_push_const_float)(const char* name, float value);
-extern OPENRT_API void (*rt_push_const_vec2)(const char* name, const float* value);
-extern OPENRT_API void (*rt_push_const_vec3)(const char* name, const float* value);
-extern OPENRT_API void (*rt_push_const_vec4)(const char* name, const float* value);
-extern OPENRT_API void (*rt_push_const_mat3)(const char* name, const float* value);
-extern OPENRT_API void (*rt_push_const_mat4)(const char* name, const float* value);
+OPENRT_API void (*rt_push_constant)(uint8_t const* buffer, size_t length);
+OPENRT_API void (*rt_push_const_int)(const char* name, int32_t value);
+OPENRT_API void (*rt_push_const_uint)(const char* name, uint32_t value);
+OPENRT_API void (*rt_push_const_float)(const char* name, float value);
+OPENRT_API void (*rt_push_const_vec2)(const char* name, const float* value);
+OPENRT_API void (*rt_push_const_vec3)(const char* name, const float* value);
+OPENRT_API void (*rt_push_const_vec4)(const char* name, const float* value);
+OPENRT_API void (*rt_push_const_mat3)(const char* name, const float* value);
+OPENRT_API void (*rt_push_const_mat4)(const char* name, const float* value);
 
-extern OPENRT_API void (*rt_begin_transfer)(rt_pass_transfer_t& pass);
-extern OPENRT_API void (*rt_end_transfer)(rt_pass_transfer_t& pass);
-extern OPENRT_API void (*rt_copy_buffer)(rt_buffer_copy_t source, rt_buffer_copy_t destination, size_t copySize);
-extern OPENRT_API void (*rt_copy_buffer_data)(rt_buffer_data_t source, rt_buffer_copy_t destination, size_t copySize);
-extern OPENRT_API void (*rt_copy_buffer_texture)(rt_texture_copy_t source, rt_buffer_texel_t destination, rt_size_t copySize);
-extern OPENRT_API void (*rt_copy_texture)(rt_texture_copy_t source, rt_texture_copy_t destination, rt_size_t copySize);
-extern OPENRT_API void (*rt_copy_texture_data)(rt_texture_data_t source, rt_texture_copy_t destination, rt_size_t copySize);
-extern OPENRT_API void (*rt_copy_texture_buffer)(rt_buffer_texel_t source, rt_texture_copy_t destination, rt_size_t copySize);
+OPENRT_API void (*rt_begin_transfer)(rt_pass_transfer_t& pass);
+OPENRT_API void (*rt_end_transfer)(rt_pass_transfer_t& pass);
+OPENRT_API void (*rt_copy_buffer)(rt_buffer_copy_t source, rt_buffer_copy_t destination, size_t copySize);
+OPENRT_API void (*rt_copy_buffer_data)(rt_buffer_data_t source, rt_buffer_copy_t destination, size_t copySize);
+OPENRT_API void (*rt_copy_buffer_texture)(rt_texture_copy_t source, rt_buffer_texel_t destination, rt_size_t copySize);
+OPENRT_API void (*rt_copy_texture)(rt_texture_copy_t source, rt_texture_copy_t destination, rt_size_t copySize);
+OPENRT_API void (*rt_copy_texture_data)(rt_texture_data_t source, rt_texture_copy_t destination, rt_size_t copySize);
+OPENRT_API void (*rt_copy_texture_buffer)(rt_buffer_texel_t source, rt_texture_copy_t destination, rt_size_t copySize);
 
-extern OPENRT_API rt_mesh_t (*rt_create_mesh)(const float* vertices, const float* normals, const float* uvs, size_t vertex_count, const unsigned int* indices, size_t index_count);
-extern OPENRT_API void (*rt_destroy_mesh)(rt_mesh_t& mesh);
-extern OPENRT_API void (*rt_draw_mesh)(rt_mesh_t const& mesh);
+OPENRT_API rt_mesh_t (*rt_create_mesh)(const float* vertices, const float* normals, const float* uvs, size_t vertex_count, const unsigned int* indices, size_t index_count);
+OPENRT_API void (*rt_destroy_mesh)(rt_mesh_t& mesh);
+OPENRT_API void (*rt_draw_mesh)(rt_mesh_t const& mesh);
 
-extern OPENRT_API rt_meshlet_t (*rt_create_meshlet)(const float* vertices, const float* normals, const float* uvs, size_t vertex_count, const unsigned int* indices, size_t index_count);
-extern OPENRT_API void (*rt_destroy_meshlet)(rt_meshlet_t& meshlet);
-extern OPENRT_API void (*rt_draw_meshlet)(rt_meshlet_t const& meshlet);
+OPENRT_API rt_meshlet_t (*rt_create_meshlet)(const float* vertices, const float* normals, const float* uvs, size_t vertex_count, const unsigned int* indices, size_t index_count);
+OPENRT_API void (*rt_destroy_meshlet)(rt_meshlet_t& meshlet);
+OPENRT_API void (*rt_draw_meshlet)(rt_meshlet_t const& meshlet);
 
-extern OPENRT_API rt_mesh_t (*rt_create_mesh_screen)();
-extern OPENRT_API void (*rt_draw_screen)(int width, int height, rt_texture_t texture, rt_color_t clear);
+OPENRT_API rt_mesh_t (*rt_create_mesh_screen)();
+OPENRT_API void (*rt_draw_screen)(int width, int height, rt_texture_t texture, rt_color_t clear);

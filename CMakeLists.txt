@@ -15,6 +15,7 @@ else()
 endif()
 
 add_definitions(
+        -DOPENRT_STATIC
         -DOPENGL_IMPLEMENTATION
         -DVULKAN_IMPLEMENTATION
 )
@@ -27,10 +28,10 @@ add_library(OpenRT STATIC
 #        Metal.cpp
 )
 target_compile_definitions(OpenRT PRIVATE OPENRT_EXPORTS)
-find_package(GLEW CONFIG REQUIRED)
-target_link_libraries(OpenRT PRIVATE GLEW::GLEW)
 find_package(Stb REQUIRED)
 target_include_directories(OpenRT PRIVATE ${Stb_INCLUDE_DIR})
+find_package(GLEW CONFIG REQUIRED)
+target_link_libraries(OpenRT PRIVATE GLEW::GLEW)
 
 add_executable(Default Example/Default.cpp)
 add_dependencies(Default OpenRT)
