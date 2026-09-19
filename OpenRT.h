@@ -273,7 +273,7 @@ struct rt_module_render_t
 struct rt_pass_compute_t
 {
     GLuint handle = 0;
-    rt_module_compute_t module;
+    rt_module_compute_t& module;
     void* native = nullptr;
 };
 
@@ -285,7 +285,7 @@ struct rt_color_t
 struct rt_pass_render_t
 {
     GLuint handle = 0;
-    rt_module_render_t module;
+    rt_module_render_t& module;
 
     struct
     {
