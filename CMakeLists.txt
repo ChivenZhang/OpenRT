@@ -20,8 +20,11 @@ add_definitions(
 )
 
 add_library(OpenRT STATIC
-        OpenGL.cpp
         OpenRT.cpp
+        OpenGL.cpp
+#        Vulkan.cpp
+#        DirectX.cpp
+#        Metal.cpp
 )
 target_compile_definitions(OpenRT PRIVATE OPENRT_EXPORTS)
 find_package(GLEW CONFIG REQUIRED)

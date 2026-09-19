@@ -1,8 +1,8 @@
-#define OPENRTX_IMPLEMENTATION
-#include "../OpenRTX.h"
 #include <SDL3/SDL.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
+#define OPENRTX_IMPLEMENTATION
+#include "../OpenRTX.h"
 
 void frame(int width, int height)
 {
@@ -16,10 +16,10 @@ void frame(int width, int height)
         out vec2 uv;
         out vec3 color;
 
-        vec3 colors[3] = vec3[3]( vec3(1,0,0), vec3(0,1,0), vec3(0,0,1) );
-
         void main()
         {
+            vec3 colors[3] = vec3[3](vec3(1,0,0), vec3(0,1,0), vec3(0,0,1));
+
             vertex = in_vertex;
             normal = in_normal;
             uv = in_uv;
