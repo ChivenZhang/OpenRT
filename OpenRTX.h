@@ -624,6 +624,62 @@ static rt_mesh_t rt_create_mesh_capsule(float radius, float height, int rings, i
 
 // ====================================================================
 
+static rt_mesh_t rt_create_mesh_triangle(float size)
+{
+    // 正三角形：3个顶点
+    size_t vertex_count = 3;
+    size_t index_count  = 3;
+
+    std::vector<float> positions(vertex_count * 3);
+    std::vector<float> normals(vertex_count * 3);
+    std::vector<float> uvs(vertex_count * 2);
+    std::vector<unsigned int> indices(index_count);
+
+    // 正三角形，顶点朝上，底边在下方，左右对称
+    float radius = size / sqrtf(3.0f);
+
+    // 三个顶点的角度：90度（上）、210度（左下）、330度（右下）
+    float angles[3] = {
+        GL_PI / 2.0f,           // 90度 - 上方顶点
+        7.0f * GL_PI / 6.0f,    // 210度 - 左下角
+        11.0f * GL_PI / 6.0f    // 330度 - 右下角
+    };
+
+    for (int i = 0; i < 3; i++)
+    {
+        float x = cosf(angles[i]) * radius;
+        float y = sinf(angles[i]) * radius;
+
+        size_t vi = i;
+
+        positions[vi * 3 + 0] = x;
+        positions[vi * 3 + 1] = y;
+        positions[vi * 3 + 2] = 0.0f;
+
+        normals[vi * 3 + 0] = 0;
+        normals[vi * 3 + 1] = 0;
+        normals[vi * 3 + 2] = 1;
+
+        // UV坐标映射
+        uvs[vi * 2 + 0] = (x / radius) * 0.5f + 0.5f;
+        uvs[vi * 2 + 1] = (y / radius) * 0.5f + 0.5f;
+    }
+
+    // 三角形索引
+    indices[0] = 0;
+    indices[1] = 1;
+    indices[2] = 2;
+
+    return rt_create_mesh(
+        positions.data(),
+        normals.data(),
+        uvs.data(),
+        vertex_count,
+        indices.data(),
+        index_count
+    );
+}
+
 static rt_mesh_t rt_create_mesh_quad(float width, float height)
 {
     const size_t vertex_count = 4;

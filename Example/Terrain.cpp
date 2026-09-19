@@ -1,42 +1,6 @@
 #define OPENRTX_IMPLEMENTATION
 #include "../OpenRTX.h"
 #include <SDL3/SDL.h>
-
-void frame(int width, int height);
-
-int main()
-{
-    SDL_Init(SDL_INIT_VIDEO);
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4);
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 6);
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
-    auto window = SDL_CreateWindow( "Terrain Demo", 1000, 600, SDL_WINDOW_OPENGL);
-    auto context = SDL_GL_CreateContext(window);
-    SDL_GL_MakeCurrent(window, context);
-    rt_load_library();
-
-    bool running = true;
-    while (running)
-    {
-        SDL_Event event;
-        while (SDL_PollEvent(&event)) if (event.type == SDL_EVENT_QUIT) running = false;
-        // ====================================================================
-
-        int w, h;
-        SDL_GetWindowSizeInPixels(window, &w, &h);
-        frame(w, h);
-
-        // ====================================================================
-        SDL_GL_SwapWindow(window);
-    }
-
-    rt_unload_library();
-    SDL_GL_DestroyContext(context);
-    SDL_DestroyWindow(window);
-    SDL_Quit();
-    return 0;
-}
-
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
@@ -277,16 +241,16 @@ void frame(int width, int height)
         }
     )";
 
-    auto projMat = glm::perspective(glm::radians(60.0f), (float)width / (float)height, 0.1f, 100.0f);
-    auto viewMat = glm::lookAt(glm::vec3(0, 2, 5), glm::vec3(0, 0, 0), glm::vec3(0, 1, 0));
-    auto meshMat = glm::rotate(glm::mat4(1.0f), (float)SDL_GetTicks() / 2000.0f, glm::vec3(0, 1, 0));
-
     static auto module = rt_create_module_meshlet(nullptr, MS, FS, {.depth = {.write = true, .func = GL_LEQUAL,}, .vertex = {rt_vertex_vertex, rt_vertex_normal, rt_vertex_uv,}, .fill_mode = GL_FILL,});
     static auto pass_color = rt_create_texture_color(width, height, nullptr);
     static auto pass_depth = rt_create_texture_depth(width, height, nullptr);
     {
         rt_pass_render_t pass = {.module = module, .colors = {{.texture = pass_color, .clear = true,}}, .depth = {.texture = pass_depth, .clear = true,},};
         rt_begin_render(pass);
+
+        auto projMat = glm::perspective(glm::radians(60.0f), (float)width / (float)height, 0.1f, 100.0f);
+        auto viewMat = glm::lookAt(glm::vec3(0, 2, 5), glm::vec3(0, 0, 0), glm::vec3(0, 1, 0));
+        auto meshMat = glm::rotate(glm::mat4(1.0f), (float)SDL_GetTicks() / 2000.0f, glm::vec3(0, 1, 0));
 
         rt_push_const_float("height", 2.5f);
         rt_push_const_mat4("projMat", &projMat[0][0]);
@@ -305,4 +269,38 @@ void frame(int width, int height)
     }
 
     rt_draw_screen(width, height, pass_color, {});
+}
+
+int main()
+{
+    int w = 1000, h = 600;
+    SDL_Init(SDL_INIT_VIDEO);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 6);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
+    auto window = SDL_CreateWindow( "Terrain", w, h, SDL_WINDOW_OPENGL);
+    auto context = SDL_GL_CreateContext(window);
+    SDL_GL_MakeCurrent(window, context);
+
+    rt_load_library();
+
+    bool running = true;
+    while (running)
+    {
+        SDL_Event event;
+        while (SDL_PollEvent(&event)) if (event.type == SDL_EVENT_QUIT) running = false;
+        // ====================================================================
+
+        frame(w, h);
+
+        // ====================================================================
+        SDL_GL_SwapWindow(window);
+    }
+
+    rt_unload_library();
+
+    SDL_GL_DestroyContext(context);
+    SDL_DestroyWindow(window);
+    SDL_Quit();
+    return 0;
 }
