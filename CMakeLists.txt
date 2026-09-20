@@ -15,7 +15,7 @@ else()
 endif()
 
 add_definitions(
-        -DOPENRT_STATIC
+#        -DOPENRT_STATIC
         -DOPENGL_IMPLEMENTATION
         -DVULKAN_IMPLEMENTATION
 )
@@ -27,7 +27,7 @@ add_library(OpenRT STATIC
 #        DirectX.cpp
 #        Metal.cpp
 )
-target_compile_definitions(OpenRT PRIVATE OPENRT_EXPORTS)
+target_compile_definitions(OpenRT PUBLIC OPENRT_EXPORTS)
 find_package(Stb REQUIRED)
 target_include_directories(OpenRT PRIVATE ${Stb_INCLUDE_DIR})
 find_package(GLEW CONFIG REQUIRED)
