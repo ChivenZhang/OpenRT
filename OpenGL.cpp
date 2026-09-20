@@ -103,6 +103,7 @@ void gl_load_library()
     rt_create_mesh = gl_create_mesh;
     rt_destroy_mesh = gl_destroy_mesh;
     rt_draw_mesh = gl_draw_mesh;
+    rt_draw_mesh_multi = gl_draw_mesh_multi;
     rt_create_meshlet = gl_create_meshlet;
     rt_destroy_meshlet = gl_destroy_meshlet;
     rt_draw_meshlet = gl_draw_meshlet;
@@ -1939,6 +1940,56 @@ void gl_draw_mesh(rt_mesh_t const& mesh)
     {
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
         glDrawArrays(module.primitive, 0, vertex_count);
+    }
+}
+
+void gl_draw_mesh_multi(rt_mesh_t const& mesh, uint32_t count)
+{
+    if (opengl.currentPipeline == nullptr)
+    {
+        fprintf(stderr, "Pipeline not begin\n");
+        abort();
+    }
+    if (opengl.currentPassType != GL_MODULE_RENDER)
+    {
+        fprintf(stderr, "Pipeline not begin\n");
+        abort();
+    }
+
+    rt_module_render_t const& module = opengl.currentRenderPass->module;
+
+    GLsizei vertex_count = 0;
+    for (uint32_t i = 0; i < std::size(module.vertex); ++i)
+    {
+        rt_vertex_t const& layout = module.vertex[i];
+        if (layout.type == GL_NONE || layout.count == 0)
+            continue;
+
+        GLuint buffer = 0;
+        GLsizei stride = gl_vertex_type_size(layout.type) * (GLsizei)layout.count;
+        for (uint32_t k = 0; k < std::size(mesh.vertex); ++k)
+        {
+            if (mesh.vertex[k].handle == 0 || mesh.location[k] != layout.location)
+                continue;
+            buffer = mesh.vertex[k].handle;
+            if (vertex_count == 0 && stride > 0)
+                vertex_count = (GLsizei)(mesh.vertex[k].size / (size_t)stride);
+            glBindVertexBuffer(layout.location, buffer, 0, buffer ? stride : 0);
+            break;
+        }
+    }
+
+    if (mesh.index.handle)
+    {
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, mesh.index.handle);
+        GLsizei index_stride = gl_index_type_size(module.index_type);
+        auto index_count = (GLsizei)(mesh.index.size / (size_t)index_stride);
+        glDrawElementsInstanced(module.primitive, index_count, module.index_type, (void*)0, (int32_t)count);
+    }
+    else
+    {
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+        glDrawArraysInstanced(module.primitive, 0, vertex_count, (int32_t)count);
     }
 }
 

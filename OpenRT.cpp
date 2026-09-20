@@ -79,6 +79,7 @@ void (*rt_copy_texture_buffer)(rt_buffer_texel_t source, rt_texture_copy_t desti
 rt_mesh_t (*rt_create_mesh)(const float* vertices, const float* normals, const float* uvs, size_t vertex_count, const unsigned int* indices, size_t index_count) = nullptr;
 void (*rt_destroy_mesh)(rt_mesh_t& mesh) = nullptr;
 void (*rt_draw_mesh)(rt_mesh_t const& mesh) = nullptr;
+void (*rt_draw_mesh_multi)(rt_mesh_t const& mesh, uint32_t count) = nullptr;
 
 rt_meshlet_t (*rt_create_meshlet)(const float* vertices, const float* normals, const float* uvs, size_t vertex_count, const unsigned int* indices, size_t index_count) = nullptr;
 void (*rt_destroy_meshlet)(rt_meshlet_t& meshlet) = nullptr;

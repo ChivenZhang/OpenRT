@@ -492,6 +492,7 @@ OPENRT_API void (*rt_copy_texture_buffer)(rt_buffer_texel_t source, rt_texture_c
 OPENRT_API rt_mesh_t (*rt_create_mesh)(const float* vertices, const float* normals, const float* uvs, size_t vertex_count, const unsigned int* indices, size_t index_count);
 OPENRT_API void (*rt_destroy_mesh)(rt_mesh_t& mesh);
 OPENRT_API void (*rt_draw_mesh)(rt_mesh_t const& mesh);
+OPENRT_API void (*rt_draw_mesh_multi)(rt_mesh_t const& mesh, uint32_t count);
 
 OPENRT_API rt_meshlet_t (*rt_create_meshlet)(const float* vertices, const float* normals, const float* uvs, size_t vertex_count, const unsigned int* indices, size_t index_count);
 OPENRT_API void (*rt_destroy_meshlet)(rt_meshlet_t& meshlet);
