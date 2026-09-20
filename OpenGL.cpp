@@ -2071,7 +2071,7 @@ void gl_draw_screen(int width, int height, rt_texture_t texture, rt_color_t clea
     gl_begin_render(pass);
     gl_set_viewport(0, 0, width, height);
     gl_bind_texture(texture, { .binding = 0, });
-    gl_draw_mesh(gl_create_mesh_screen());
+    if (texture.handle) gl_draw_mesh(gl_create_mesh_screen());
     gl_end_render(pass);
 }
 
