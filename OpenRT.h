@@ -444,6 +444,7 @@ OPENRT_API void (*rt_unmap_buffer)(rt_buffer_t& buffer);
 
 OPENRT_API rt_texture_t (*rt_create_texture)(rt_texture_info_t const& info);
 OPENRT_API rt_texture_t (*rt_create_texture_color)(uint32_t width, uint32_t height, const void* data);
+OPENRT_API rt_texture_t (*rt_create_texture_color_float)(uint32_t width, uint32_t height, const void* data);
 OPENRT_API rt_texture_t (*rt_create_texture_depth)(uint32_t width, uint32_t height, const void* data);
 OPENRT_API rt_texture_t (*rt_create_texture_depth_stencil)(uint32_t width, uint32_t height, const void* data);
 OPENRT_API void (*rt_destroy_texture)(rt_texture_t& texture);

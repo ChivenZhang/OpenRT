@@ -62,6 +62,7 @@ void gl_load_library()
     rt_unmap_buffer = gl_unmap_buffer;
     rt_create_texture = gl_create_texture;
     rt_create_texture_color = gl_create_texture_color;
+    rt_create_texture_color_float = gl_create_texture_color_float;
     rt_create_texture_depth = gl_create_texture_depth;
     rt_create_texture_depth_stencil = gl_create_texture_depth_stencil;
     rt_destroy_texture = gl_destroy_texture;
@@ -126,6 +127,7 @@ void gl_unload_library()
     if(rt_unmap_buffer == gl_unmap_buffer) rt_unmap_buffer = nullptr;
     if(rt_create_texture == gl_create_texture) rt_create_texture = nullptr;
     if(rt_create_texture_color == gl_create_texture_color) rt_create_texture_color = nullptr;
+    if(rt_create_texture_color_float == gl_create_texture_color_float) rt_create_texture_color_float = nullptr;
     if(rt_create_texture_depth == gl_create_texture_depth) rt_create_texture_depth = nullptr;
     if(rt_create_texture_depth_stencil == gl_create_texture_depth_stencil) rt_create_texture_depth_stencil = nullptr;
     if(rt_destroy_texture == gl_destroy_texture) rt_destroy_texture = nullptr;
@@ -379,8 +381,29 @@ rt_texture_t gl_create_texture_color(uint32_t width, uint32_t height, const void
         .type = GL_UNSIGNED_BYTE,
         .min_filter = GL_LINEAR,
         .mag_filter = GL_LINEAR,
-        .wrap_s = GL_REPEAT,
-        .wrap_t = GL_REPEAT,
+        .wrap_s = GL_CLAMP_TO_BORDER,
+        .wrap_t = GL_CLAMP_TO_BORDER,
+        .border = {0.0f, 0.0f, 0.0f, 0.0f},
+        .data = data,
+    };
+    return gl_create_texture(info);
+}
+
+rt_texture_t gl_create_texture_color_float(uint32_t width, uint32_t height, const void* data)
+{
+    rt_texture_info_t info
+    {
+        .width = width,
+        .height = height,
+        .target = GL_TEXTURE_2D,
+        .format = GL_RGBA,
+        .internal_format = GL_RGBA32F,
+        .type = GL_FLOAT,
+        .min_filter = GL_LINEAR,
+        .mag_filter = GL_LINEAR,
+        .wrap_s = GL_CLAMP_TO_BORDER,
+        .wrap_t = GL_CLAMP_TO_BORDER,
+        .border = {0.0f, 0.0f, 0.0f, 0.0f},
         .data = data,
     };
     return gl_create_texture(info);

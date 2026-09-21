@@ -31,6 +31,7 @@ void (*rt_unmap_buffer)(rt_buffer_t& buffer) = nullptr;
 
 rt_texture_t (*rt_create_texture)(rt_texture_info_t const& info) = nullptr;
 rt_texture_t (*rt_create_texture_color)(uint32_t width, uint32_t height, const void* data) = nullptr;
+rt_texture_t (*rt_create_texture_color_float)(uint32_t width, uint32_t height, const void* data) = nullptr;
 rt_texture_t (*rt_create_texture_depth)(uint32_t width, uint32_t height, const void* data) = nullptr;
 rt_texture_t (*rt_create_texture_depth_stencil)(uint32_t width, uint32_t height, const void* data) = nullptr;
 void (*rt_destroy_texture)(rt_texture_t& texture) = nullptr;

@@ -24,6 +24,7 @@ void gl_unmap_buffer(rt_buffer_t& buffer);
 
 rt_texture_t gl_create_texture(rt_texture_info_t const& info);
 rt_texture_t gl_create_texture_color(uint32_t width, uint32_t height, const void* data);
+rt_texture_t gl_create_texture_color_float(uint32_t width, uint32_t height, const void* data);
 rt_texture_t gl_create_texture_depth(uint32_t width, uint32_t height, const void* data);
 rt_texture_t gl_create_texture_depth_stencil(uint32_t width, uint32_t height, const void* data);
 void gl_destroy_texture(rt_texture_t& texture);
