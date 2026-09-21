@@ -285,18 +285,18 @@ rt_texture_t gl_create_texture(rt_texture_info_t const& info)
 {
     rt_texture_t result = {};
 
-    if (info.width == 0 || info.height == 0)
-    {
-        fprintf(stderr, "Texture size must not be 0");
-        abort();
-    }
-
     uint32_t samples = info.samples ? info.samples : 1;
     uint32_t depth = info.depth ? info.depth : 1;
     GLenum target = info.target;
-    if (target != GL_TEXTURE_2D && target != GL_TEXTURE_3D && target != GL_TEXTURE_2D_MULTISAMPLE)
+    if (target != GL_TEXTURE_1D && target != GL_TEXTURE_2D && target != GL_TEXTURE_2D_ARRAY &&
+        target != GL_TEXTURE_3D && target != GL_TEXTURE_2D_MULTISAMPLE)
     {
         fprintf(stderr, "Unsupported texture target");
+        abort();
+    }
+    if (info.width == 0 || (target != GL_TEXTURE_1D && info.height == 0))
+    {
+        fprintf(stderr, "Texture size must not be 0");
         abort();
     }
     if ((target == GL_TEXTURE_2D_MULTISAMPLE) != (samples > 1))
@@ -309,7 +309,9 @@ rt_texture_t gl_create_texture(rt_texture_info_t const& info)
     uint32_t levels = 1;
     if (!multisample)
     {
-        uint32_t maxDim = std::max(info.width, info.height);
+        uint32_t maxDim = info.width;
+        if (target != GL_TEXTURE_1D)
+            maxDim = std::max(maxDim, info.height);
         if (target == GL_TEXTURE_3D)
             maxDim = std::max(maxDim, depth);
         uint32_t maxLevels = 1;
@@ -341,9 +343,11 @@ rt_texture_t gl_create_texture(rt_texture_info_t const& info)
     glGenTextures(1, &result.handle);
     glBindTexture(target, result.handle);
 
-    if (target == GL_TEXTURE_2D)
+    if (target == GL_TEXTURE_1D)
+        glTexStorage1D(target, (GLsizei)levels, internalFormat, (GLsizei)info.width);
+    else if (target == GL_TEXTURE_2D)
         glTexStorage2D(target, (GLsizei)levels, internalFormat, (GLsizei)info.width, (GLsizei)info.height);
-    else if (target == GL_TEXTURE_3D)
+    else if (target == GL_TEXTURE_2D_ARRAY || target == GL_TEXTURE_3D)
         glTexStorage3D(target, (GLsizei)levels, internalFormat, (GLsizei)info.width, (GLsizei)info.height, (GLsizei)depth);
     else
         glTexStorage2DMultisample(target, (GLsizei)samples, internalFormat,
@@ -351,7 +355,9 @@ rt_texture_t gl_create_texture(rt_texture_info_t const& info)
 
     if (!multisample && info.data)
     {
-        if (target == GL_TEXTURE_2D)
+        if (target == GL_TEXTURE_1D)
+            glTexSubImage1D(target, 0, 0, (GLsizei)info.width, info.format, info.type, info.data);
+        else if (target == GL_TEXTURE_2D)
             glTexSubImage2D(target, 0, 0, 0, (GLsizei)info.width, (GLsizei)info.height, info.format, info.type, info.data);
         else
             glTexSubImage3D(target, 0, 0, 0, 0, (GLsizei)info.width, (GLsizei)info.height, (GLsizei)depth, info.format, info.type, info.data);
@@ -411,7 +417,7 @@ rt_texture_t gl_create_texture(rt_texture_info_t const& info)
     glBindTexture(target, 0);
 
     result.width = info.width;
-    result.height = info.height;
+    result.height = (target == GL_TEXTURE_1D) ? 1 : info.height;
     result.depth = depth;
     result.target = target;
     result.format = info.format;
@@ -1616,9 +1622,17 @@ static bool gl_check_texture_region(rt_texture_copy_t const& region, rt_size_t c
         return false;
     if ((uint64_t)region.origin.y + copySize.y > height)
         return false;
-    // 2D 纹理没有深度维度，z 偏移必须为 0 且最多拷贝一层
-    if (region.texture.target == GL_TEXTURE_2D && (region.origin.z != 0 || copySize.z > 1))
+    // 1D / 2D 没有深度维度，z 偏移必须为 0 且最多拷贝一层
+    if ((region.texture.target == GL_TEXTURE_1D || region.texture.target == GL_TEXTURE_2D) &&
+        (region.origin.z != 0 || copySize.z > 1))
         return false;
+    if (region.texture.target == GL_TEXTURE_1D && (region.origin.y != 0 || copySize.y > 1))
+        return false;
+    if (region.texture.target == GL_TEXTURE_2D_ARRAY)
+    {
+        if ((uint64_t)region.origin.z + std::max(1U, copySize.z) > std::max(1U, region.texture.depth))
+            return false;
+    }
     return true;
 }
 
@@ -1818,7 +1832,14 @@ void gl_copy_texture_data(rt_texture_data_t source, rt_texture_copy_t destinatio
     glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
     glPixelStorei(GL_UNPACK_ROW_LENGTH, (GLint)(source.bytesPerRow / bytesPerPixel));
     glPixelStorei(GL_UNPACK_IMAGE_HEIGHT, (GLint)source.rowsPerImage);
-    if (destination.texture.target == GL_TEXTURE_2D)
+    if (destination.texture.target == GL_TEXTURE_1D)
+    {
+        glTextureSubImage1D(destination.texture.handle, (GLint)destination.mipLevel,
+                            (GLint)destination.origin.x, (GLsizei)copySize.x, format, type, data);
+
+        if (destination.texture.mipmaps > 1) glGenerateTextureMipmap(destination.texture.handle);
+    }
+    else if (destination.texture.target == GL_TEXTURE_2D)
     {
         glTextureSubImage2D(destination.texture.handle, (GLint)destination.mipLevel,
                             (GLint)destination.origin.x, (GLint)destination.origin.y,
@@ -1826,7 +1847,7 @@ void gl_copy_texture_data(rt_texture_data_t source, rt_texture_copy_t destinatio
 
         if (destination.texture.mipmaps > 1) glGenerateTextureMipmap(destination.texture.handle);
     }
-    else if (destination.texture.target == GL_TEXTURE_3D)
+    else if (destination.texture.target == GL_TEXTURE_3D || destination.texture.target == GL_TEXTURE_2D_ARRAY)
     {
         glTextureSubImage3D(destination.texture.handle, (GLint)destination.mipLevel,
                             (GLint)destination.origin.x, (GLint)destination.origin.y, (GLint)destination.origin.z,
@@ -1875,7 +1896,14 @@ void gl_copy_texture_buffer(rt_buffer_texel_t source, rt_texture_copy_t destinat
     glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
     glPixelStorei(GL_UNPACK_ROW_LENGTH, (GLint)(source.bytesPerRow / bytesPerPixel));
     glPixelStorei(GL_UNPACK_IMAGE_HEIGHT, (GLint)source.rowsPerImage);
-    if (destination.texture.target == GL_TEXTURE_2D)
+    if (destination.texture.target == GL_TEXTURE_1D)
+    {
+        glTextureSubImage1D(destination.texture.handle, (GLint)destination.mipLevel,
+                            (GLint)destination.origin.x, (GLsizei)copySize.x, format, type, data);
+
+        if (destination.texture.mipmaps > 1) glGenerateTextureMipmap(destination.texture.handle);
+    }
+    else if (destination.texture.target == GL_TEXTURE_2D)
     {
         glTextureSubImage2D(destination.texture.handle, (GLint)destination.mipLevel,
                             (GLint)destination.origin.x, (GLint)destination.origin.y,
@@ -1883,7 +1911,7 @@ void gl_copy_texture_buffer(rt_buffer_texel_t source, rt_texture_copy_t destinat
 
         if (destination.texture.mipmaps > 1) glGenerateTextureMipmap(destination.texture.handle);
     }
-    else if (destination.texture.target == GL_TEXTURE_3D)
+    else if (destination.texture.target == GL_TEXTURE_3D || destination.texture.target == GL_TEXTURE_2D_ARRAY)
     {
         glTextureSubImage3D(destination.texture.handle, (GLint)destination.mipLevel,
                             (GLint)destination.origin.x, (GLint)destination.origin.y, (GLint)destination.origin.z,

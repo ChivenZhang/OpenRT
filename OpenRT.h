@@ -93,7 +93,7 @@ struct rt_texture_t
 struct rt_texture_info_t
 {
     uint32_t width = 0, height = 0, depth = 1;
-    GLenum target = GL_TEXTURE_2D;
+    GLenum target = GL_TEXTURE_2D;          // GL_TEXTURE_1D / GL_TEXTURE_2D / GL_TEXTURE_3D / GL_TEXTURE_2D_ARRAY / GL_TEXTURE_2D_MULTISAMPLE
     GLenum format = GL_RGBA;                // 数据格式
     GLenum internal_format = GL_RGBA8;      // 内部存储格式
     GLenum type = GL_UNSIGNED_BYTE;         // 数据类型
