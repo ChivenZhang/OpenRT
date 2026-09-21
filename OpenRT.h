@@ -85,7 +85,8 @@ struct rt_texture_t
     GLenum format = GL_RGBA;
     GLenum internal_format = GL_RGBA;
     GLenum type = GL_UNSIGNED_BYTE;
-    bool mipmaps = false;
+    uint32_t mipmaps = 1;
+    uint32_t samples = 1;   // 1x / 4x
     void* native = nullptr;
 };
 
@@ -101,6 +102,8 @@ struct rt_texture_info_t
     GLenum wrap_s = GL_REPEAT;                    // GL_REPEAT / GL_MIRRORED_REPEAT / GL_CLAMP_TO_EDGE / GL_CLAMP_TO_BORDER / GL_MIRROR_CLAMP_TO_EDGE
     GLenum wrap_t = GL_REPEAT;                    // GL_REPEAT / GL_MIRRORED_REPEAT / GL_CLAMP_TO_EDGE / GL_CLAMP_TO_BORDER / GL_MIRROR_CLAMP_TO_EDGE
     GLenum wrap_r = GL_REPEAT;                    // GL_REPEAT / GL_MIRRORED_REPEAT / GL_CLAMP_TO_EDGE / GL_CLAMP_TO_BORDER / GL_MIRROR_CLAMP_TO_EDGE
+    uint32_t mipmaps = 1;
+    uint32_t samples = 1;   // 1x / 4x
     GLfloat border[4] = {0.0f, 0.0f, 0.0f, 0.0f};
     const void* data = nullptr;
 };

@@ -478,7 +478,6 @@ struct vk_native_t
     std::vector<vk_staging_t> pendingStaging;
 
     PFN_vkCmdDrawMeshTasksNV fnDrawMeshTasksNV = nullptr;
-    PFN_vkCmdDrawMeshTasksEXT fnDrawMeshTasksEXT = nullptr;
 
     struct Binding
     {
@@ -1066,7 +1065,6 @@ void vk_load_library(VkInstance instance, VkDevice device, uint32_t family)
 
     vkGetDeviceQueue(vulkan.device, family, 0, &vulkan.queue);
     vulkan.fnDrawMeshTasksNV = (PFN_vkCmdDrawMeshTasksNV)vkGetDeviceProcAddr(vulkan.device, "vkCmdDrawMeshTasksNV");
-    vulkan.fnDrawMeshTasksEXT = (PFN_vkCmdDrawMeshTasksEXT)vkGetDeviceProcAddr(vulkan.device, "vkCmdDrawMeshTasksEXT");
 
     VkCommandPoolCreateInfo poolInfo = {};
     poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
@@ -1510,7 +1508,8 @@ rt_texture_t vk_create_texture(rt_texture_info_t const& info)
     result.internal_format = info.internal_format;
     result.type = info.type;
     result.target = info.target;
-    result.mipmaps = native.mipLevels > 1;
+    result.mipmaps = native.mipLevels;
+    result.samples = info.samples ? info.samples : 1;
     result.native = &native;
     return result;
 }
@@ -2058,9 +2057,7 @@ void vk_draw_mesh_task(uint32_t groupX, uint32_t groupY, uint32_t groupZ)
 {
     vk_require_pass(GL_MODULE_RENDER);
     vk_flush_descriptors();
-    if (vulkan.fnDrawMeshTasksEXT)
-        vulkan.fnDrawMeshTasksEXT(vulkan.cmdBuffer, std::max(1u, groupX), std::max(1u, groupY), std::max(1u, groupZ));
-    else if (vulkan.fnDrawMeshTasksNV)
+    if (vulkan.fnDrawMeshTasksNV)
         vulkan.fnDrawMeshTasksNV(vulkan.cmdBuffer, std::max(1u, groupX) * std::max(1u, groupY) * std::max(1u, groupZ), 0);
 }
 
@@ -2347,9 +2344,7 @@ void vk_draw_meshlet(rt_meshlet_t const& meshlet)
     vk_flush_descriptors();
     auto* native = (rt_meshlet_native_t*)meshlet.native;
     uint32_t tasks = native && native->indexCount ? native->indexCount / 3 : 1;
-    if (vulkan.fnDrawMeshTasksEXT)
-        vulkan.fnDrawMeshTasksEXT(vulkan.cmdBuffer, std::max(1u, tasks), 1, 1);
-    else if (vulkan.fnDrawMeshTasksNV)
+    if (vulkan.fnDrawMeshTasksNV)
         vulkan.fnDrawMeshTasksNV(vulkan.cmdBuffer, std::max(1u, tasks), 0);
 }
 

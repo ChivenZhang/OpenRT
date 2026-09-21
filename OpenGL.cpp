@@ -285,27 +285,78 @@ rt_texture_t gl_create_texture(rt_texture_info_t const& info)
 {
     rt_texture_t result = {};
 
-    // 生成并绑定纹理
-    glGenTextures(1, &result.handle);
-    glBindTexture(info.target, result.handle);
+    if (info.width == 0 || info.height == 0)
+    {
+        fprintf(stderr, "Texture size must not be 0");
+        abort();
+    }
 
-    // 上传纹理数据
-    if (info.target == GL_TEXTURE_2D)
-    {
-        glTexImage2D(info.target, 0, info.internal_format, info.width, info.height, 0, info.format, info.type, info.data);
-    }
-    else if (info.target == GL_TEXTURE_3D)
-    {
-        glTexImage3D(info.target, 0, info.internal_format, info.width, info.height, 1, 0, info.format, info.type, info.data);
-    }
-    else
+    uint32_t samples = info.samples ? info.samples : 1;
+    uint32_t depth = info.depth ? info.depth : 1;
+    GLenum target = info.target;
+    if (target != GL_TEXTURE_2D && target != GL_TEXTURE_3D && target != GL_TEXTURE_2D_MULTISAMPLE)
     {
         fprintf(stderr, "Unsupported texture target");
         abort();
     }
+    if ((target == GL_TEXTURE_2D_MULTISAMPLE) != (samples > 1))
+    {
+        fprintf(stderr, "GL_TEXTURE_2D_MULTISAMPLE requires samples > 1");
+        abort();
+    }
+    bool multisample = (target == GL_TEXTURE_2D_MULTISAMPLE);
 
-    // 处理空数据情况
-    if (info.data == nullptr)
+    uint32_t levels = 1;
+    if (!multisample)
+    {
+        uint32_t maxDim = std::max(info.width, info.height);
+        if (target == GL_TEXTURE_3D)
+            maxDim = std::max(maxDim, depth);
+        uint32_t maxLevels = 1;
+        while (maxDim > 1)
+        {
+            maxDim >>= 1;
+            maxLevels++;
+        }
+        levels = info.mipmaps ? std::min(info.mipmaps, maxLevels) : maxLevels;
+    }
+
+    GLenum internalFormat = info.internal_format;
+    switch (internalFormat)
+    {
+        case GL_RED:  internalFormat = GL_R8; break;
+        case GL_RG:   internalFormat = GL_RG8; break;
+        case GL_RGB:  internalFormat = GL_RGB8; break;
+        case GL_RGBA: internalFormat = GL_RGBA8; break;
+        case GL_DEPTH_COMPONENT:
+            internalFormat = (info.type == GL_FLOAT) ? GL_DEPTH_COMPONENT32F : GL_DEPTH_COMPONENT24;
+            break;
+        case GL_DEPTH_STENCIL:
+            internalFormat = GL_DEPTH24_STENCIL8;
+            break;
+        default:
+            break;
+    }
+
+    glGenTextures(1, &result.handle);
+    glBindTexture(target, result.handle);
+
+    if (target == GL_TEXTURE_2D)
+        glTexStorage2D(target, (GLsizei)levels, internalFormat, (GLsizei)info.width, (GLsizei)info.height);
+    else if (target == GL_TEXTURE_3D)
+        glTexStorage3D(target, (GLsizei)levels, internalFormat, (GLsizei)info.width, (GLsizei)info.height, (GLsizei)depth);
+    else
+        glTexStorage2DMultisample(target, (GLsizei)samples, internalFormat,
+                                  (GLsizei)info.width, (GLsizei)info.height, GL_TRUE);
+
+    if (!multisample && info.data)
+    {
+        if (target == GL_TEXTURE_2D)
+            glTexSubImage2D(target, 0, 0, 0, (GLsizei)info.width, (GLsizei)info.height, info.format, info.type, info.data);
+        else
+            glTexSubImage3D(target, 0, 0, 0, 0, (GLsizei)info.width, (GLsizei)info.height, (GLsizei)depth, info.format, info.type, info.data);
+    }
+    else
     {
         if (info.format == GL_DEPTH_COMPONENT)
         {
@@ -314,17 +365,14 @@ rt_texture_t gl_create_texture(rt_texture_info_t const& info)
         }
         else if (info.format == GL_DEPTH_STENCIL)
         {
-            if (info.internal_format == GL_DEPTH24_STENCIL8)
+            if (internalFormat == GL_DEPTH24_STENCIL8)
             {
-                GLuint clearValue = 0xFFFFFF00u; // 深度 24 位全 1 (= 1.0)，模板 8 位 = 0
+                GLuint clearValue = 0xFFFFFF00u;
                 glClearTexImage(result.handle, 0, info.format, info.type, &clearValue);
             }
-            else if (info.internal_format == GL_DEPTH32F_STENCIL8)
+            else if (internalFormat == GL_DEPTH32F_STENCIL8)
             {
-                struct Float32Uint24_8 {
-                    float depth;
-                    uint32_t stencil;
-                } clearValue = {1.0f, 0};
+                struct { float depth; uint32_t stencil; } clearValue = {1.0f, 0};
                 glClearTexImage(result.handle, 0, GL_DEPTH_STENCIL, GL_FLOAT_32_UNSIGNED_INT_24_8_REV, &clearValue);
             }
             else
@@ -333,6 +381,11 @@ rt_texture_t gl_create_texture(rt_texture_info_t const& info)
                 abort();
             }
         }
+        else if (info.type == GL_FLOAT)
+        {
+            GLfloat clearValue[4] = {0, 0, 0, 0};
+            glClearTexImage(result.handle, 0, info.format, info.type, clearValue);
+        }
         else
         {
             GLubyte clearValue[4] = {0, 0, 0, 0};
@@ -340,32 +393,32 @@ rt_texture_t gl_create_texture(rt_texture_info_t const& info)
         }
     }
 
-    // 生成 mipmap
-    if (info.min_filter == GL_NEAREST_MIPMAP_NEAREST || info.min_filter == GL_LINEAR_MIPMAP_NEAREST || info.min_filter == GL_NEAREST_MIPMAP_LINEAR || info.min_filter == GL_LINEAR_MIPMAP_LINEAR)
+    if (!multisample)
     {
-        glGenerateMipmap(info.target);
-        result.mipmaps = true;
+        glTexParameteri(target, GL_TEXTURE_WRAP_S, info.wrap_s);
+        glTexParameteri(target, GL_TEXTURE_WRAP_T, info.wrap_t);
+        glTexParameteri(target, GL_TEXTURE_WRAP_R, info.wrap_r);
+        glTexParameteri(target, GL_TEXTURE_MIN_FILTER, info.min_filter);
+        glTexParameteri(target, GL_TEXTURE_MAG_FILTER, info.mag_filter);
+        glTexParameteri(target, GL_TEXTURE_BASE_LEVEL, 0);
+        glTexParameteri(target, GL_TEXTURE_MAX_LEVEL, (GLint)(levels - 1));
+        if (info.wrap_s == GL_CLAMP_TO_BORDER || info.wrap_t == GL_CLAMP_TO_BORDER || info.wrap_r == GL_CLAMP_TO_BORDER)
+            glTexParameterfv(target, GL_TEXTURE_BORDER_COLOR, info.border);
+        if (levels > 1)
+            glGenerateMipmap(target);
     }
 
-    // 设置纹理参数
-    glTexParameteri(info.target, GL_TEXTURE_WRAP_S, info.wrap_s);
-    glTexParameteri(info.target, GL_TEXTURE_WRAP_T, info.wrap_t);
-    glTexParameteri(info.target, GL_TEXTURE_MIN_FILTER, info.min_filter);
-    glTexParameteri(info.target, GL_TEXTURE_MAG_FILTER, info.mag_filter);
-    // 设置边框颜色（当 wrap 模式为 CLAMP_TO_BORDER 时使用）
-    if (info.wrap_s == GL_CLAMP_TO_BORDER || info.wrap_t == GL_CLAMP_TO_BORDER || info.wrap_r == GL_CLAMP_TO_BORDER)
-    {
-        glTexParameterfv(info.target, GL_TEXTURE_BORDER_COLOR, info.border);
-    }
-
-    glBindTexture(info.target, 0);
+    glBindTexture(target, 0);
 
     result.width = info.width;
     result.height = info.height;
-    result.target = info.target;
+    result.depth = depth;
+    result.target = target;
     result.format = info.format;
-    result.internal_format = info.internal_format;
+    result.internal_format = internalFormat;
     result.type = info.type;
+    result.mipmaps = levels;
+    result.samples = samples;
     return result;
 }
 
@@ -377,7 +430,7 @@ rt_texture_t gl_create_texture_color(uint32_t width, uint32_t height, const void
         .height = height,
         .target = GL_TEXTURE_2D,
         .format = GL_RGBA,
-        .internal_format = GL_RGBA,
+        .internal_format = GL_RGBA8,
         .type = GL_UNSIGNED_BYTE,
         .min_filter = GL_LINEAR,
         .mag_filter = GL_LINEAR,
@@ -1025,8 +1078,8 @@ void gl_begin_render(rt_pass_render_t& pass)
         {
             if (pass.colors[i].texture.handle)
             {
-                glBindTexture(GL_TEXTURE_2D, pass.colors[i].texture.handle);
-                glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + i, GL_TEXTURE_2D,
+                glBindTexture(pass.colors[i].texture.target, pass.colors[i].texture.handle);
+                glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + i, pass.colors[i].texture.target,
                                        pass.colors[i].texture.handle, 0);
                 colorAttachments[colorCount++] = GL_COLOR_ATTACHMENT0 + i;
                 width = std::max(width, pass.colors[i].texture.width);
@@ -1037,12 +1090,12 @@ void gl_begin_render(rt_pass_render_t& pass)
 
         if (pass.depth.texture.handle)
         {
-            glBindTexture(GL_TEXTURE_2D, pass.depth.texture.handle);
+            glBindTexture(pass.depth.texture.target, pass.depth.texture.handle);
             if (pass.depth.texture.format == GL_DEPTH_COMPONENT)
-                glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, pass.depth.texture.handle,
+                glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, pass.depth.texture.target, pass.depth.texture.handle,
                                        0);
             else if (pass.depth.texture.format == GL_DEPTH_STENCIL)
-                glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_TEXTURE_2D,
+                glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, pass.depth.texture.target,
                                        pass.depth.texture.handle, 0);
             else
             {
@@ -1732,7 +1785,7 @@ void gl_copy_texture(rt_texture_copy_t source, rt_texture_copy_t destination, rt
                        (GLint)destination.origin.x, (GLint)destination.origin.y, (GLint)destination.origin.z,
                        (GLsizei)copySize.x, (GLsizei)copySize.y, depth);
 
-    if (destination.texture.mipmaps) glGenerateTextureMipmap(destination.texture.handle);
+    if (destination.texture.mipmaps > 1) glGenerateTextureMipmap(destination.texture.handle);
 }
 
 void gl_copy_texture_data(rt_texture_data_t source, rt_texture_copy_t destination, rt_size_t copySize)
@@ -1771,7 +1824,7 @@ void gl_copy_texture_data(rt_texture_data_t source, rt_texture_copy_t destinatio
                             (GLint)destination.origin.x, (GLint)destination.origin.y,
                             (GLsizei)copySize.x, (GLsizei)copySize.y, format, type, data);
 
-        if (destination.texture.mipmaps) glGenerateTextureMipmap(destination.texture.handle);
+        if (destination.texture.mipmaps > 1) glGenerateTextureMipmap(destination.texture.handle);
     }
     else if (destination.texture.target == GL_TEXTURE_3D)
     {
@@ -1779,7 +1832,7 @@ void gl_copy_texture_data(rt_texture_data_t source, rt_texture_copy_t destinatio
                             (GLint)destination.origin.x, (GLint)destination.origin.y, (GLint)destination.origin.z,
                             (GLsizei)copySize.x, (GLsizei)copySize.y, (GLsizei)std::max(1U, copySize.z), format, type, data);
 
-        if (destination.texture.mipmaps) glGenerateTextureMipmap(destination.texture.handle);
+        if (destination.texture.mipmaps > 1) glGenerateTextureMipmap(destination.texture.handle);
     }
     else
     {
@@ -1828,7 +1881,7 @@ void gl_copy_texture_buffer(rt_buffer_texel_t source, rt_texture_copy_t destinat
                             (GLint)destination.origin.x, (GLint)destination.origin.y,
                             (GLsizei)copySize.x, (GLsizei)copySize.y, format, type, data);
 
-        if (destination.texture.mipmaps) glGenerateTextureMipmap(destination.texture.handle);
+        if (destination.texture.mipmaps > 1) glGenerateTextureMipmap(destination.texture.handle);
     }
     else if (destination.texture.target == GL_TEXTURE_3D)
     {
@@ -1836,7 +1889,7 @@ void gl_copy_texture_buffer(rt_buffer_texel_t source, rt_texture_copy_t destinat
                             (GLint)destination.origin.x, (GLint)destination.origin.y, (GLint)destination.origin.z,
                             (GLsizei)copySize.x, (GLsizei)copySize.y, (GLsizei)std::max(1U, copySize.z), format, type, data);
 
-        if (destination.texture.mipmaps) glGenerateTextureMipmap(destination.texture.handle);
+        if (destination.texture.mipmaps > 1) glGenerateTextureMipmap(destination.texture.handle);
     }
     else
     {
