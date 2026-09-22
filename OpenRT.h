@@ -85,7 +85,7 @@ struct rt_texture_t
     GLenum format = GL_RGBA;
     GLenum internal_format = GL_RGBA;
     GLenum type = GL_UNSIGNED_BYTE;
-    uint32_t mipmaps = 1;
+    uint32_t mipmaps = 0;   // 0:auto generate
     uint32_t samples = 1;   // 1x / 4x
     void* native = nullptr;
 };
