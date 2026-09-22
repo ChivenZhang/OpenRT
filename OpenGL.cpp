@@ -285,6 +285,7 @@ rt_texture_t gl_create_texture(rt_texture_info_t const& info)
 {
     rt_texture_t result = {};
 
+    uint32_t mipmaps = 1;
     uint32_t samples = info.samples ? info.samples : 1;
     uint32_t depth = info.depth ? info.depth : 1;
     GLenum target = info.target;
@@ -299,25 +300,38 @@ rt_texture_t gl_create_texture(rt_texture_info_t const& info)
         abort();
     }
 
+    if (target != GL_TEXTURE_2D_MULTISAMPLE)
+    {
+        uint32_t maxDim = info.width;
+        if (target != GL_TEXTURE_1D) maxDim = std::max(maxDim, info.height);
+        if (target == GL_TEXTURE_3D) maxDim = std::max(maxDim, depth);
+        uint32_t maxLevels = 1;
+        while (maxDim > 1)
+        {
+            maxDim >>= 1;
+            maxLevels++;
+        }
+        mipmaps = info.mipmaps ? std::min(info.mipmaps, maxLevels) : maxLevels;
+    }
+
     glGenTextures(1, &result.handle);
     glBindTexture(target, result.handle);
 
-    // 上传纹理数据
     if (target == GL_TEXTURE_1D)
     {
-        glTexImage1D(target, 0, info.internal_format, info.width, 0, info.format, info.type, nullptr);
+        glTexStorage1D(target, (GLsizei)mipmaps, info.internal_format, (GLsizei)info.width);
     }
-    else if (info.target == GL_TEXTURE_2D)
+    else if (target == GL_TEXTURE_2D)
     {
-        glTexImage2D(info.target, 0, info.internal_format, info.width, info.height, 0, info.format, info.type, info.data);
+        glTexStorage2D(target, (GLsizei)mipmaps, info.internal_format, (GLsizei)info.width, (GLsizei)info.height);
     }
-    else if (info.target == GL_TEXTURE_3D || info.target == GL_TEXTURE_2D_ARRAY)
+    else if (target == GL_TEXTURE_2D_ARRAY || target == GL_TEXTURE_3D)
     {
-        glTexImage3D(info.target, 0, info.internal_format, info.width, info.height, info.depth, 0, info.format, info.type, info.data);
+        glTexStorage3D(target, (GLsizei)mipmaps, info.internal_format, (GLsizei)info.width, (GLsizei)info.height, (GLsizei)depth);
     }
-    else if (info.target == GL_TEXTURE_2D_MULTISAMPLE)
+    else if (target == GL_TEXTURE_2D_MULTISAMPLE)
     {
-        glTexImage2DMultisample(target, (GLsizei)samples, info.internal_format, (GLsizei)info.width, (GLsizei)info.height, GL_TRUE);
+        glTexStorage2DMultisample(target, (GLsizei)samples, info.internal_format, (GLsizei)info.width, (GLsizei)info.height, GL_TRUE);
     }
     else
     {
@@ -328,11 +342,17 @@ rt_texture_t gl_create_texture(rt_texture_info_t const& info)
     if (target != GL_TEXTURE_2D_MULTISAMPLE && info.data)
     {
         if (target == GL_TEXTURE_1D)
+        {
             glTexSubImage1D(target, 0, 0, (GLsizei)info.width, info.format, info.type, info.data);
+        }
         else if (target == GL_TEXTURE_2D)
+        {
             glTexSubImage2D(target, 0, 0, 0, (GLsizei)info.width, (GLsizei)info.height, info.format, info.type, info.data);
+        }
         else if (info.target == GL_TEXTURE_3D || info.target == GL_TEXTURE_2D_ARRAY)
+        {
             glTexSubImage3D(target, 0, 0, 0, 0, (GLsizei)info.width, (GLsizei)info.height, (GLsizei)depth, info.format, info.type, info.data);
+        }
     }
 
     if (info.data == nullptr)
@@ -351,7 +371,8 @@ rt_texture_t gl_create_texture(rt_texture_info_t const& info)
             }
             else if (info.internal_format == GL_DEPTH32F_STENCIL8)
             {
-                struct Float32Uint24_8 {
+                struct
+                {
                     float depth;
                     uint32_t stencil;
                 } clearValue = {1.0f, 0};
@@ -385,8 +406,8 @@ rt_texture_t gl_create_texture(rt_texture_info_t const& info)
         glTexParameteri(target, GL_TEXTURE_WRAP_R, info.wrap_r);
         glTexParameteri(target, GL_TEXTURE_MIN_FILTER, info.min_filter);
         glTexParameteri(target, GL_TEXTURE_MAG_FILTER, info.mag_filter);
-        // glTexParameteri(target, GL_TEXTURE_BASE_LEVEL, 0);
-        // glTexParameteri(target, GL_TEXTURE_MAX_LEVEL, (GLint)(levels - 1));
+        glTexParameteri(target, GL_TEXTURE_BASE_LEVEL, 0);
+        glTexParameteri(target, GL_TEXTURE_MAX_LEVEL, (GLint)(mipmaps - 1));
 
         if (info.wrap_s == GL_CLAMP_TO_BORDER || info.wrap_t == GL_CLAMP_TO_BORDER || info.wrap_r == GL_CLAMP_TO_BORDER)
         {
@@ -408,7 +429,7 @@ rt_texture_t gl_create_texture(rt_texture_info_t const& info)
     result.format = info.format;
     result.internal_format = info.internal_format;
     result.type = info.type;
-    result.mipmaps = info.mipmaps;
+    result.mipmaps = mipmaps;
     result.samples = samples;
     return result;
 }
