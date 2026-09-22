@@ -288,8 +288,7 @@ rt_texture_t gl_create_texture(rt_texture_info_t const& info)
     uint32_t samples = info.samples ? info.samples : 1;
     uint32_t depth = info.depth ? info.depth : 1;
     GLenum target = info.target;
-    if (target != GL_TEXTURE_1D && target != GL_TEXTURE_2D && target != GL_TEXTURE_2D_ARRAY &&
-        target != GL_TEXTURE_3D && target != GL_TEXTURE_2D_MULTISAMPLE)
+    if (target != GL_TEXTURE_1D && target != GL_TEXTURE_2D && target != GL_TEXTURE_2D_ARRAY && target != GL_TEXTURE_3D && target != GL_TEXTURE_2D_MULTISAMPLE)
     {
         fprintf(stderr, "Unsupported texture target");
         abort();
@@ -304,16 +303,13 @@ rt_texture_t gl_create_texture(rt_texture_info_t const& info)
         fprintf(stderr, "GL_TEXTURE_2D_MULTISAMPLE requires samples > 1");
         abort();
     }
-    bool multisample = (target == GL_TEXTURE_2D_MULTISAMPLE);
 
     uint32_t levels = 1;
-    if (!multisample)
+    if (target != GL_TEXTURE_2D_MULTISAMPLE)
     {
         uint32_t maxDim = info.width;
-        if (target != GL_TEXTURE_1D)
-            maxDim = std::max(maxDim, info.height);
-        if (target == GL_TEXTURE_3D)
-            maxDim = std::max(maxDim, depth);
+        if (target != GL_TEXTURE_1D) maxDim = std::max(maxDim, info.height);
+        if (target == GL_TEXTURE_3D) maxDim = std::max(maxDim, depth);
         uint32_t maxLevels = 1;
         while (maxDim > 1)
         {
@@ -349,11 +345,10 @@ rt_texture_t gl_create_texture(rt_texture_info_t const& info)
         glTexStorage2D(target, (GLsizei)levels, internalFormat, (GLsizei)info.width, (GLsizei)info.height);
     else if (target == GL_TEXTURE_2D_ARRAY || target == GL_TEXTURE_3D)
         glTexStorage3D(target, (GLsizei)levels, internalFormat, (GLsizei)info.width, (GLsizei)info.height, (GLsizei)depth);
-    else
-        glTexStorage2DMultisample(target, (GLsizei)samples, internalFormat,
-                                  (GLsizei)info.width, (GLsizei)info.height, GL_TRUE);
+    else if (target == GL_TEXTURE_2D_MULTISAMPLE)
+        glTexStorage2DMultisample(target, (GLsizei)samples, internalFormat, (GLsizei)info.width, (GLsizei)info.height, GL_TRUE);
 
-    if (!multisample && info.data)
+    if (target != GL_TEXTURE_2D_MULTISAMPLE && info.data)
     {
         if (target == GL_TEXTURE_1D)
             glTexSubImage1D(target, 0, 0, (GLsizei)info.width, info.format, info.type, info.data);
@@ -399,7 +394,7 @@ rt_texture_t gl_create_texture(rt_texture_info_t const& info)
         }
     }
 
-    if (!multisample)
+    if (target != GL_TEXTURE_2D_MULTISAMPLE)
     {
         glTexParameteri(target, GL_TEXTURE_WRAP_S, info.wrap_s);
         glTexParameteri(target, GL_TEXTURE_WRAP_T, info.wrap_t);
