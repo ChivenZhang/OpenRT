@@ -470,7 +470,6 @@ struct vk_native_t
     VkAllocationCallbacks* allocator = nullptr;
     VkCommandPool cmdPool = nullptr;
     VkCommandBuffer cmdBuffer = nullptr;
-    bool cmdRecording = false;
     bool inRendering = false;
     VkDescriptorPool descriptorPool = nullptr;
     VkPipelineCache pipelineCache = nullptr;
@@ -517,21 +516,6 @@ static uint32_t vk_find_memory_type(uint32_t typeBits, VkMemoryPropertyFlags fla
     }
     fprintf(stderr, "Vulkan: no compatible memory type\n");
     abort();
-}
-
-static void vk_ensure_recording()
-{
-    if (vulkan.cmdRecording || !vulkan.cmdBuffer)
-        return;
-    VkCommandBufferBeginInfo beginInfo = {};
-    beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-    beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-    if (vkBeginCommandBuffer(vulkan.cmdBuffer, &beginInfo) != VK_SUCCESS)
-    {
-        fprintf(stderr, "Vulkan: failed to begin command buffer\n");
-        abort();
-    }
-    vulkan.cmdRecording = true;
 }
 
 static void vk_destroy_staging(vk_staging_t& staging)
@@ -584,7 +568,6 @@ static void vk_transition_image(rt_texture_native_t& image, VkImageLayout newLay
 {
     if (!image.handle || image.layout == newLayout)
         return;
-    vk_ensure_recording();
 
     VkImageMemoryBarrier barrier = {};
     barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
@@ -1078,6 +1061,14 @@ void vk_load_library(VkInstance instance, VkDevice device, uint32_t family)
         allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
         allocInfo.commandBufferCount = 1;
         vkAllocateCommandBuffers(vulkan.device, &allocInfo, &vulkan.cmdBuffer);
+        VkCommandBufferBeginInfo beginInfo = {};
+        beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+        beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+        if (vkBeginCommandBuffer(vulkan.cmdBuffer, &beginInfo) != VK_SUCCESS)
+        {
+            fprintf(stderr, "Vulkan: failed to begin command buffer\n");
+            abort();
+        }
     }
 
     VkDescriptorPoolSize poolSizes[] = {
@@ -1169,11 +1160,8 @@ void vk_unload_library()
 {
     if (!vulkan.device) return;
     vkDeviceWaitIdle(vulkan.device);
-    if (vulkan.cmdRecording && vulkan.cmdBuffer)
-    {
+    if (vulkan.cmdBuffer)
         vkEndCommandBuffer(vulkan.cmdBuffer);
-        vulkan.cmdRecording = false;
-    }
     vk_flush_staging();
     if (vulkan.defaultSampler)
     {
@@ -1332,7 +1320,6 @@ rt_buffer_t vk_create_buffer(rt_buffer_info_t const& info)
             {
                 std::memcpy(stagingPtr, info.data, info.size);
                 vkUnmapMemory(vulkan.device, staging.memory);
-                vk_ensure_recording();
                 VkBufferCopy region = {0, 0, info.size};
                 vkCmdCopyBuffer(vulkan.cmdBuffer, staging.buffer, native.handle, 1, &region);
                 vulkan.pendingStaging.push_back(staging);
@@ -1870,7 +1857,6 @@ void vk_begin_compute(rt_pass_compute_t& pass)
         fprintf(stderr, "Pipeline not end");
         abort();
     }
-    vk_ensure_recording();
     vk_clear_bindings();
     pass.handle = ++vulkan.passID;
     auto& native = vulkan.computePasses[pass.handle];
@@ -1917,7 +1903,6 @@ void vk_begin_render(rt_pass_render_t& pass)
         fprintf(stderr, "Pipeline not end");
         abort();
     }
-    vk_ensure_recording();
     vk_clear_bindings();
     pass.handle = ++vulkan.passID;
     auto& native = vulkan.renderPasses[pass.handle];
@@ -2068,7 +2053,6 @@ void vk_begin_transfer(rt_pass_transfer_t& pass)
         fprintf(stderr, "Pipeline not end");
         abort();
     }
-    vk_ensure_recording();
     pass.handle = ++vulkan.passID;
     auto& native = vulkan.transferPasses[pass.handle];
     pass.native = &native;
@@ -2384,7 +2368,7 @@ void vk_draw_screen(int width, int height, rt_color_t clear, rt_texture_t& textu
 
 void vk_submit()
 {
-    if (!vulkan.cmdBuffer || !vulkan.cmdRecording)
+    if (!vulkan.cmdBuffer)
         return;
     if (vulkan.inRendering)
     {
@@ -2396,7 +2380,6 @@ void vk_submit()
         fprintf(stderr, "Vulkan: failed to end command buffer\n");
         abort();
     }
-    vulkan.cmdRecording = false;
 
     VkSubmitInfo submitInfo = {};
     submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
@@ -2409,6 +2392,14 @@ void vk_submit()
     }
     vk_flush_staging();
     vkResetCommandBuffer(vulkan.cmdBuffer, 0);
+    VkCommandBufferBeginInfo beginInfo = {};
+    beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+    if (vkBeginCommandBuffer(vulkan.cmdBuffer, &beginInfo) != VK_SUCCESS)
+    {
+        fprintf(stderr, "Vulkan: failed to begin command buffer\n");
+        abort();
+    }
 }
 
 #endif
