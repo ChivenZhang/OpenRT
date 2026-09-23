@@ -107,7 +107,7 @@ void frame(int width, int height)
         rt_end_render(pass);
     }
 
-    rt_draw_screen(width, height, pass_color, {});
+    rt_draw_screen(width, height, {}, pass_color);
 
     rt_submit();
 }

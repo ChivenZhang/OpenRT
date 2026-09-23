@@ -2365,7 +2365,7 @@ rt_mesh_t vk_create_mesh_screen()
     return vk_create_mesh(points, nullptr, uvs, 3, nullptr, 0);
 }
 
-void vk_draw_screen(int width, int height, rt_texture_t texture, rt_color_t clear)
+void vk_draw_screen(int width, int height, rt_color_t clear, rt_texture_t& texture)
 {
     static auto module = vk_create_module_render({
         .vertex = {rt_vertex_vertex, {}, rt_vertex_uv},

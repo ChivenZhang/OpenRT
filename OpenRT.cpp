@@ -87,6 +87,6 @@ void (*rt_destroy_meshlet)(rt_meshlet_t& meshlet) = nullptr;
 void (*rt_draw_meshlet)(rt_meshlet_t& meshlet) = nullptr;
 
 rt_mesh_t (*rt_create_mesh_screen)() = nullptr;
-void (*rt_draw_screen)(int width, int height, rt_texture_t texture, rt_color_t clear) = nullptr;
+void (*rt_draw_screen)(int width, int height, rt_color_t clear, rt_texture_t& texture) = nullptr;
 
 void (*rt_submit)() = nullptr;

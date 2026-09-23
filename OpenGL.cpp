@@ -43,15 +43,15 @@ void gl_load_library()
         abort();
     }
     fprintf(stdout, "OpenGL Version: %s\n", glGetString(GL_VERSION));
-    fprintf(stdout, "GLSL Version: %s\n", glGetString(GL_SHADING_LANGUAGE_VERSION));
-    fprintf(stdout, "OpenGL Renderer: %s\n", glGetString(GL_RENDERER));
-    fprintf(stdout, "OpenGL Vendor: %s\n", glGetString(GL_VENDOR));
+    fprintf(stdout, "GLSL   Version: %s\n", glGetString(GL_SHADING_LANGUAGE_VERSION));
+    fprintf(stdout, "OpenGL Render : %s\n", glGetString(GL_RENDERER));
+    fprintf(stdout, "OpenGL Vendor : %s\n", glGetString(GL_VENDOR));
     GLint maxMeshOutputPrimitives = 0;
     glGetIntegerv(GL_MAX_MESH_OUTPUT_PRIMITIVES_NV, &maxMeshOutputPrimitives);
     GLint maxMeshOutputVertices = 0;
     glGetIntegerv(GL_MAX_MESH_OUTPUT_VERTICES_NV, &maxMeshOutputVertices);
-    fprintf(stdout, "Mesh Output Primitives %d\n", maxMeshOutputPrimitives);
-    fprintf(stdout, "Mesh Output Vertices %d\n", maxMeshOutputVertices);
+    fprintf(stdout, "Meshlet Primitives: %d\n", maxMeshOutputPrimitives);
+    fprintf(stdout, "Meshlet Vertices  : %d\n", maxMeshOutputVertices);
 
     // ====================================================================
 
@@ -2208,7 +2208,7 @@ rt_mesh_t gl_create_mesh_screen()
     return gl_create_mesh(points, nullptr, uvs, 3, nullptr, 0);
 }
 
-void gl_draw_screen(int width, int height, rt_texture_t texture, rt_color_t clear)
+void gl_draw_screen(int width, int height, rt_color_t clear, rt_texture_t& texture)
 {
     constexpr auto VS = R"(
         #version 460
@@ -2241,7 +2241,7 @@ void gl_draw_screen(int width, int height, rt_texture_t texture, rt_color_t clea
         }
     )";
     static auto module = gl_create_module_render({.vshader = VS, .fshader = FS, .vertex = {rt_vertex_vertex, {}, rt_vertex_uv,},});
-    rt_pass_render_t pass = {.module = module, .screen = {.color = { .clear = true, .value = clear, }}};
+    rt_pass_render_t pass = {.module = module, .screen = {.color = { .clear = true, .value = clear,}}};
     gl_begin_render(pass);
     gl_set_viewport(0, 0, width, height);
     gl_bind_texture(texture, { .binding = 0, });

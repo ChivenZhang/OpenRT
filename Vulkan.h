@@ -78,7 +78,7 @@ void vk_destroy_meshlet(rt_meshlet_t& meshlet);
 void vk_draw_meshlet(rt_meshlet_t& meshlet);
 
 rt_mesh_t vk_create_mesh_screen();
-void vk_draw_screen(int width, int height, rt_texture_t texture, rt_color_t clear = {});
+void vk_draw_screen(int width, int height, rt_color_t clear, rt_texture_t& texture);
 
 void vk_submit();
 
