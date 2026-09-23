@@ -212,7 +212,7 @@ void gl_destroy_buffer(rt_buffer_t& buffer)
     buffer.handle = 0;
 }
 
-void gl_bind_buffer(rt_buffer_t buffer, rt_buffer_bind_t bind)
+void gl_bind_buffer(rt_buffer_t& buffer, rt_buffer_bind_t bind)
 {
     if (opengl.currentPipeline == nullptr)
     {
@@ -519,7 +519,7 @@ void gl_destroy_texture(rt_texture_t& texture)
     texture.handle = 0;
 }
 
-void gl_bind_texture(rt_texture_t texture, rt_texture_bind_t bind)
+void gl_bind_texture(rt_texture_t& texture, rt_texture_bind_t bind)
 {
     if (opengl.currentPipeline == nullptr)
     {
@@ -536,7 +536,7 @@ void gl_bind_texture(rt_texture_t texture, rt_texture_bind_t bind)
     }
 }
 
-void gl_bind_texture_storage(rt_texture_t texture, rt_texture_storage_bind_t bind)
+void gl_bind_texture_storage(rt_texture_t& texture, rt_texture_storage_bind_t bind)
 {
     if (opengl.currentPipeline == nullptr)
     {
@@ -574,7 +574,7 @@ void gl_destroy_sampler(rt_sampler_t& sampler)
     sampler.handle = 0;
 }
 
-void gl_bind_sampler(rt_sampler_t sampler, rt_sampler_bind_t bind)
+void gl_bind_sampler(rt_sampler_t& sampler, rt_sampler_bind_t bind)
 {
     if (opengl.currentPipeline == nullptr)
     {
@@ -2015,7 +2015,7 @@ void gl_destroy_mesh(rt_mesh_t& mesh)
     gl_destroy_buffer(mesh.index);
 }
 
-void gl_draw_mesh(rt_mesh_t const& mesh)
+void gl_draw_mesh(rt_mesh_t& mesh)
 {
     if (opengl.currentPipeline == nullptr)
     {
@@ -2065,7 +2065,7 @@ void gl_draw_mesh(rt_mesh_t const& mesh)
     }
 }
 
-void gl_draw_mesh_multi(rt_mesh_t const& mesh, uint32_t count)
+void gl_draw_mesh_multi(rt_mesh_t& mesh, uint32_t count)
 {
     if (opengl.currentPipeline == nullptr)
     {
@@ -2147,7 +2147,7 @@ void gl_destroy_meshlet(rt_meshlet_t& meshlet)
     gl_destroy_buffer(meshlet.index);
 }
 
-void gl_draw_meshlet(rt_meshlet_t const& meshlet)
+void gl_draw_meshlet(rt_meshlet_t& meshlet)
 {
     if (opengl.currentPipeline == nullptr)
     {
@@ -2193,18 +2193,19 @@ void gl_draw_meshlet(rt_meshlet_t const& meshlet)
 
 rt_mesh_t gl_create_mesh_screen()
 {
-    const float points[] = {
+    const float points[]
+    {
         -1.0f, -1.0f, 0.0f,
-        3.0f, -1.0f, 0.0f,
-        -1.0f, 3.0f, 0.0f,
+        +3.0f, -1.0f, 0.0f,
+        -1.0f, +3.0f, 0.0f,
     };
-    const float uvs[] = {
+    const float uvs[]
+    {
         0.0f, 0.0f,
         2.0f, 0.0f,
         0.0f, 2.0f,
     };
-    static auto quad = gl_create_mesh(points, nullptr, uvs, 3, nullptr, 0);
-    return quad;
+    return gl_create_mesh(points, nullptr, uvs, 3, nullptr, 0);
 }
 
 void gl_draw_screen(int width, int height, rt_texture_t texture, rt_color_t clear)
@@ -2244,7 +2245,11 @@ void gl_draw_screen(int width, int height, rt_texture_t texture, rt_color_t clea
     gl_begin_render(pass);
     gl_set_viewport(0, 0, width, height);
     gl_bind_texture(texture, { .binding = 0, });
-    if (texture.handle) gl_draw_mesh(gl_create_mesh_screen());
+    if (texture.handle)
+    {
+        static auto mesh = gl_create_mesh_screen();
+        gl_draw_mesh(mesh);
+    }
     gl_end_render(pass);
 }
 

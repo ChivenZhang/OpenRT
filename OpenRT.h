@@ -398,7 +398,7 @@ struct rt_size_t
 
 struct rt_buffer_copy_t
 {
-    rt_buffer_t buffer;
+    rt_buffer_t& buffer;
     size_t offset = 0;
 };
 
@@ -411,7 +411,7 @@ struct rt_buffer_data_t
 
 struct rt_buffer_texel_t
 {
-    rt_buffer_t buffer;
+    rt_buffer_t& buffer;
     size_t offset = 0;
     uint32_t bytesPerRow = 0;
     uint32_t rowsPerImage = 0;
@@ -419,7 +419,7 @@ struct rt_buffer_texel_t
 
 struct rt_texture_copy_t
 {
-    rt_texture_t texture;
+    rt_texture_t& texture;
     GLenum aspect = GL_DEPTH_COMPONENT; // GL_DEPTH_COMPONENT / GL_STENCIL_INDEX
     uint32_t mipLevel = 0;
     rt_size_t origin;
@@ -441,7 +441,7 @@ OPENRT_API void rt_unload_library();
 
 OPENRT_API rt_buffer_t (*rt_create_buffer)(rt_buffer_info_t const& info);
 OPENRT_API void (*rt_destroy_buffer)(rt_buffer_t& buffer);
-OPENRT_API void (*rt_bind_buffer)(rt_buffer_t buffer, rt_buffer_bind_t bind);
+OPENRT_API void (*rt_bind_buffer)(rt_buffer_t& buffer, rt_buffer_bind_t bind);
 OPENRT_API void* (*rt_map_buffer)(rt_buffer_t& buffer, GLenum mode, size_t offset, size_t size); // mode: GL_READ_ONLY / GL_WRITE_ONLY / GL_READ_WRITE
 OPENRT_API void (*rt_unmap_buffer)(rt_buffer_t& buffer);
 
@@ -451,12 +451,12 @@ OPENRT_API rt_texture_t (*rt_create_texture_color_float)(uint32_t width, uint32_
 OPENRT_API rt_texture_t (*rt_create_texture_depth)(uint32_t width, uint32_t height, const void* data);
 OPENRT_API rt_texture_t (*rt_create_texture_depth_stencil)(uint32_t width, uint32_t height, const void* data);
 OPENRT_API void (*rt_destroy_texture)(rt_texture_t& texture);
-OPENRT_API void (*rt_bind_texture)(rt_texture_t texture, rt_texture_bind_t bind);
-OPENRT_API void (*rt_bind_texture_storage)(rt_texture_t texture, rt_texture_storage_bind_t bind);
+OPENRT_API void (*rt_bind_texture)(rt_texture_t& texture, rt_texture_bind_t bind);
+OPENRT_API void (*rt_bind_texture_storage)(rt_texture_t& texture, rt_texture_storage_bind_t bind);
 
 OPENRT_API rt_sampler_t (*rt_create_sampler)(rt_sampler_info_t const& info);
 OPENRT_API void (*rt_destroy_sampler)(rt_sampler_t& sampler);
-OPENRT_API void (*rt_bind_sampler)(rt_sampler_t sampler, rt_sampler_bind_t bind);
+OPENRT_API void (*rt_bind_sampler)(rt_sampler_t& sampler, rt_sampler_bind_t bind);
 
 OPENRT_API rt_module_compute_t (*rt_create_module_compute)(rt_module_compute_info_t const& info);
 OPENRT_API rt_module_render_t (*rt_create_module_render)(rt_module_render_info_t const& info);
@@ -495,12 +495,12 @@ OPENRT_API void (*rt_copy_texture_buffer)(rt_buffer_texel_t source, rt_texture_c
 
 OPENRT_API rt_mesh_t (*rt_create_mesh)(const float* vertices, const float* normals, const float* uvs, size_t vertex_count, const unsigned int* indices, size_t index_count);
 OPENRT_API void (*rt_destroy_mesh)(rt_mesh_t& mesh);
-OPENRT_API void (*rt_draw_mesh)(rt_mesh_t const& mesh);
-OPENRT_API void (*rt_draw_mesh_multi)(rt_mesh_t const& mesh, uint32_t count);
+OPENRT_API void (*rt_draw_mesh)(rt_mesh_t& mesh);
+OPENRT_API void (*rt_draw_mesh_multi)(rt_mesh_t& mesh, uint32_t count);
 
 OPENRT_API rt_meshlet_t (*rt_create_meshlet)(const float* vertices, const float* normals, const float* uvs, size_t vertex_count, const unsigned int* indices, size_t index_count);
 OPENRT_API void (*rt_destroy_meshlet)(rt_meshlet_t& meshlet);
-OPENRT_API void (*rt_draw_meshlet)(rt_meshlet_t const& meshlet);
+OPENRT_API void (*rt_draw_meshlet)(rt_meshlet_t& meshlet);
 
 OPENRT_API rt_mesh_t (*rt_create_mesh_screen)();
 OPENRT_API void (*rt_draw_screen)(int width, int height, rt_texture_t texture, rt_color_t clear);

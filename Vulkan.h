@@ -18,7 +18,7 @@ void vk_unload_library();
 
 rt_buffer_t vk_create_buffer(rt_buffer_info_t const& info);
 void vk_destroy_buffer(rt_buffer_t& buffer);
-void vk_bind_buffer(rt_buffer_t buffer, rt_buffer_bind_t bind = {});
+void vk_bind_buffer(rt_buffer_t& buffer, rt_buffer_bind_t bind = {});
 void* vk_map_buffer(rt_buffer_t& buffer, GLenum mode, size_t offset, size_t size);
 void vk_unmap_buffer(rt_buffer_t& buffer);
 
@@ -27,12 +27,12 @@ rt_texture_t vk_create_texture_color(uint32_t width, uint32_t height, const void
 rt_texture_t vk_create_texture_depth(uint32_t width, uint32_t height, const void* data);
 rt_texture_t vk_create_texture_depth_stencil(uint32_t width, uint32_t height, const void* data);
 void vk_destroy_texture(rt_texture_t& texture);
-void vk_bind_texture(rt_texture_t texture, rt_texture_bind_t bind = {});
-void vk_bind_texture_storage(rt_texture_t texture, rt_texture_storage_bind_t bind = {});
+void vk_bind_texture(rt_texture_t& texture, rt_texture_bind_t bind = {});
+void vk_bind_texture_storage(rt_texture_t& texture, rt_texture_storage_bind_t bind = {});
 
 rt_sampler_t vk_create_sampler(rt_sampler_info_t const& info);
 void vk_destroy_sampler(rt_sampler_t& sampler);
-void vk_bind_sampler(rt_sampler_t sampler, rt_sampler_bind_t bind = {});
+void vk_bind_sampler(rt_sampler_t& sampler, rt_sampler_bind_t bind = {});
 
 rt_module_compute_t vk_create_module_compute(rt_module_compute_info_t const& info);
 rt_module_render_t vk_create_module_render(rt_module_render_info_t const& info);
@@ -71,11 +71,11 @@ void vk_copy_texture_buffer(rt_buffer_texel_t source, rt_texture_copy_t destinat
 
 rt_mesh_t vk_create_mesh(const float* vertices, const float* normals, const float* uvs, size_t vertex_count, const unsigned int* indices, size_t index_count);
 void vk_destroy_mesh(rt_mesh_t& mesh);
-void vk_draw_mesh(rt_mesh_t const& mesh);
+void vk_draw_mesh(rt_mesh_t& mesh);
 
 rt_meshlet_t vk_create_meshlet(const float* vertices, const float* normals, const float* uvs, size_t vertex_count, const unsigned int* indices, size_t index_count);
 void vk_destroy_meshlet(rt_meshlet_t& meshlet);
-void vk_draw_meshlet(rt_meshlet_t const& meshlet);
+void vk_draw_meshlet(rt_meshlet_t& meshlet);
 
 rt_mesh_t vk_create_mesh_screen();
 void vk_draw_screen(int width, int height, rt_texture_t texture, rt_color_t clear = {});

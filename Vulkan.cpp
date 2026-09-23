@@ -1369,7 +1369,7 @@ void vk_destroy_buffer(rt_buffer_t& buffer)
     buffer = {};
 }
 
-void vk_bind_buffer(rt_buffer_t buffer, rt_buffer_bind_t bind)
+void vk_bind_buffer(rt_buffer_t& buffer, rt_buffer_bind_t bind)
 {
     if (vulkan.currentPipeline == nullptr)
     {
@@ -1564,7 +1564,7 @@ void vk_destroy_texture(rt_texture_t& texture)
     texture = {};
 }
 
-void vk_bind_texture(rt_texture_t texture, rt_texture_bind_t bind)
+void vk_bind_texture(rt_texture_t& texture, rt_texture_bind_t bind)
 {
     if (vulkan.currentPipeline == nullptr)
     {
@@ -1576,7 +1576,7 @@ void vk_bind_texture(rt_texture_t texture, rt_texture_bind_t bind)
     vulkan.currentBinding[bind.binding].texture_bind = bind;
 }
 
-void vk_bind_texture_storage(rt_texture_t texture, rt_texture_storage_bind_t bind)
+void vk_bind_texture_storage(rt_texture_t& texture, rt_texture_storage_bind_t bind)
 {
     if (vulkan.currentPipeline == nullptr)
     {
@@ -1628,7 +1628,7 @@ void vk_destroy_sampler(rt_sampler_t& sampler)
     sampler = {};
 }
 
-void vk_bind_sampler(rt_sampler_t sampler, rt_sampler_bind_t bind)
+void vk_bind_sampler(rt_sampler_t& sampler, rt_sampler_bind_t bind)
 {
     if (vulkan.currentPipeline == nullptr)
     {
@@ -2248,7 +2248,7 @@ void vk_destroy_mesh(rt_mesh_t& mesh)
     mesh.native = nullptr;
 }
 
-void vk_draw_mesh(rt_mesh_t const& mesh)
+void vk_draw_mesh(rt_mesh_t& mesh)
 {
     vk_require_pass(GL_MODULE_RENDER);
     vk_flush_descriptors();
@@ -2321,7 +2321,7 @@ void vk_destroy_meshlet(rt_meshlet_t& meshlet)
     meshlet.native = nullptr;
 }
 
-void vk_draw_meshlet(rt_meshlet_t const& meshlet)
+void vk_draw_meshlet(rt_meshlet_t& meshlet)
 {
     vk_require_pass(GL_MODULE_RENDER);
     rt_module_render_t const& module = vulkan.currentRenderPass->module;
@@ -2350,18 +2350,19 @@ void vk_draw_meshlet(rt_meshlet_t const& meshlet)
 
 rt_mesh_t vk_create_mesh_screen()
 {
-    const float points[] = {
+    const float points[]
+    {
         -1.0f, -1.0f, 0.0f,
-        3.0f, -1.0f, 0.0f,
-        -1.0f, 3.0f, 0.0f,
+        +3.0f, -1.0f, 0.0f,
+        -1.0f, +3.0f, 0.0f,
     };
-    const float uvs[] = {
+    const float uvs[]
+    {
         0.0f, 0.0f,
         2.0f, 0.0f,
         0.0f, 2.0f,
     };
-    static auto quad = vk_create_mesh(points, nullptr, uvs, 3, nullptr, 0);
-    return quad;
+    return vk_create_mesh(points, nullptr, uvs, 3, nullptr, 0);
 }
 
 void vk_draw_screen(int width, int height, rt_texture_t texture, rt_color_t clear)
@@ -2370,13 +2371,14 @@ void vk_draw_screen(int width, int height, rt_texture_t texture, rt_color_t clea
         .vertex = {rt_vertex_vertex, {}, rt_vertex_uv},
         .binding = {{.binding = 0, .type = GL_BINDING_TEXTURE}},
     });
-    if (!module.handle)
-        return;
+    if (!module.handle) return;
+
     rt_pass_render_t pass = {.module = module, .screen = {.color = {.clear = true, .value = clear}}};
     vk_begin_render(pass);
     vk_set_viewport(0, 0, width, height);
     vk_bind_texture(texture, {.binding = 0});
-    vk_draw_mesh(vk_create_mesh_screen());
+    static auto mesh = vk_create_mesh_screen();
+    vk_draw_mesh(mesh);
     vk_end_render(pass);
 }
 

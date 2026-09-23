@@ -18,7 +18,7 @@ void gl_unload_library();
 
 rt_buffer_t gl_create_buffer(rt_buffer_info_t const& info);
 void gl_destroy_buffer(rt_buffer_t& buffer);
-void gl_bind_buffer(rt_buffer_t buffer, rt_buffer_bind_t bind = {});
+void gl_bind_buffer(rt_buffer_t& buffer, rt_buffer_bind_t bind = {});
 void* gl_map_buffer(rt_buffer_t& buffer, GLenum mode, size_t offset, size_t size);
 void gl_unmap_buffer(rt_buffer_t& buffer);
 
@@ -28,12 +28,12 @@ rt_texture_t gl_create_texture_color_float(uint32_t width, uint32_t height, cons
 rt_texture_t gl_create_texture_depth(uint32_t width, uint32_t height, const void* data);
 rt_texture_t gl_create_texture_depth_stencil(uint32_t width, uint32_t height, const void* data);
 void gl_destroy_texture(rt_texture_t& texture);
-void gl_bind_texture(rt_texture_t texture, rt_texture_bind_t bind = {});
-void gl_bind_texture_storage(rt_texture_t texture, rt_texture_storage_bind_t bind = {});
+void gl_bind_texture(rt_texture_t& texture, rt_texture_bind_t bind = {});
+void gl_bind_texture_storage(rt_texture_t& texture, rt_texture_storage_bind_t bind = {});
 
 rt_sampler_t gl_create_sampler(rt_sampler_info_t const& info);
 void gl_destroy_sampler(rt_sampler_t& sampler);
-void gl_bind_sampler(rt_sampler_t sampler, rt_sampler_bind_t bind = {});
+void gl_bind_sampler(rt_sampler_t& sampler, rt_sampler_bind_t bind = {});
 
 rt_module_compute_t gl_create_module_compute(rt_module_compute_info_t const& info);
 rt_module_render_t gl_create_module_render(rt_module_render_info_t const& info);
@@ -72,12 +72,12 @@ void gl_copy_texture_buffer(rt_buffer_texel_t source, rt_texture_copy_t destinat
 
 rt_mesh_t gl_create_mesh(const float* vertices, const float* normals, const float* uvs, size_t vertex_count, const unsigned int* indices, size_t index_count);
 void gl_destroy_mesh(rt_mesh_t& mesh);
-void gl_draw_mesh(rt_mesh_t const& mesh);
-void gl_draw_mesh_multi(rt_mesh_t const& mesh, uint32_t count);
+void gl_draw_mesh(rt_mesh_t& mesh);
+void gl_draw_mesh_multi(rt_mesh_t& mesh, uint32_t count);
 
 rt_meshlet_t gl_create_meshlet(const float* vertices, const float* normals, const float* uvs, size_t vertex_count, const unsigned int* indices, size_t index_count);
 void gl_destroy_meshlet(rt_meshlet_t& meshlet);
-void gl_draw_meshlet(rt_meshlet_t const& meshlet);
+void gl_draw_meshlet(rt_meshlet_t& meshlet);
 
 rt_mesh_t gl_create_mesh_screen();
 void gl_draw_screen(int width, int height, rt_texture_t texture, rt_color_t clear = {});

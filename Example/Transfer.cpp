@@ -82,7 +82,8 @@ void frame(int width, int height)
 
         rt_bind_texture(texture0, {.binding = 0,});
 
-        rt_draw_mesh(rt_create_mesh_screen());
+        static auto mesh = rt_create_mesh_screen();
+        rt_draw_mesh(mesh);
 
         rt_end_render(pass);
     }
