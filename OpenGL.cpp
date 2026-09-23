@@ -1084,8 +1084,8 @@ void gl_begin_render(rt_pass_render_t& pass)
         // Render State
 
         int32_t colorCount = 0;
-        GLenum colorAttachments[16]{};
         uint32_t width = 0, height = 0;
+        GLenum colorAttachments[GL_MAX_COLOR_TEXTURE_NUM] = {};
         for (size_t i = 0; i < std::size(pass.colors); ++i)
         {
             if (pass.colors[i].texture.handle)
@@ -1104,11 +1104,13 @@ void gl_begin_render(rt_pass_render_t& pass)
         {
             glBindTexture(pass.depth.texture.target, pass.depth.texture.handle);
             if (pass.depth.texture.format == GL_DEPTH_COMPONENT)
-                glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, pass.depth.texture.target, pass.depth.texture.handle,
-                                       0);
+            {
+                glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, pass.depth.texture.target, pass.depth.texture.handle, 0);
+            }
             else if (pass.depth.texture.format == GL_DEPTH_STENCIL)
-                glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, pass.depth.texture.target,
-                                       pass.depth.texture.handle, 0);
+            {
+                glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, pass.depth.texture.target, pass.depth.texture.handle, 0);
+            }
             else
             {
                 fprintf(stderr, "Invalid depth attachment\n");
@@ -1131,14 +1133,18 @@ void gl_begin_render(rt_pass_render_t& pass)
             if (pass.colors[i].texture.handle)
             {
                 if (pass.colors[i].clear)
+                {
                     glColorMask(true, true, true, true);
-                if (pass.colors[i].clear)
                     glClearBufferfv(GL_COLOR, (int32_t)i, &pass.colors[i].value.r);
+                }
 
                 if (pass.module.colors[i].color.func != GL_ADD || pass.module.colors[i].color.src != GL_ONE ||
                     pass.module.colors[i].color.dst != GL_ZERO || pass.module.colors[i].alpha.func != GL_ADD ||
                     pass.module.colors[i].alpha.src != GL_ONE || pass.module.colors[i].alpha.dst != GL_ZERO)
+                {
                     glEnable(GL_BLEND);
+                }
+
                 glBlendEquationSeparatei(i, pass.module.colors[i].color.func, pass.module.colors[i].alpha.func);
                 glBlendFuncSeparatei(i, pass.module.colors[i].color.src, pass.module.colors[i].color.dst, pass.module.colors[i].alpha.src, pass.module.colors[i].alpha.dst);
             }
@@ -1275,11 +1281,17 @@ void gl_begin_render(rt_pass_render_t& pass)
 
     glFrontFace(pass.module.front_face);
     if (pass.module.cull_mode)
+    {
         glCullFace(pass.module.cull_mode);
+    }
     if (pass.module.cull_mode)
+    {
         glEnable(GL_CULL_FACE);
+    }
     else
+    {
         glDisable(GL_CULL_FACE);
+    }
 
     glPolygonMode(GL_FRONT_AND_BACK, pass.module.fill_mode);
 }
