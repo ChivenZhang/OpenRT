@@ -1,6 +1,16 @@
 #pragma once
 #include "OpenRT.h"
 
+struct rt_image_t
+{
+    void* data = nullptr;
+    size_t size = 0;
+    uint32_t width = 0, height = 0, channel = 0;
+    GLenum type = GL_UNSIGNED_BYTE;
+};
+rt_image_t rt_load_image_file(const char* filename, bool flip = false);
+void rt_destroy_image(rt_image_t& image);
+rt_texture_t rt_load_texture(rt_image_t image);
 rt_texture_t rt_load_texture_file(const char* filename, bool flip = false);
 rt_mesh_t rt_create_mesh_cube(float width, float height, float length);
 rt_mesh_t rt_create_mesh_plane(float size, int N = 1);
@@ -15,7 +25,8 @@ rt_meshlet_t rt_create_meshlet_capsule(float radius, float height, int rings, in
 
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb_image.h>
-static rt_texture_t rt_load_texture_file(const char* filename, bool flip)
+
+static rt_image_t rt_load_image_file(const char* filename, bool flip)
 {
     // stb 默认以左上角为原点，flip 为 true 时翻转为 OpenGL 的左下角原点
     stbi_set_flip_vertically_on_load(flip ? 1 : 0);
@@ -23,19 +34,23 @@ static rt_texture_t rt_load_texture_file(const char* filename, bool flip)
     int width = 0, height = 0, channels = 0;
     void* data = nullptr;
     GLenum type = GL_UNSIGNED_BYTE;
+    size_t size = 0;
 
     // 按文件实际位深选择加载方式：HDR -> float，16 位 PNG/PSD -> ushort，其余 -> byte
     if (stbi_is_hdr(filename)) {
         data = stbi_loadf(filename, &width, &height, &channels, 0);
         type = GL_FLOAT;
+        size = width * height * channels * sizeof(float);
     }
     else if (stbi_is_16_bit(filename)) {
         data = stbi_load_16(filename, &width, &height, &channels, 0);
         type = GL_UNSIGNED_SHORT;
+        size = width * height * channels * sizeof(uint16_t);
     }
     else {
         data = stbi_load(filename, &width, &height, &channels, 0);
         type = GL_UNSIGNED_BYTE;
+        size = width * height * channels * sizeof(uint8_t);
     }
 
     if (!data) {
@@ -43,15 +58,38 @@ static rt_texture_t rt_load_texture_file(const char* filename, bool flip)
         return {};
     }
 
+    rt_image_t image = {};
+    image.data = data;
+    image.size = size;
+    image.width = width;
+    image.height = height;
+    image.channel = channels;
+    image.type = type;
+    return image;
+}
+
+static void rt_destroy_image(rt_image_t& image)
+{
+    if (image.data) stbi_image_free(image.data);
+    image.data = nullptr;
+}
+
+static rt_texture_t rt_load_texture(rt_image_t image)
+{
+    auto data = image.data;
+    auto type = image.type;
+    auto width = image.width;
+    auto height = image.height;
+    auto channels = image.channel;
+
     rt_texture_info_t info = {};
-    info.width = (uint32_t)width;
-    info.height = (uint32_t)height;
+    info.width = width;
+    info.height = height;
     info.depth = 1;
     info.target = GL_TEXTURE_2D;
     info.type = type;
     info.data = data;
 
-    // stb 输出始终为 RGB/RGBA 顺序，无需通道转换；根据通道数和数据类型选择格式
     switch (channels)
     {
         case 1:
@@ -96,12 +134,18 @@ static rt_texture_t rt_load_texture_file(const char* filename, bool flip)
 
         default:
             fprintf(stderr, "Unsupported channel count: %d\n", channels);
-            stbi_image_free(data);
             return {};
     }
 
     rt_texture_t texture = rt_create_texture(info);
-    stbi_image_free(data);
+    return texture;
+}
+
+static rt_texture_t rt_load_texture_file(const char* filename, bool flip)
+{
+    auto image = rt_load_image_file(filename, flip);
+    auto texture = rt_load_texture(image);
+    rt_destroy_image(image);
     return texture;
 }
 
