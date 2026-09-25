@@ -17,15 +17,10 @@ endif()
 add_definitions(
 #        -DOPENRT_STATIC
         -DOPENGL_IMPLEMENTATION
-        -DVULKAN_IMPLEMENTATION
+#        -DVULKAN_IMPLEMENTATION
+#        -DDIRECTX_IMPLEMENTATION
+#        -DMETAL_IMPLEMENTATION
 )
-
-if(WIN32)
-    add_definitions(-DDIRECTX_IMPLEMENTATION)
-endif()
-if(APPLE)
-    add_definitions(-DMETAL_IMPLEMENTATION)
-endif()
 
 add_library(OpenRT STATIC
         OpenRT.cpp

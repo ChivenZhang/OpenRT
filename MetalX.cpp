@@ -694,8 +694,24 @@ static void mt_flush_descriptors()
     }
 }
 
-static void mt_bind_api()
+void mt_load_library(id<MTLDevice> device, id<MTLCommandQueue> queue)
 {
+    metal.device = device;
+    metal.queue = queue;
+    if (!metal.device)
+    {
+        fprintf(stderr, "Metal: device is null\n");
+        abort();
+    }
+    if (!metal.queue)
+        metal.queue = [metal.device newCommandQueue];
+    metal.cmd = [metal.queue commandBuffer];
+    MTLSamplerDescriptor* samp = [[MTLSamplerDescriptor alloc] init];
+    samp.minFilter = MTLSamplerMinMagFilterLinear;
+    samp.magFilter = MTLSamplerMinMagFilterLinear;
+    samp.sAddressMode = samp.tAddressMode = samp.rAddressMode = MTLSamplerAddressModeRepeat;
+    metal.defaultSampler = [metal.device newSamplerStateWithDescriptor:samp];
+
     rt_unload_library = mt_unload_library;
     rt_create_buffer = mt_create_buffer;
     rt_destroy_buffer = mt_destroy_buffer;
@@ -755,8 +771,28 @@ static void mt_bind_api()
     rt_submit = mt_submit;
 }
 
-static void mt_unbind_api()
+void mt_unload_library()
 {
+    mt_end_encoder();
+    metal.cmd = nil;
+    mt_flush_staging();
+    metal.buffers.clear();
+    metal.textures.clear();
+    metal.samplers.clear();
+    metal.modules.clear();
+    metal.meshes.clear();
+    metal.meshlets.clear();
+    metal.computePasses.clear();
+    metal.renderPasses.clear();
+    metal.transferPasses.clear();
+    metal.defaultSampler = nil;
+    metal.queue = nil;
+    metal.device = nil;
+    metal.bufferID = metal.textureID = metal.samplerID = metal.moduleID = 0;
+    metal.meshID = metal.meshletID = metal.passID = 0;
+    metal.currentPassType = GL_NONE;
+    metal.currentPipeline = nullptr;
+
     if (rt_unload_library == mt_unload_library) rt_unload_library = nullptr;
     if (rt_create_buffer == mt_create_buffer) rt_create_buffer = nullptr;
     if (rt_destroy_buffer == mt_destroy_buffer) rt_destroy_buffer = nullptr;
@@ -814,50 +850,6 @@ static void mt_unbind_api()
     if (rt_create_mesh_screen == mt_create_mesh_screen) rt_create_mesh_screen = nullptr;
     if (rt_draw_screen == mt_draw_screen) rt_draw_screen = nullptr;
     if (rt_submit == mt_submit) rt_submit = nullptr;
-}
-
-void mt_load_library(id<MTLDevice> device, id<MTLCommandQueue> queue)
-{
-    metal.device = device;
-    metal.queue = queue;
-    if (!metal.device)
-    {
-        fprintf(stderr, "Metal: device is null\n");
-        abort();
-    }
-    if (!metal.queue)
-        metal.queue = [metal.device newCommandQueue];
-    metal.cmd = [metal.queue commandBuffer];
-    MTLSamplerDescriptor* samp = [[MTLSamplerDescriptor alloc] init];
-    samp.minFilter = MTLSamplerMinMagFilterLinear;
-    samp.magFilter = MTLSamplerMinMagFilterLinear;
-    samp.sAddressMode = samp.tAddressMode = samp.rAddressMode = MTLSamplerAddressModeRepeat;
-    metal.defaultSampler = [metal.device newSamplerStateWithDescriptor:samp];
-    mt_bind_api();
-}
-
-void mt_unload_library()
-{
-    mt_end_encoder();
-    metal.cmd = nil;
-    mt_flush_staging();
-    metal.buffers.clear();
-    metal.textures.clear();
-    metal.samplers.clear();
-    metal.modules.clear();
-    metal.meshes.clear();
-    metal.meshlets.clear();
-    metal.computePasses.clear();
-    metal.renderPasses.clear();
-    metal.transferPasses.clear();
-    metal.defaultSampler = nil;
-    metal.queue = nil;
-    metal.device = nil;
-    metal.bufferID = metal.textureID = metal.samplerID = metal.moduleID = 0;
-    metal.meshID = metal.meshletID = metal.passID = 0;
-    metal.currentPassType = GL_NONE;
-    metal.currentPipeline = nullptr;
-    mt_unbind_api();
 }
 
 rt_buffer_t mt_create_buffer(rt_buffer_info_t const& info)

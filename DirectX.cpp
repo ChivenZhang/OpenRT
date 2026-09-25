@@ -907,8 +907,55 @@ static void dx_flush_descriptors()
     }
 }
 
-static void dx_bind_api()
+void dx_load_library(ID3D12Device* device, ID3D12CommandQueue* queue)
 {
+    direct.device = device;
+    direct.queue = queue;
+    if (!direct.device)
+    {
+        fprintf(stderr, "DirectX: device is null\n");
+        abort();
+    }
+
+    if (FAILED(direct.device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&direct.allocator))) ||
+        FAILED(direct.device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, direct.allocator.Get(), nullptr, IID_PPV_ARGS(&direct.cmd))))
+    {
+        fprintf(stderr, "DirectX: failed to create command list\n");
+        abort();
+    }
+    direct.cmd.As(&direct.cmdMesh);
+
+    D3D12_DESCRIPTOR_HEAP_DESC heapDesc = {};
+    heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
+    heapDesc.NumDescriptors = 64;
+    direct.device->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&direct.rtvHeap));
+    heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
+    direct.device->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&direct.dsvHeap));
+    heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+    heapDesc.NumDescriptors = 2048;
+    heapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+    direct.device->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&direct.srvHeap));
+    heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER;
+    heapDesc.NumDescriptors = 256;
+    direct.device->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&direct.samplerHeap));
+
+    direct.rtvSize = direct.device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
+    direct.dsvSize = direct.device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_DSV);
+    direct.srvSize = direct.device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+    direct.samplerSize = direct.device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER);
+    direct.srvCursor = 1;
+    direct.samplerCursor = 1;
+
+    D3D12_SAMPLER_DESC samp = {};
+    samp.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
+    samp.AddressU = samp.AddressV = samp.AddressW = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+    samp.MaxLOD = D3D12_FLOAT32_MAX;
+    direct.defaultSamplerCPU = direct.samplerHeap->GetCPUDescriptorHandleForHeapStart();
+    direct.device->CreateSampler(&samp, direct.defaultSamplerCPU);
+
+    direct.device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&direct.fence));
+    direct.fenceEvent = CreateEventW(nullptr, FALSE, FALSE, nullptr);
+
     rt_unload_library = dx_unload_library;
     rt_create_buffer = dx_create_buffer;
     rt_destroy_buffer = dx_destroy_buffer;
@@ -968,8 +1015,41 @@ static void dx_bind_api()
     rt_submit = dx_submit;
 }
 
-static void dx_unbind_api()
+void dx_unload_library()
 {
+    if (!direct.device) return;
+    if (direct.cmd) direct.cmd->Close();
+    dx_wait_gpu();
+    dx_flush_staging();
+    if (direct.fenceEvent)
+    {
+        CloseHandle(direct.fenceEvent);
+        direct.fenceEvent = nullptr;
+    }
+    direct.buffers.clear();
+    direct.textures.clear();
+    direct.samplers.clear();
+    direct.modules.clear();
+    direct.meshes.clear();
+    direct.meshlets.clear();
+    direct.computePasses.clear();
+    direct.renderPasses.clear();
+    direct.transferPasses.clear();
+    direct.cmdMesh.Reset();
+    direct.cmd.Reset();
+    direct.allocator.Reset();
+    direct.rtvHeap.Reset();
+    direct.dsvHeap.Reset();
+    direct.srvHeap.Reset();
+    direct.samplerHeap.Reset();
+    direct.fence.Reset();
+    direct.queue.Reset();
+    direct.device.Reset();
+    direct.bufferID = direct.textureID = direct.samplerID = direct.moduleID = 0;
+    direct.meshID = direct.meshletID = direct.passID = 0;
+    direct.currentPassType = GL_NONE;
+    direct.currentPipeline = nullptr;
+
     if (rt_unload_library == dx_unload_library) rt_unload_library = nullptr;
     if (rt_create_buffer == dx_create_buffer) rt_create_buffer = nullptr;
     if (rt_destroy_buffer == dx_destroy_buffer) rt_destroy_buffer = nullptr;
@@ -1027,94 +1107,6 @@ static void dx_unbind_api()
     if (rt_create_mesh_screen == dx_create_mesh_screen) rt_create_mesh_screen = nullptr;
     if (rt_draw_screen == dx_draw_screen) rt_draw_screen = nullptr;
     if (rt_submit == dx_submit) rt_submit = nullptr;
-}
-
-void dx_load_library(ID3D12Device* device, ID3D12CommandQueue* queue)
-{
-    direct.device = device;
-    direct.queue = queue;
-    if (!direct.device)
-    {
-        fprintf(stderr, "DirectX: device is null\n");
-        abort();
-    }
-
-    if (FAILED(direct.device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&direct.allocator))) ||
-        FAILED(direct.device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, direct.allocator.Get(), nullptr, IID_PPV_ARGS(&direct.cmd))))
-    {
-        fprintf(stderr, "DirectX: failed to create command list\n");
-        abort();
-    }
-    direct.cmd.As(&direct.cmdMesh);
-
-    D3D12_DESCRIPTOR_HEAP_DESC heapDesc = {};
-    heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
-    heapDesc.NumDescriptors = 64;
-    direct.device->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&direct.rtvHeap));
-    heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
-    direct.device->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&direct.dsvHeap));
-    heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-    heapDesc.NumDescriptors = 2048;
-    heapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
-    direct.device->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&direct.srvHeap));
-    heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER;
-    heapDesc.NumDescriptors = 256;
-    direct.device->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&direct.samplerHeap));
-
-    direct.rtvSize = direct.device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
-    direct.dsvSize = direct.device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_DSV);
-    direct.srvSize = direct.device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-    direct.samplerSize = direct.device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER);
-    direct.srvCursor = 1;
-    direct.samplerCursor = 1;
-
-    D3D12_SAMPLER_DESC samp = {};
-    samp.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
-    samp.AddressU = samp.AddressV = samp.AddressW = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
-    samp.MaxLOD = D3D12_FLOAT32_MAX;
-    direct.defaultSamplerCPU = direct.samplerHeap->GetCPUDescriptorHandleForHeapStart();
-    direct.device->CreateSampler(&samp, direct.defaultSamplerCPU);
-
-    direct.device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&direct.fence));
-    direct.fenceEvent = CreateEventW(nullptr, FALSE, FALSE, nullptr);
-    dx_bind_api();
-}
-
-void dx_unload_library()
-{
-    if (!direct.device) return;
-    if (direct.cmd) direct.cmd->Close();
-    dx_wait_gpu();
-    dx_flush_staging();
-    if (direct.fenceEvent)
-    {
-        CloseHandle(direct.fenceEvent);
-        direct.fenceEvent = nullptr;
-    }
-    direct.buffers.clear();
-    direct.textures.clear();
-    direct.samplers.clear();
-    direct.modules.clear();
-    direct.meshes.clear();
-    direct.meshlets.clear();
-    direct.computePasses.clear();
-    direct.renderPasses.clear();
-    direct.transferPasses.clear();
-    direct.cmdMesh.Reset();
-    direct.cmd.Reset();
-    direct.allocator.Reset();
-    direct.rtvHeap.Reset();
-    direct.dsvHeap.Reset();
-    direct.srvHeap.Reset();
-    direct.samplerHeap.Reset();
-    direct.fence.Reset();
-    direct.queue.Reset();
-    direct.device.Reset();
-    direct.bufferID = direct.textureID = direct.samplerID = direct.moduleID = 0;
-    direct.meshID = direct.meshletID = direct.passID = 0;
-    direct.currentPassType = GL_NONE;
-    direct.currentPipeline = nullptr;
-    dx_unbind_api();
 }
 
 rt_buffer_t dx_create_buffer(rt_buffer_info_t const& info)
