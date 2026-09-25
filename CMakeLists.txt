@@ -20,12 +20,19 @@ add_definitions(
         -DVULKAN_IMPLEMENTATION
 )
 
+if(WIN32)
+    add_definitions(-DDIRECTX_IMPLEMENTATION)
+endif()
+if(APPLE)
+    add_definitions(-DMETAL_IMPLEMENTATION)
+endif()
+
 add_library(OpenRT STATIC
         OpenRT.cpp
         OpenGL.cpp
         Vulkan.cpp
-#        DirectX.cpp
-#        Metal.cpp
+        DirectX.cpp
+        MetalX.cpp
 )
 target_compile_definitions(OpenRT PUBLIC OPENRT_EXPORTS)
 find_package(Stb REQUIRED)
@@ -34,6 +41,13 @@ find_package(GLEW CONFIG REQUIRED)
 target_link_libraries(OpenRT PRIVATE GLEW::GLEW)
 find_package(Vulkan REQUIRED)
 target_link_libraries(OpenRT PRIVATE Vulkan::Vulkan)
+if(WIN32)
+    target_link_libraries(OpenRT PRIVATE d3d12 dxgi)
+endif()
+if(APPLE)
+    set_source_files_properties(MetalX.cpp PROPERTIES LANGUAGE OBJCXX COMPILE_FLAGS "-fobjc-arc")
+    target_link_libraries(OpenRT PRIVATE "-framework Metal" "-framework Foundation")
+endif()
 
 add_executable(Default Example/Default.cpp)
 add_dependencies(Default OpenRT)
