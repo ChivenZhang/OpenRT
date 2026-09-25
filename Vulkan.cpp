@@ -362,9 +362,12 @@ struct rt_buffer_native_t
     VkBuffer handle = nullptr;
     VkDeviceMemory memory = nullptr;
     VkMemoryPropertyFlags memFlags = 0;
+    VkBufferUsageFlags usage = 0;
     void* mapped = nullptr;
     VkDeviceSize mappedOffset = 0;
     VkDeviceSize mappedSize = 0;
+    VkPipelineStageFlags stage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+    VkAccessFlags access = 0;
 };
 
 struct rt_texture_native_t
@@ -378,6 +381,8 @@ struct rt_texture_native_t
     uint32_t mipLevels = 1;
     uint32_t layers = 1;
     VkExtent3D extent = {1, 1, 1};
+    VkPipelineStageFlags stage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+    VkAccessFlags access = 0;
 };
 
 struct rt_sampler_native_t
@@ -566,88 +571,83 @@ static bool vk_create_staging(VkDeviceSize size, vk_staging_t& staging, void** m
 
 static void vk_transition_image(rt_texture_native_t& image, VkImageLayout newLayout)
 {
-    if (!image.handle || image.layout == newLayout)
+    if (!image.handle)
         return;
 
-    VkImageMemoryBarrier barrier = {};
-    barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-    barrier.oldLayout = image.layout;
-    barrier.newLayout = newLayout;
-    barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    barrier.image = image.handle;
-    barrier.subresourceRange.aspectMask = image.aspect;
-    barrier.subresourceRange.levelCount = image.mipLevels;
-    barrier.subresourceRange.layerCount = image.layers;
-
-    VkPipelineStageFlags srcStage = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+    VkAccessFlags dstAccess = 0;
     VkPipelineStageFlags dstStage = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
-    switch (image.layout)
-    {
-        case VK_IMAGE_LAYOUT_UNDEFINED:
-            barrier.srcAccessMask = 0;
-            srcStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
-            break;
-        case VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL:
-            barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-            srcStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
-            break;
-        case VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL:
-            barrier.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
-            srcStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
-            break;
-        case VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL:
-            barrier.srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
-            srcStage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
-            break;
-        case VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL:
-            barrier.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-            srcStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-            break;
-        case VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL:
-            barrier.srcAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-            srcStage = VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
-            break;
-        case VK_IMAGE_LAYOUT_GENERAL:
-            barrier.srcAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
-            break;
-        default:
-            barrier.srcAccessMask = 0;
-            break;
-    }
     switch (newLayout)
     {
         case VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL:
-            barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+            dstAccess = VK_ACCESS_TRANSFER_WRITE_BIT;
             dstStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
             break;
         case VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL:
-            barrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+            dstAccess = VK_ACCESS_TRANSFER_READ_BIT;
             dstStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
             break;
         case VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL:
-            barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+            dstAccess = VK_ACCESS_SHADER_READ_BIT;
             dstStage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
             break;
         case VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL:
-            barrier.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_COLOR_ATTACHMENT_READ_BIT;
+            dstAccess = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_COLOR_ATTACHMENT_READ_BIT;
             dstStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
             break;
         case VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL:
-            barrier.dstAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
+            dstAccess = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
             dstStage = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
             break;
         case VK_IMAGE_LAYOUT_GENERAL:
-            barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
+            dstAccess = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
             dstStage = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
             break;
         default:
-            barrier.dstAccessMask = 0;
+            dstAccess = 0;
+            dstStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
             break;
     }
 
-    vkCmdPipelineBarrier(vulkan.cmdBuffer, srcStage, dstStage, 0, 0, nullptr, 0, nullptr, 1, &barrier);
-    image.layout = newLayout;
+    if (image.layout != newLayout)
+    {
+        VkImageMemoryBarrier barrier = {};
+        barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        barrier.srcAccessMask = image.access;
+        barrier.dstAccessMask = dstAccess;
+        barrier.oldLayout = image.layout;
+        barrier.newLayout = newLayout;
+        barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+        barrier.image = image.handle;
+        barrier.subresourceRange.aspectMask = image.aspect;
+        barrier.subresourceRange.levelCount = image.mipLevels;
+        barrier.subresourceRange.layerCount = image.layers;
+        vkCmdPipelineBarrier(vulkan.cmdBuffer, image.stage, dstStage, 0, 0, nullptr, 0, nullptr, 1, &barrier);
+        image.layout = newLayout;
+        image.stage = dstStage;
+        image.access = dstAccess;
+    }
+}
+
+static void vk_transition_buffer(rt_buffer_native_t& buffer, VkPipelineStageFlags dstStage, VkAccessFlags dstAccess)
+{
+    if (!buffer.handle)
+        return;
+    if (buffer.stage == dstStage && buffer.access == dstAccess)
+        return;
+
+    VkBufferMemoryBarrier barrier = {};
+    barrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+    barrier.srcAccessMask = buffer.access;
+    barrier.dstAccessMask = dstAccess;
+    barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barrier.buffer = buffer.handle;
+    barrier.offset = 0;
+    barrier.size = VK_WHOLE_SIZE;
+    vkCmdPipelineBarrier(vulkan.cmdBuffer, buffer.stage, dstStage, 0, 0, nullptr, 1, &barrier, 0, nullptr);
+    buffer.stage = dstStage;
+    buffer.access = dstAccess;
 }
 
 static rt_buffer_native_t* vk_buffer_native(rt_buffer_t const& buffer)
@@ -734,22 +734,6 @@ static bool vk_setup_descriptors(rt_module_native_t& native, rt_binding_t const*
             native.descriptorSet = nullptr;
     }
     return true;
-}
-
-static bool vk_setup_pipeline_layout(rt_module_native_t& native, VkShaderStageFlags stages)
-{
-    VkPushConstantRange push = {};
-    push.stageFlags = stages;
-    push.offset = 0;
-    push.size = 128;
-
-    VkPipelineLayoutCreateInfo info = {};
-    info.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-    info.pushConstantRangeCount = 1;
-    info.pPushConstantRanges = &push;
-    info.setLayoutCount = native.descriptorSetLayout ? 1 : 0;
-    info.pSetLayouts = native.descriptorSetLayout ? &native.descriptorSetLayout : nullptr;
-    return vkCreatePipelineLayout(vulkan.device, &info, vulkan.allocator, &native.pipelineLayout) == VK_SUCCESS;
 }
 
 static bool vk_create_graphics_pipeline(rt_module_native_t& native, rt_module_render_info_t const& info, bool meshlet)
@@ -965,6 +949,21 @@ static void vk_flush_descriptors()
                 writes[writeCount].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
             bufferInfos[writeCount] = {buf->handle, 0, VK_WHOLE_SIZE};
             writes[writeCount].pBufferInfo = &bufferInfos[writeCount];
+            VkPipelineStageFlags dstStage = (vulkan.currentPassType == GL_MODULE_COMPUTE) ?
+                                           VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT :
+                                           (VK_PIPELINE_STAGE_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT |
+                                            VK_PIPELINE_STAGE_TASK_SHADER_BIT_NV | VK_PIPELINE_STAGE_MESH_SHADER_BIT_NV);
+            if (writes[writeCount].descriptorType == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER)
+                vk_transition_buffer(*buf, dstStage, VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT);
+            else
+                vk_transition_buffer(*buf, dstStage, VK_ACCESS_UNIFORM_READ_BIT);
+        }
+        else if (type == VK_DESCRIPTOR_TYPE_SAMPLER)
+        {
+            auto* samp = vk_sampler_native(slot.sampler);
+            if (!samp) continue;
+            imageInfos[writeCount] = {samp->handle, VK_NULL_HANDLE, VK_IMAGE_LAYOUT_UNDEFINED};
+            writes[writeCount].pImageInfo = &imageInfos[writeCount];
         }
         else if (type == VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER || type == VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE)
         {
@@ -983,13 +982,6 @@ static void vk_flush_descriptors()
             if (!tex || !tex->imageView) continue;
             vk_transition_image(*tex, VK_IMAGE_LAYOUT_GENERAL);
             imageInfos[writeCount] = {VK_NULL_HANDLE, tex->imageView, VK_IMAGE_LAYOUT_GENERAL};
-            writes[writeCount].pImageInfo = &imageInfos[writeCount];
-        }
-        else if (type == VK_DESCRIPTOR_TYPE_SAMPLER)
-        {
-            auto* samp = vk_sampler_native(slot.sampler);
-            if (!samp) continue;
-            imageInfos[writeCount] = {samp->handle, VK_NULL_HANDLE, VK_IMAGE_LAYOUT_UNDEFINED};
             writes[writeCount].pImageInfo = &imageInfos[writeCount];
         }
         else continue;
@@ -1281,6 +1273,7 @@ rt_buffer_t vk_create_buffer(rt_buffer_info_t const& info)
     vkInfo.size = info.size;
     vkInfo.usage = rt_to_vk_buffer_usage(info.usage);
     vkInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    native.usage = vkInfo.usage;
     if (vkCreateBuffer(vulkan.device, &vkInfo, vulkan.allocator, &native.handle) != VK_SUCCESS)
     {
         vulkan.buffers.erase(handle);
@@ -1311,6 +1304,8 @@ rt_buffer_t vk_create_buffer(rt_buffer_info_t const& info)
             vkMapMemory(vulkan.device, native.memory, 0, info.size, 0, &mapped);
             std::memcpy(mapped, info.data, info.size);
             vkUnmapMemory(vulkan.device, native.memory);
+            native.stage = VK_PIPELINE_STAGE_HOST_BIT;
+            native.access = VK_ACCESS_HOST_WRITE_BIT;
         }
         else
         {
@@ -1320,6 +1315,7 @@ rt_buffer_t vk_create_buffer(rt_buffer_info_t const& info)
             {
                 std::memcpy(stagingPtr, info.data, info.size);
                 vkUnmapMemory(vulkan.device, staging.memory);
+                vk_transition_buffer(native, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT);
                 VkBufferCopy region = {0, 0, info.size};
                 vkCmdCopyBuffer(vulkan.cmdBuffer, staging.buffer, native.handle, 1, &region);
                 vulkan.pendingStaging.push_back(staging);
@@ -1378,6 +1374,12 @@ void* vk_map_buffer(rt_buffer_t& buffer, GLenum mode, size_t offset, size_t size
     if (size == 0 || offset + size > buffer.size) return nullptr;
     if (native->mapped)
         vkUnmapMemory(vulkan.device, native->memory);
+    VkAccessFlags hostAccess = 0;
+    if (mode != GL_WRITE_ONLY)
+        hostAccess |= VK_ACCESS_HOST_READ_BIT;
+    if (mode != GL_READ_ONLY)
+        hostAccess |= VK_ACCESS_HOST_WRITE_BIT;
+    vk_transition_buffer(*native, VK_PIPELINE_STAGE_HOST_BIT, hostAccess);
     void* ptr = nullptr;
     if (vkMapMemory(vulkan.device, native->memory, offset, size, 0, &ptr) != VK_SUCCESS)
         return nullptr;
@@ -1641,8 +1643,22 @@ rt_module_compute_t vk_create_module_compute(rt_module_compute_info_t const& inf
         vulkan.modules.erase(handle);
         return {};
     }
-    if (!vk_setup_descriptors(native, nullptr, VK_SHADER_STAGE_COMPUTE_BIT) ||
-        !vk_setup_pipeline_layout(native, VK_SHADER_STAGE_COMPUTE_BIT))
+    if (!vk_setup_descriptors(native, nullptr, VK_SHADER_STAGE_COMPUTE_BIT))
+    {
+        vk_destroy_module_native(handle, result.native);
+        return {};
+    }
+    VkPushConstantRange push = {};
+    push.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+    push.offset = 0;
+    push.size = 128;
+    VkPipelineLayoutCreateInfo layoutInfo = {};
+    layoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+    layoutInfo.pushConstantRangeCount = 1;
+    layoutInfo.pPushConstantRanges = &push;
+    layoutInfo.setLayoutCount = native.descriptorSetLayout ? 1 : 0;
+    layoutInfo.pSetLayouts = native.descriptorSetLayout ? &native.descriptorSetLayout : nullptr;
+    if (vkCreatePipelineLayout(vulkan.device, &layoutInfo, vulkan.allocator, &native.pipelineLayout) != VK_SUCCESS)
     {
         vk_destroy_module_native(handle, result.native);
         return {};
@@ -1688,8 +1704,23 @@ rt_module_render_t vk_create_module_render(rt_module_render_info_t const& info)
             return {};
         }
     }
-    if (!vk_setup_descriptors(native, info.binding, native.shaderStages) ||
-        !vk_setup_pipeline_layout(native, native.shaderStages) ||
+    if (!vk_setup_descriptors(native, info.binding, native.shaderStages))
+    {
+        result.native = &native;
+        vk_destroy_module_native(handle, result.native);
+        return {};
+    }
+    VkPushConstantRange push = {};
+    push.stageFlags = native.shaderStages;
+    push.offset = 0;
+    push.size = 128;
+    VkPipelineLayoutCreateInfo layoutInfo = {};
+    layoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+    layoutInfo.pushConstantRangeCount = 1;
+    layoutInfo.pPushConstantRanges = &push;
+    layoutInfo.setLayoutCount = native.descriptorSetLayout ? 1 : 0;
+    layoutInfo.pSetLayouts = native.descriptorSetLayout ? &native.descriptorSetLayout : nullptr;
+    if (vkCreatePipelineLayout(vulkan.device, &layoutInfo, vulkan.allocator, &native.pipelineLayout) != VK_SUCCESS ||
         !vk_create_graphics_pipeline(native, info, false))
     {
         result.native = &native;
@@ -1767,8 +1798,23 @@ rt_module_render_t vk_create_module_meshlet(rt_module_render_info_t const& info)
             return {};
         }
     }
-    if (!vk_setup_descriptors(native, info.binding, native.shaderStages) ||
-        !vk_setup_pipeline_layout(native, native.shaderStages) ||
+    if (!vk_setup_descriptors(native, info.binding, native.shaderStages))
+    {
+        result.native = &native;
+        vk_destroy_module_native(handle, result.native);
+        return {};
+    }
+    VkPushConstantRange push = {};
+    push.stageFlags = native.shaderStages;
+    push.offset = 0;
+    push.size = 128;
+    VkPipelineLayoutCreateInfo layoutInfo = {};
+    layoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+    layoutInfo.pushConstantRangeCount = 1;
+    layoutInfo.pPushConstantRanges = &push;
+    layoutInfo.setLayoutCount = native.descriptorSetLayout ? 1 : 0;
+    layoutInfo.pSetLayouts = native.descriptorSetLayout ? &native.descriptorSetLayout : nullptr;
+    if (vkCreatePipelineLayout(vulkan.device, &layoutInfo, vulkan.allocator, &native.pipelineLayout) != VK_SUCCESS ||
         !vk_create_graphics_pipeline(native, info, true))
     {
         result.native = &native;
@@ -2082,6 +2128,8 @@ void vk_copy_buffer(rt_buffer_copy_t source, rt_buffer_copy_t destination, size_
     if (!src || !dst || copySize == 0) return;
     if (source.offset + copySize > source.buffer.size || destination.offset + copySize > destination.buffer.size)
         return;
+    vk_transition_buffer(*src, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_READ_BIT);
+    vk_transition_buffer(*dst, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT);
     VkBufferCopy region = {source.offset, destination.offset, copySize};
     vkCmdCopyBuffer(vulkan.cmdBuffer, src->handle, dst->handle, 1, &region);
 }
@@ -2100,6 +2148,8 @@ void vk_copy_buffer_data(rt_buffer_data_t source, rt_buffer_copy_t destination, 
         {
             std::memcpy(mapped, source.data + source.offset, copySize);
             vkUnmapMemory(vulkan.device, dst->memory);
+            dst->stage = VK_PIPELINE_STAGE_HOST_BIT;
+            dst->access = VK_ACCESS_HOST_WRITE_BIT;
             return;
         }
     }
@@ -2108,6 +2158,7 @@ void vk_copy_buffer_data(rt_buffer_data_t source, rt_buffer_copy_t destination, 
     if (!vk_create_staging(copySize, staging, &ptr)) return;
     std::memcpy(ptr, source.data + source.offset, copySize);
     vkUnmapMemory(vulkan.device, staging.memory);
+    vk_transition_buffer(*dst, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT);
     VkBufferCopy region = {0, destination.offset, copySize};
     vkCmdCopyBuffer(vulkan.cmdBuffer, staging.buffer, dst->handle, 1, &region);
     vulkan.pendingStaging.push_back(staging);
@@ -2120,6 +2171,7 @@ void vk_copy_buffer_texture(rt_texture_copy_t source, rt_buffer_texel_t destinat
     auto* dst = vk_buffer_native(destination.buffer);
     if (!src || !dst || copySize.x == 0 || copySize.y == 0) return;
     vk_transition_image(*src, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+    vk_transition_buffer(*dst, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT);
     VkBufferImageCopy region = {};
     region.bufferOffset = destination.offset;
     region.bufferRowLength = destination.bytesPerRow ? destination.bytesPerRow / vk_format_bytes(src->format) : 0;
@@ -2187,6 +2239,7 @@ void vk_copy_texture_buffer(rt_buffer_texel_t source, rt_texture_copy_t destinat
     auto* dst = vk_texture_native(destination.texture);
     if (!src || !dst || copySize.x == 0 || copySize.y == 0) return;
     vk_transition_image(*dst, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+    vk_transition_buffer(*src, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_READ_BIT);
     VkBufferImageCopy region = {};
     region.bufferOffset = source.offset;
     region.bufferRowLength = source.bytesPerRow ? source.bytesPerRow / vk_format_bytes(dst->format) : 0;
@@ -2247,6 +2300,7 @@ void vk_draw_mesh(rt_mesh_t& mesh)
             if (mesh.vertex[k].handle == 0 || mesh.location[k] != layout.location) continue;
             auto* native = vk_buffer_native(mesh.vertex[k]);
             if (!native) break;
+            vk_transition_buffer(*native, VK_PIPELINE_STAGE_VERTEX_INPUT_BIT, VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT);
             VkDeviceSize offset = 0;
             vkCmdBindVertexBuffers(vulkan.cmdBuffer, layout.location, 1, &native->handle, &offset);
             uint32_t stride = gl_to_vk_vertex_size(layout.type, layout.count);
@@ -2265,6 +2319,7 @@ void vk_draw_mesh(rt_mesh_t& mesh)
 #ifdef VK_INDEX_TYPE_UINT8_EXT
         else if (module.index_type == GL_UNSIGNED_BYTE) { indexType = VK_INDEX_TYPE_UINT8_EXT; indexStride = 1; }
 #endif
+        vk_transition_buffer(*native, VK_PIPELINE_STAGE_VERTEX_INPUT_BIT, VK_ACCESS_INDEX_READ_BIT);
         vkCmdBindIndexBuffer(vulkan.cmdBuffer, native->handle, 0, indexType);
         vkCmdDrawIndexed(vulkan.cmdBuffer, (uint32_t)(mesh.index.size / indexStride), 1, 0, 0, 0);
     }

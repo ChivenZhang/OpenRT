@@ -174,9 +174,9 @@ inline rt_vertex_t rt_vertex_uv{.location = 2, .type = GL_FLOAT, .count = 2, .in
 enum rt_binding_type_t : uint32_t
 {
     GL_BINDING_BUFFER = 1,
-    GL_BINDING_TEXTURE = 2,
-    GL_BINDING_STORAGE_TEXTURE = 3,
-    GL_BINDING_SAMPLER = 4,
+    GL_BINDING_SAMPLER = 2,
+    GL_BINDING_TEXTURE = 3,
+    GL_BINDING_STORAGE_TEXTURE = 4,
 };
 
 struct rt_binding_t
