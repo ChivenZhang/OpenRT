@@ -360,8 +360,6 @@ struct rt_module_native_t
     ComPtr<ID3D12PipelineState> pipeline;
     D3D12_SHADER_BYTECODE vshader = {}, tshader = {}, mshader = {}, fshader = {}, cshader = {};
     std::vector<uint8_t> vcode, tcode, mcode, fcode, ccode;
-    bool isMeshlet = false;
-    bool isCompute = false;
     D3D12_PRIMITIVE_TOPOLOGY topology = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
 
     dx_binding_kind_t kinds[GL_MAX_BINDING_HANDLE_NUM] = {};
@@ -620,7 +618,7 @@ static bool dx_setup_root(rt_module_native_t& native, rt_binding_t const* bindin
     D3D12_ROOT_SIGNATURE_DESC desc = {};
     desc.NumParameters = paramCount;
     desc.pParameters = params;
-    desc.Flags = native.isCompute ? D3D12_ROOT_SIGNATURE_FLAG_NONE :
+    desc.Flags = native.cshader.BytecodeLength ? D3D12_ROOT_SIGNATURE_FLAG_NONE :
                  D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
     ComPtr<ID3DBlob> blob, error;
     if (FAILED(D3D12SerializeRootSignature(&desc, D3D_ROOT_SIGNATURE_VERSION_1, &blob, &error)))
@@ -796,7 +794,7 @@ static void dx_flush_descriptors()
 
     ID3D12DescriptorHeap* heaps[] = {direct.srvHeap.Get(), direct.samplerHeap.Get()};
     direct.cmd->SetDescriptorHeaps(2, heaps);
-    if (mod->isCompute)
+    if (mod->cshader.BytecodeLength)
         direct.cmd->SetComputeRootSignature(mod->rootSignature.Get());
     else
         direct.cmd->SetGraphicsRootSignature(mod->rootSignature.Get());
@@ -840,7 +838,7 @@ static void dx_flush_descriptors()
                 srv.Buffer.Flags = D3D12_BUFFER_SRV_FLAG_RAW;
                 direct.device->CreateShaderResourceView(buf->handle.Get(), &srv, dx_srv_cpu(gpu));
             }
-            if (mod->isCompute) direct.cmd->SetComputeRootDescriptorTable(root, gpu);
+            if (mod->cshader.BytecodeLength) direct.cmd->SetComputeRootDescriptorTable(root, gpu);
             else direct.cmd->SetGraphicsRootDescriptorTable(root, gpu);
         }
         else if (mod->kinds[i] == DX_KIND_SAMPLER)
@@ -853,7 +851,7 @@ static void dx_flush_descriptors()
             if (auto* samp = dx_sampler_native(slot.sampler))
                 desc = samp->desc;
             direct.device->CreateSampler(&desc, dx_sampler_cpu(gpu));
-            if (mod->isCompute) direct.cmd->SetComputeRootDescriptorTable(root, gpu);
+            if (mod->cshader.BytecodeLength) direct.cmd->SetComputeRootDescriptorTable(root, gpu);
             else direct.cmd->SetGraphicsRootDescriptorTable(root, gpu);
         }
         else if (mod->kinds[i] == DX_KIND_SRV)
@@ -887,7 +885,7 @@ static void dx_flush_descriptors()
                 srv.Texture2D.MipLevels = tex->mipLevels;
             }
             direct.device->CreateShaderResourceView(tex->handle.Get(), &srv, dx_srv_cpu(gpu));
-            if (mod->isCompute) direct.cmd->SetComputeRootDescriptorTable(root, gpu);
+            if (mod->cshader.BytecodeLength) direct.cmd->SetComputeRootDescriptorTable(root, gpu);
             else direct.cmd->SetGraphicsRootDescriptorTable(root, gpu);
         }
         else if (mod->kinds[i] == DX_KIND_UAV)
@@ -901,7 +899,7 @@ static void dx_flush_descriptors()
             uav.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D;
             uav.Texture2D.MipSlice = slot.storage_texture_bind.base_level;
             direct.device->CreateUnorderedAccessView(tex->handle.Get(), nullptr, &uav, dx_srv_cpu(gpu));
-            if (mod->isCompute) direct.cmd->SetComputeRootDescriptorTable(root, gpu);
+            if (mod->cshader.BytecodeLength) direct.cmd->SetComputeRootDescriptorTable(root, gpu);
             else direct.cmd->SetGraphicsRootDescriptorTable(root, gpu);
         }
     }
@@ -1453,7 +1451,6 @@ rt_module_compute_t dx_create_module_compute(rt_module_compute_info_t const& inf
     if (!info.cshader || !info.clength || !direct.device) return result;
     uint32_t handle = direct.moduleID + 1;
     auto& native = direct.modules[handle];
-    native.isCompute = true;
     dx_copy_shader(native.cshader, native.ccode, info.cshader, info.clength);
     if (!dx_setup_root(native, nullptr))
     {
@@ -1502,7 +1499,6 @@ rt_module_render_t dx_create_module_meshlet(rt_module_render_info_t const& info)
     if (!info.mshader || !info.mlength || !direct.device) return result;
     uint32_t handle = direct.moduleID + 1;
     auto& native = direct.modules[handle];
-    native.isMeshlet = true;
     if (info.tshader) dx_copy_shader(native.tshader, native.tcode, info.tshader, info.tlength);
     dx_copy_shader(native.mshader, native.mcode, info.mshader, info.mlength);
     if (info.fshader) dx_copy_shader(native.fshader, native.fcode, info.fshader, info.flength);
@@ -1538,7 +1534,7 @@ void dx_push_constant(uint8_t const* buffer, size_t length)
     auto* mod = dx_current_module_native();
     if (!buffer || length == 0 || !mod) return;
     uint32_t count = (uint32_t)((length + 3) / 4);
-    if (mod->isCompute)
+    if (mod->cshader.BytecodeLength)
         direct.cmd->SetComputeRoot32BitConstants(0, count, buffer, 0);
     else
         direct.cmd->SetGraphicsRoot32BitConstants(0, count, buffer, 0);

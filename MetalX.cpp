@@ -10,13 +10,17 @@
 * =================================================*/
 #ifdef METAL_IMPLEMENTATION
 #ifdef __APPLE__
-#include "OpenRT.h"
+#define NS_PRIVATE_IMPLEMENTATION
+#define CA_PRIVATE_IMPLEMENTATION
+#define MTL_PRIVATE_IMPLEMENTATION
 #include "MetalX.h"
+#include <dispatch/dispatch.h>
 #include <algorithm>
 #include <cstdio>
 #include <cstring>
 #include <map>
 #include <numeric>
+#include <utility>
 #include <vector>
 
 enum rt_module_type_t : uint32_t
@@ -41,31 +45,41 @@ enum mt_res_state_t : uint32_t
     MTL_STATE_INDEX,
 };
 
-static MTLSamplerMinMagFilter gl_to_mt_filter(GLenum filter)
+template<typename T>
+static void mt_release(T*& object)
+{
+    if (object)
+    {
+        object->release();
+        object = nullptr;
+    }
+}
+
+static MTL::SamplerMinMagFilter gl_to_mt_filter(GLenum filter)
 {
     return (filter == GL_NEAREST || filter == GL_NEAREST_MIPMAP_NEAREST || filter == GL_NEAREST_MIPMAP_LINEAR) ?
-           MTLSamplerMinMagFilterNearest : MTLSamplerMinMagFilterLinear;
+           MTL::SamplerMinMagFilterNearest : MTL::SamplerMinMagFilterLinear;
 }
 
-static MTLSamplerMipFilter gl_to_mt_mip(GLenum minFilter)
+static MTL::SamplerMipFilter gl_to_mt_mip(GLenum minFilter)
 {
     if (minFilter == GL_NEAREST_MIPMAP_NEAREST || minFilter == GL_LINEAR_MIPMAP_NEAREST)
-        return MTLSamplerMipFilterNearest;
+        return MTL::SamplerMipFilterNearest;
     if (minFilter == GL_NEAREST_MIPMAP_LINEAR || minFilter == GL_LINEAR_MIPMAP_LINEAR)
-        return MTLSamplerMipFilterLinear;
-    return MTLSamplerMipFilterNotMipmapped;
+        return MTL::SamplerMipFilterLinear;
+    return MTL::SamplerMipFilterNotMipmapped;
 }
 
-static MTLSamplerAddressMode gl_to_mt_address(GLenum wrap)
+static MTL::SamplerAddressMode gl_to_mt_address(GLenum wrap)
 {
     switch (wrap)
     {
-        case GL_REPEAT: return MTLSamplerAddressModeRepeat;
-        case GL_MIRRORED_REPEAT: return MTLSamplerAddressModeMirrorRepeat;
-        case GL_CLAMP_TO_BORDER: return MTLSamplerAddressModeClampToBorderColor;
-        case GL_MIRROR_CLAMP_TO_EDGE: return MTLSamplerAddressModeMirrorClampToEdge;
+        case GL_REPEAT: return MTL::SamplerAddressModeRepeat;
+        case GL_MIRRORED_REPEAT: return MTL::SamplerAddressModeMirrorRepeat;
+        case GL_CLAMP_TO_BORDER: return MTL::SamplerAddressModeClampToBorderColor;
+        case GL_MIRROR_CLAMP_TO_EDGE: return MTL::SamplerAddressModeMirrorClampToEdge;
         case GL_CLAMP_TO_EDGE:
-        default: return MTLSamplerAddressModeClampToEdge;
+        default: return MTL::SamplerAddressModeClampToEdge;
     }
 }
 
@@ -75,165 +89,165 @@ static bool gl_has_mipmap_filter(GLenum minFilter)
            minFilter == GL_NEAREST_MIPMAP_LINEAR || minFilter == GL_LINEAR_MIPMAP_LINEAR;
 }
 
-static MTLPixelFormat gl_to_mt_format(GLenum glFormat, GLenum glType, GLenum internalFormat = 0)
+static MTL::PixelFormat gl_to_mt_format(GLenum glFormat, GLenum glType, GLenum internalFormat = 0)
 {
     switch (internalFormat)
     {
-        case GL_R8: return MTLPixelFormatR8Unorm;
-        case GL_RG8: return MTLPixelFormatRG8Unorm;
+        case GL_R8: return MTL::PixelFormatR8Unorm;
+        case GL_RG8: return MTL::PixelFormatRG8Unorm;
         case GL_RGB8:
-        case GL_RGBA8: return MTLPixelFormatRGBA8Unorm;
-        case GL_SRGB8_ALPHA8: return MTLPixelFormatRGBA8Unorm_sRGB;
-        case GL_R16F: return MTLPixelFormatR16Float;
-        case GL_RG16F: return MTLPixelFormatRG16Float;
-        case GL_RGBA16F: return MTLPixelFormatRGBA16Float;
-        case GL_R32F: return MTLPixelFormatR32Float;
-        case GL_RG32F: return MTLPixelFormatRG32Float;
-        case GL_RGBA32F: return MTLPixelFormatRGBA32Float;
-        case GL_DEPTH_COMPONENT16: return MTLPixelFormatDepth16Unorm;
+        case GL_RGBA8: return MTL::PixelFormatRGBA8Unorm;
+        case GL_SRGB8_ALPHA8: return MTL::PixelFormatRGBA8Unorm_sRGB;
+        case GL_R16F: return MTL::PixelFormatR16Float;
+        case GL_RG16F: return MTL::PixelFormatRG16Float;
+        case GL_RGBA16F: return MTL::PixelFormatRGBA16Float;
+        case GL_R32F: return MTL::PixelFormatR32Float;
+        case GL_RG32F: return MTL::PixelFormatRG32Float;
+        case GL_RGBA32F: return MTL::PixelFormatRGBA32Float;
+        case GL_DEPTH_COMPONENT16: return MTL::PixelFormatDepth16Unorm;
         case GL_DEPTH_COMPONENT24:
-        case GL_DEPTH_COMPONENT32F: return MTLPixelFormatDepth32Float;
-        case GL_DEPTH24_STENCIL8: return MTLPixelFormatDepth24Unorm_Stencil8;
-        case GL_DEPTH32F_STENCIL8: return MTLPixelFormatDepth32Float_Stencil8;
+        case GL_DEPTH_COMPONENT32F: return MTL::PixelFormatDepth32Float;
+        case GL_DEPTH24_STENCIL8: return MTL::PixelFormatDepth24Unorm_Stencil8;
+        case GL_DEPTH32F_STENCIL8: return MTL::PixelFormatDepth32Float_Stencil8;
         default: break;
     }
     switch (glFormat)
     {
-        case GL_RED: return (glType == GL_FLOAT) ? MTLPixelFormatR32Float : MTLPixelFormatR8Unorm;
-        case GL_RG: return (glType == GL_FLOAT) ? MTLPixelFormatRG32Float : MTLPixelFormatRG8Unorm;
+        case GL_RED: return (glType == GL_FLOAT) ? MTL::PixelFormatR32Float : MTL::PixelFormatR8Unorm;
+        case GL_RG: return (glType == GL_FLOAT) ? MTL::PixelFormatRG32Float : MTL::PixelFormatRG8Unorm;
         case GL_RGB:
-        case GL_RGBA: return (glType == GL_FLOAT) ? MTLPixelFormatRGBA32Float : MTLPixelFormatRGBA8Unorm;
-        case GL_DEPTH_COMPONENT: return MTLPixelFormatDepth32Float;
-        case GL_DEPTH_STENCIL: return MTLPixelFormatDepth32Float_Stencil8;
-        default: return MTLPixelFormatRGBA8Unorm;
+        case GL_RGBA: return (glType == GL_FLOAT) ? MTL::PixelFormatRGBA32Float : MTL::PixelFormatRGBA8Unorm;
+        case GL_DEPTH_COMPONENT: return MTL::PixelFormatDepth32Float;
+        case GL_DEPTH_STENCIL: return MTL::PixelFormatDepth32Float_Stencil8;
+        default: return MTL::PixelFormatRGBA8Unorm;
     }
 }
 
-static MTLVertexFormat gl_to_mt_vertex_format(GLenum type, GLenum count)
+static MTL::VertexFormat gl_to_mt_vertex_format(GLenum type, GLenum count)
 {
     if (type == GL_FLOAT)
     {
         switch (count)
         {
-            case 1: return MTLVertexFormatFloat;
-            case 2: return MTLVertexFormatFloat2;
-            case 3: return MTLVertexFormatFloat3;
-            case 4: return MTLVertexFormatFloat4;
-            default: return MTLVertexFormatFloat;
+            case 1: return MTL::VertexFormatFloat;
+            case 2: return MTL::VertexFormatFloat2;
+            case 3: return MTL::VertexFormatFloat3;
+            case 4: return MTL::VertexFormatFloat4;
+            default: return MTL::VertexFormatFloat;
         }
     }
     if (type == GL_INT)
     {
         switch (count)
         {
-            case 1: return MTLVertexFormatInt;
-            case 2: return MTLVertexFormatInt2;
-            case 3: return MTLVertexFormatInt3;
-            case 4: return MTLVertexFormatInt4;
-            default: return MTLVertexFormatInt;
+            case 1: return MTL::VertexFormatInt;
+            case 2: return MTL::VertexFormatInt2;
+            case 3: return MTL::VertexFormatInt3;
+            case 4: return MTL::VertexFormatInt4;
+            default: return MTL::VertexFormatInt;
         }
     }
     if (type == GL_UNSIGNED_INT)
     {
         switch (count)
         {
-            case 1: return MTLVertexFormatUInt;
-            case 2: return MTLVertexFormatUInt2;
-            case 3: return MTLVertexFormatUInt3;
-            case 4: return MTLVertexFormatUInt4;
-            default: return MTLVertexFormatUInt;
+            case 1: return MTL::VertexFormatUInt;
+            case 2: return MTL::VertexFormatUInt2;
+            case 3: return MTL::VertexFormatUInt3;
+            case 4: return MTL::VertexFormatUInt4;
+            default: return MTL::VertexFormatUInt;
         }
     }
-    return MTLVertexFormatFloat;
+    return MTL::VertexFormatFloat;
 }
 
-static MTLCompareFunction gl_to_mt_compare(GLenum func)
+static MTL::CompareFunction gl_to_mt_compare(GLenum func)
 {
     switch (func)
     {
-        case GL_NEVER: return MTLCompareFunctionNever;
-        case GL_LESS: return MTLCompareFunctionLess;
-        case GL_EQUAL: return MTLCompareFunctionEqual;
-        case GL_LEQUAL: return MTLCompareFunctionLessEqual;
-        case GL_GREATER: return MTLCompareFunctionGreater;
-        case GL_NOTEQUAL: return MTLCompareFunctionNotEqual;
-        case GL_GEQUAL: return MTLCompareFunctionGreaterEqual;
+        case GL_NEVER: return MTL::CompareFunctionNever;
+        case GL_LESS: return MTL::CompareFunctionLess;
+        case GL_EQUAL: return MTL::CompareFunctionEqual;
+        case GL_LEQUAL: return MTL::CompareFunctionLessEqual;
+        case GL_GREATER: return MTL::CompareFunctionGreater;
+        case GL_NOTEQUAL: return MTL::CompareFunctionNotEqual;
+        case GL_GEQUAL: return MTL::CompareFunctionGreaterEqual;
         case GL_ALWAYS:
-        default: return MTLCompareFunctionAlways;
+        default: return MTL::CompareFunctionAlways;
     }
 }
 
-static MTLBlendFactor gl_to_mt_blend(GLenum factor)
+static MTL::BlendFactor gl_to_mt_blend(GLenum factor)
 {
     switch (factor)
     {
-        case GL_ZERO: return MTLBlendFactorZero;
-        case GL_ONE: return MTLBlendFactorOne;
-        case GL_SRC_COLOR: return MTLBlendFactorSourceColor;
-        case GL_ONE_MINUS_SRC_COLOR: return MTLBlendFactorOneMinusSourceColor;
-        case GL_DST_COLOR: return MTLBlendFactorDestinationColor;
-        case GL_ONE_MINUS_DST_COLOR: return MTLBlendFactorOneMinusDestinationColor;
-        case GL_SRC_ALPHA: return MTLBlendFactorSourceAlpha;
-        case GL_ONE_MINUS_SRC_ALPHA: return MTLBlendFactorOneMinusSourceAlpha;
-        case GL_DST_ALPHA: return MTLBlendFactorDestinationAlpha;
-        case GL_ONE_MINUS_DST_ALPHA: return MTLBlendFactorOneMinusDestinationAlpha;
-        case GL_CONSTANT_COLOR: return MTLBlendFactorBlendColor;
-        case GL_ONE_MINUS_CONSTANT_COLOR: return MTLBlendFactorOneMinusBlendColor;
-        case GL_SRC_ALPHA_SATURATE: return MTLBlendFactorSourceAlphaSaturated;
-        default: return MTLBlendFactorOne;
+        case GL_ZERO: return MTL::BlendFactorZero;
+        case GL_ONE: return MTL::BlendFactorOne;
+        case GL_SRC_COLOR: return MTL::BlendFactorSourceColor;
+        case GL_ONE_MINUS_SRC_COLOR: return MTL::BlendFactorOneMinusSourceColor;
+        case GL_DST_COLOR: return MTL::BlendFactorDestinationColor;
+        case GL_ONE_MINUS_DST_COLOR: return MTL::BlendFactorOneMinusDestinationColor;
+        case GL_SRC_ALPHA: return MTL::BlendFactorSourceAlpha;
+        case GL_ONE_MINUS_SRC_ALPHA: return MTL::BlendFactorOneMinusSourceAlpha;
+        case GL_DST_ALPHA: return MTL::BlendFactorDestinationAlpha;
+        case GL_ONE_MINUS_DST_ALPHA: return MTL::BlendFactorOneMinusDestinationAlpha;
+        case GL_CONSTANT_COLOR: return MTL::BlendFactorBlendColor;
+        case GL_ONE_MINUS_CONSTANT_COLOR: return MTL::BlendFactorOneMinusBlendColor;
+        case GL_SRC_ALPHA_SATURATE: return MTL::BlendFactorSourceAlphaSaturated;
+        default: return MTL::BlendFactorOne;
     }
 }
 
-static MTLBlendOperation gl_to_mt_blend_op(GLenum func)
+static MTL::BlendOperation gl_to_mt_blend_op(GLenum func)
 {
     switch (func)
     {
-        case GL_FUNC_SUBTRACT: return MTLBlendOperationSubtract;
-        case GL_FUNC_REVERSE_SUBTRACT: return MTLBlendOperationReverseSubtract;
-        case GL_MIN: return MTLBlendOperationMin;
-        case GL_MAX: return MTLBlendOperationMax;
+        case GL_FUNC_SUBTRACT: return MTL::BlendOperationSubtract;
+        case GL_FUNC_REVERSE_SUBTRACT: return MTL::BlendOperationReverseSubtract;
+        case GL_MIN: return MTL::BlendOperationMin;
+        case GL_MAX: return MTL::BlendOperationMax;
         case GL_FUNC_ADD:
-        default: return MTLBlendOperationAdd;
+        default: return MTL::BlendOperationAdd;
     }
 }
 
-static MTLCullMode gl_to_mt_cull(GLenum mode)
+static MTL::CullMode gl_to_mt_cull(GLenum mode)
 {
     switch (mode)
     {
-        case GL_FRONT: return MTLCullModeFront;
-        case GL_BACK: return MTLCullModeBack;
-        default: return MTLCullModeNone;
+        case GL_FRONT: return MTL::CullModeFront;
+        case GL_BACK: return MTL::CullModeBack;
+        default: return MTL::CullModeNone;
     }
 }
 
-static MTLPrimitiveType gl_to_mt_primitive(GLenum primitive)
+static MTL::PrimitiveType gl_to_mt_primitive(GLenum primitive)
 {
     switch (primitive)
     {
-        case GL_POINTS: return MTLPrimitiveTypePoint;
-        case GL_LINES: return MTLPrimitiveTypeLine;
+        case GL_POINTS: return MTL::PrimitiveTypePoint;
+        case GL_LINES: return MTL::PrimitiveTypeLine;
         case GL_LINE_STRIP:
-        case GL_LINE_LOOP: return MTLPrimitiveTypeLineStrip;
-        case GL_TRIANGLE_STRIP: return MTLPrimitiveTypeTriangleStrip;
+        case GL_LINE_LOOP: return MTL::PrimitiveTypeLineStrip;
+        case GL_TRIANGLE_STRIP: return MTL::PrimitiveTypeTriangleStrip;
         case GL_TRIANGLES:
-        default: return MTLPrimitiveTypeTriangle;
+        default: return MTL::PrimitiveTypeTriangle;
     }
 }
 
-static MTLStencilOperation gl_to_mt_stencil_op(GLenum op)
+static MTL::StencilOperation gl_to_mt_stencil_op(GLenum op)
 {
     switch (op)
     {
-        case GL_ZERO: return MTLStencilOperationZero;
-        case GL_REPLACE: return MTLStencilOperationReplace;
-        case GL_INCR: return MTLStencilOperationIncrementClamp;
-        case GL_INCR_WRAP: return MTLStencilOperationIncrementWrap;
-        case GL_DECR: return MTLStencilOperationDecrementClamp;
-        case GL_DECR_WRAP: return MTLStencilOperationDecrementWrap;
-        case GL_INVERT: return MTLStencilOperationInvert;
+        case GL_ZERO: return MTL::StencilOperationZero;
+        case GL_REPLACE: return MTL::StencilOperationReplace;
+        case GL_INCR: return MTL::StencilOperationIncrementClamp;
+        case GL_INCR_WRAP: return MTL::StencilOperationIncrementWrap;
+        case GL_DECR: return MTL::StencilOperationDecrementClamp;
+        case GL_DECR_WRAP: return MTL::StencilOperationDecrementWrap;
+        case GL_INVERT: return MTL::StencilOperationInvert;
         case GL_KEEP:
-        default: return MTLStencilOperationKeep;
+        default: return MTL::StencilOperationKeep;
     }
 }
 
@@ -251,77 +265,185 @@ static uint32_t gl_index_type_size(GLenum type)
     return (type == GL_UNSIGNED_SHORT) ? 2 : 4;
 }
 
-static MTLIndexType gl_to_mt_index_type(GLenum type)
+static MTL::IndexType gl_to_mt_index_type(GLenum type)
 {
-    return (type == GL_UNSIGNED_SHORT) ? MTLIndexTypeUInt16 : MTLIndexTypeUInt32;
+    return (type == GL_UNSIGNED_SHORT) ? MTL::IndexTypeUInt16 : MTL::IndexTypeUInt32;
 }
 
-static uint32_t mt_format_bytes(MTLPixelFormat format)
+static uint32_t mt_format_bytes(MTL::PixelFormat format)
 {
     switch (format)
     {
-        case MTLPixelFormatR8Unorm: return 1;
-        case MTLPixelFormatRG8Unorm:
-        case MTLPixelFormatR16Float:
-        case MTLPixelFormatDepth16Unorm: return 2;
-        case MTLPixelFormatRGBA8Unorm:
-        case MTLPixelFormatRGBA8Unorm_sRGB:
-        case MTLPixelFormatR32Float:
-        case MTLPixelFormatRG16Float:
-        case MTLPixelFormatDepth32Float:
-        case MTLPixelFormatDepth24Unorm_Stencil8: return 4;
-        case MTLPixelFormatRGBA16Float:
-        case MTLPixelFormatRG32Float:
-        case MTLPixelFormatDepth32Float_Stencil8: return 8;
-        case MTLPixelFormatRGBA32Float: return 16;
+        case MTL::PixelFormatR8Unorm: return 1;
+        case MTL::PixelFormatRG8Unorm:
+        case MTL::PixelFormatR16Float:
+        case MTL::PixelFormatDepth16Unorm: return 2;
+        case MTL::PixelFormatRGBA8Unorm:
+        case MTL::PixelFormatRGBA8Unorm_sRGB:
+        case MTL::PixelFormatR32Float:
+        case MTL::PixelFormatRG16Float:
+        case MTL::PixelFormatDepth32Float:
+        case MTL::PixelFormatDepth24Unorm_Stencil8: return 4;
+        case MTL::PixelFormatRGBA16Float:
+        case MTL::PixelFormatRG32Float:
+        case MTL::PixelFormatDepth32Float_Stencil8: return 8;
+        case MTL::PixelFormatRGBA32Float: return 16;
         default: return 4;
     }
 }
 
-static bool mt_is_depth(MTLPixelFormat format)
+static bool mt_is_depth(MTL::PixelFormat format)
 {
-    return format == MTLPixelFormatDepth16Unorm || format == MTLPixelFormatDepth32Float ||
-           format == MTLPixelFormatDepth24Unorm_Stencil8 || format == MTLPixelFormatDepth32Float_Stencil8;
+    return format == MTL::PixelFormatDepth16Unorm || format == MTL::PixelFormatDepth32Float ||
+           format == MTL::PixelFormatDepth24Unorm_Stencil8 || format == MTL::PixelFormatDepth32Float_Stencil8;
 }
 
 struct rt_buffer_native_t
 {
-    id<MTLBuffer> handle = nil;
+    MTL::Buffer* handle = nullptr;
     mt_res_state_t state = MTL_STATE_UNKNOWN;
     void* mapped = nullptr;
     size_t mappedOffset = 0;
     size_t mappedSize = 0;
+
+    rt_buffer_native_t() = default;
+    rt_buffer_native_t(const rt_buffer_native_t&) = delete;
+    rt_buffer_native_t& operator=(const rt_buffer_native_t&) = delete;
+    rt_buffer_native_t(rt_buffer_native_t&& other) noexcept
+        : handle(other.handle), state(other.state), mapped(other.mapped),
+          mappedOffset(other.mappedOffset), mappedSize(other.mappedSize)
+    {
+        other.handle = nullptr;
+        other.mapped = nullptr;
+    }
+    rt_buffer_native_t& operator=(rt_buffer_native_t&& other) noexcept
+    {
+        if (this != &other)
+        {
+            mt_release(handle);
+            handle = other.handle;
+            state = other.state;
+            mapped = other.mapped;
+            mappedOffset = other.mappedOffset;
+            mappedSize = other.mappedSize;
+            other.handle = nullptr;
+            other.mapped = nullptr;
+        }
+        return *this;
+    }
+    ~rt_buffer_native_t() { mt_release(handle); }
 };
 
 struct rt_texture_native_t
 {
-    id<MTLTexture> handle = nil;
-    MTLPixelFormat format = MTLPixelFormatInvalid;
+    MTL::Texture* handle = nullptr;
+    MTL::PixelFormat format = MTL::PixelFormatInvalid;
     mt_res_state_t state = MTL_STATE_UNKNOWN;
     uint32_t mipLevels = 1;
     uint32_t layers = 1;
     uint32_t width = 1, height = 1, depth = 1;
     GLenum target = GL_TEXTURE_2D;
+
+    rt_texture_native_t() = default;
+    rt_texture_native_t(const rt_texture_native_t&) = delete;
+    rt_texture_native_t& operator=(const rt_texture_native_t&) = delete;
+    rt_texture_native_t(rt_texture_native_t&& other) noexcept
+        : handle(other.handle), format(other.format), state(other.state),
+          mipLevels(other.mipLevels), layers(other.layers),
+          width(other.width), height(other.height), depth(other.depth), target(other.target)
+    {
+        other.handle = nullptr;
+    }
+    rt_texture_native_t& operator=(rt_texture_native_t&& other) noexcept
+    {
+        if (this != &other)
+        {
+            mt_release(handle);
+            handle = other.handle;
+            format = other.format;
+            state = other.state;
+            mipLevels = other.mipLevels;
+            layers = other.layers;
+            width = other.width;
+            height = other.height;
+            depth = other.depth;
+            target = other.target;
+            other.handle = nullptr;
+        }
+        return *this;
+    }
+    ~rt_texture_native_t() { mt_release(handle); }
 };
 
 struct rt_sampler_native_t
 {
-    id<MTLSamplerState> handle = nil;
+    MTL::SamplerState* handle = nullptr;
+
+    rt_sampler_native_t() = default;
+    rt_sampler_native_t(const rt_sampler_native_t&) = delete;
+    rt_sampler_native_t& operator=(const rt_sampler_native_t&) = delete;
+    rt_sampler_native_t(rt_sampler_native_t&& other) noexcept : handle(other.handle) { other.handle = nullptr; }
+    rt_sampler_native_t& operator=(rt_sampler_native_t&& other) noexcept
+    {
+        if (this != &other)
+        {
+            mt_release(handle);
+            handle = other.handle;
+            other.handle = nullptr;
+        }
+        return *this;
+    }
+    ~rt_sampler_native_t() { mt_release(handle); }
 };
 
 struct rt_module_native_t
 {
-    id<MTLLibrary> vlib = nil, tlib = nil, mlib = nil, flib = nil, clib = nil;
-    id<MTLFunction> vfn = nil, tfn = nil, mfn = nil, ffn = nil, cfn = nil;
-    id<MTLRenderPipelineState> renderPipeline = nil;
-    id<MTLComputePipelineState> computePipeline = nil;
-    id<MTLDepthStencilState> depthStencil = nil;
-    bool isMeshlet = false;
-    bool isCompute = false;
-    MTLPrimitiveType primitive = MTLPrimitiveTypeTriangle;
-    MTLCullMode cull = MTLCullModeBack;
-    MTLWinding winding = MTLWindingCounterClockwise;
+    MTL::Library* vlib = nullptr;
+    MTL::Library* tlib = nullptr;
+    MTL::Library* mlib = nullptr;
+    MTL::Library* flib = nullptr;
+    MTL::Library* clib = nullptr;
+    MTL::Function* vfn = nullptr;
+    MTL::Function* tfn = nullptr;
+    MTL::Function* mfn = nullptr;
+    MTL::Function* ffn = nullptr;
+    MTL::Function* cfn = nullptr;
+    MTL::RenderPipelineState* renderPipeline = nullptr;
+    MTL::ComputePipelineState* computePipeline = nullptr;
+    MTL::DepthStencilState* depthStencil = nullptr;
+    MTL::PrimitiveType primitive = MTL::PrimitiveTypeTriangle;
+    MTL::CullMode cull = MTL::CullModeBack;
+    MTL::Winding winding = MTL::WindingCounterClockwise;
     rt_binding_t bindings[GL_MAX_BINDING_HANDLE_NUM] = {};
+
+    rt_module_native_t() = default;
+    rt_module_native_t(const rt_module_native_t&) = delete;
+    rt_module_native_t& operator=(const rt_module_native_t&) = delete;
+    rt_module_native_t(rt_module_native_t&& other) noexcept { *this = std::move(other); }
+    rt_module_native_t& operator=(rt_module_native_t&& other) noexcept
+    {
+        if (this != &other)
+        {
+            mt_release(vlib); mt_release(tlib); mt_release(mlib); mt_release(flib); mt_release(clib);
+            mt_release(vfn); mt_release(tfn); mt_release(mfn); mt_release(ffn); mt_release(cfn);
+            mt_release(renderPipeline); mt_release(computePipeline); mt_release(depthStencil);
+            vlib = other.vlib; tlib = other.tlib; mlib = other.mlib; flib = other.flib; clib = other.clib;
+            vfn = other.vfn; tfn = other.tfn; mfn = other.mfn; ffn = other.ffn; cfn = other.cfn;
+            renderPipeline = other.renderPipeline; computePipeline = other.computePipeline; depthStencil = other.depthStencil;
+            primitive = other.primitive; cull = other.cull; winding = other.winding;
+            std::memcpy(bindings, other.bindings, sizeof(bindings));
+            other.vlib = other.tlib = other.mlib = other.flib = other.clib = nullptr;
+            other.vfn = other.tfn = other.mfn = other.ffn = other.cfn = nullptr;
+            other.renderPipeline = nullptr; other.computePipeline = nullptr; other.depthStencil = nullptr;
+        }
+        return *this;
+    }
+    ~rt_module_native_t()
+    {
+        mt_release(vlib); mt_release(tlib); mt_release(mlib); mt_release(flib); mt_release(clib);
+        mt_release(vfn); mt_release(tfn); mt_release(mfn); mt_release(ffn); mt_release(cfn);
+        mt_release(renderPipeline); mt_release(computePipeline); mt_release(depthStencil);
+    }
 };
 
 struct rt_mesh_native_t { uint32_t vertexCount = 0, indexCount = 0; };
@@ -332,7 +454,23 @@ struct rt_pass_transfer_native_t { uint32_t dummy = 0; };
 
 struct mt_staging_t
 {
-    id<MTLBuffer> buffer = nil;
+    MTL::Buffer* buffer = nullptr;
+
+    mt_staging_t() = default;
+    mt_staging_t(const mt_staging_t&) = delete;
+    mt_staging_t& operator=(const mt_staging_t&) = delete;
+    mt_staging_t(mt_staging_t&& other) noexcept : buffer(other.buffer) { other.buffer = nullptr; }
+    mt_staging_t& operator=(mt_staging_t&& other) noexcept
+    {
+        if (this != &other)
+        {
+            mt_release(buffer);
+            buffer = other.buffer;
+            other.buffer = nullptr;
+        }
+        return *this;
+    }
+    ~mt_staging_t() { mt_release(buffer); }
 };
 
 struct mt_native_t
@@ -350,13 +488,14 @@ struct mt_native_t
     std::map<uint32_t, rt_pass_render_native_t> renderPasses;
     std::map<uint32_t, rt_pass_transfer_native_t> transferPasses;
 
-    id<MTLDevice> device = nil;
-    id<MTLCommandQueue> queue = nil;
-    id<MTLCommandBuffer> cmd = nil;
-    id<MTLRenderCommandEncoder> renderEncoder = nil;
-    id<MTLComputeCommandEncoder> computeEncoder = nil;
-    id<MTLBlitCommandEncoder> blitEncoder = nil;
-    id<MTLSamplerState> defaultSampler = nil;
+    MTL::Device* device = nullptr;
+    MTL::CommandQueue* queue = nullptr;
+    MTL::CommandBuffer* cmd = nullptr;
+    MTL::RenderCommandEncoder* renderEncoder = nullptr;
+    MTL::ComputeCommandEncoder* computeEncoder = nullptr;
+    MTL::BlitCommandEncoder* blitEncoder = nullptr;
+    MTL::SamplerState* defaultSampler = nullptr;
+    bool ownsQueue = false;
     std::vector<mt_staging_t> pendingStaging;
     uint8_t pushData[128] = {};
     uint32_t pushLength = 0;
@@ -386,16 +525,23 @@ struct mt_native_t
 
 static void mt_end_encoder()
 {
-    if (metal.renderEncoder) { [metal.renderEncoder endEncoding]; metal.renderEncoder = nil; }
-    if (metal.computeEncoder) { [metal.computeEncoder endEncoding]; metal.computeEncoder = nil; }
-    if (metal.blitEncoder) { [metal.blitEncoder endEncoding]; metal.blitEncoder = nil; }
+    if (metal.renderEncoder) { metal.renderEncoder->endEncoding(); mt_release(metal.renderEncoder); }
+    if (metal.computeEncoder) { metal.computeEncoder->endEncoding(); mt_release(metal.computeEncoder); }
+    if (metal.blitEncoder) { metal.blitEncoder->endEncoding(); mt_release(metal.blitEncoder); }
+}
+
+static void mt_retain_cmd(MTL::CommandBuffer* cmd)
+{
+    metal.cmd = cmd;
+    if (metal.cmd) metal.cmd->retain();
 }
 
 static void mt_ensure_blit()
 {
     if (metal.blitEncoder) return;
     mt_end_encoder();
-    metal.blitEncoder = [metal.cmd blitCommandEncoder];
+    metal.blitEncoder = metal.cmd->blitCommandEncoder();
+    if (metal.blitEncoder) metal.blitEncoder->retain();
 }
 
 static void mt_flush_staging()
@@ -405,9 +551,9 @@ static void mt_flush_staging()
 
 static bool mt_create_staging(size_t size, mt_staging_t& staging, void** mapped)
 {
-    staging.buffer = [metal.device newBufferWithLength:size options:MTLResourceStorageModeShared];
+    staging.buffer = metal.device->newBuffer(size, MTL::ResourceStorageModeShared);
     if (!staging.buffer) return false;
-    if (mapped) *mapped = [staging.buffer contents];
+    if (mapped) *mapped = staging.buffer->contents();
     return true;
 }
 
@@ -468,31 +614,36 @@ static void mt_clear_bindings()
         binding = {};
 }
 
-static id<MTLFunction> mt_function_from_binary(id<MTLLibrary> library)
+static MTL::Function* mt_function_from_binary(MTL::Library* library)
 {
-    if (!library) return nil;
-    id<MTLFunction> fn = [library newFunctionWithName:@"main"];
+    if (!library) return nullptr;
+    MTL::Function* fn = library->newFunction(MTLSTR("main"));
     if (fn) return fn;
-    NSArray<NSString*>* names = [library functionNames];
-    if (names.count) return [library newFunctionWithName:names[0]];
-    return nil;
+    NS::Array* names = library->functionNames();
+    if (names && names->count() > 0)
+        return library->newFunction(static_cast<const NS::String*>(names->object(0)));
+    return nullptr;
 }
 
-static id<MTLLibrary> mt_create_library(const char* data, uint32_t length)
+static MTL::Library* mt_create_library(const char* data, uint32_t length)
 {
-    if (!data || !length || !metal.device) return nil;
-    NSError* error = nil;
-    bool text = data[0] != 0 && (unsigned char)data[0] < 0x80 && data[0] != '\0';
+    if (!data || !length || !metal.device) return nullptr;
+    NS::Error* error = nullptr;
+    bool text = data[0] != 0 && (unsigned char)data[0] < 0x80;
     for (uint32_t i = 0; i < std::min(length, 8u) && text; ++i)
         if ((unsigned char)data[i] < 9 && data[i] != '\n' && data[i] != '\r' && data[i] != '\t')
             text = false;
     if (text)
     {
-        NSString* source = [[NSString alloc] initWithBytes:data length:length encoding:NSUTF8StringEncoding];
-        return [metal.device newLibraryWithSource:source options:nil error:&error];
+        NS::String* source = NS::String::alloc()->init(const_cast<char*>(data), length, NS::UTF8StringEncoding, false);
+        MTL::Library* library = metal.device->newLibrary(source, nullptr, &error);
+        mt_release(source);
+        return library;
     }
-    dispatch_data_t blob = dispatch_data_create(data, length, dispatch_get_main_queue(), DISPATCH_DATA_DESTRUCTOR_DEFAULT);
-    return [metal.device newLibraryWithData:blob error:&error];
+    dispatch_data_t blob = dispatch_data_create(data, length, nullptr, DISPATCH_DATA_DESTRUCTOR_DEFAULT);
+    MTL::Library* library = metal.device->newLibrary(blob, &error);
+    if (blob) dispatch_release(blob);
+    return library;
 }
 
 static void mt_fill_render_state(rt_module_render_t& result, rt_module_render_info_t const& info)
@@ -532,84 +683,111 @@ static void mt_fill_render_state(rt_module_render_t& result, rt_module_render_in
     result.primitive = info.primitive;
 }
 
-static bool mt_create_graphics_pipeline(rt_module_native_t& native, rt_module_render_info_t const& info, bool meshlet)
+static void mt_fill_color_attachments(MTL::RenderPipelineColorAttachmentDescriptorArray* colors, rt_module_render_info_t const& info)
 {
-    MTLRenderPipelineDescriptor* desc = [[MTLRenderPipelineDescriptor alloc] init];
-    desc.vertexFunction = native.vfn;
-    desc.fragmentFunction = native.ffn;
-    if (!meshlet)
-    {
-        MTLVertexDescriptor* vd = [[MTLVertexDescriptor alloc] init];
-        for (uint32_t i = 0; i < GL_MAX_VERTEX_BUFFER_NUM; ++i)
-        {
-            if (info.vertex[i].type == GL_NONE || info.vertex[i].count == 0) continue;
-            uint32_t loc = info.vertex[i].location;
-            vd.attributes[loc].format = gl_to_mt_vertex_format(info.vertex[i].type, info.vertex[i].count);
-            vd.attributes[loc].offset = 0;
-            vd.attributes[loc].bufferIndex = loc;
-            vd.layouts[loc].stride = gl_vertex_size(info.vertex[i].type, info.vertex[i].count);
-            vd.layouts[loc].stepFunction = info.vertex[i].instance ? MTLVertexStepFunctionPerInstance : MTLVertexStepFunctionPerVertex;
-            vd.layouts[loc].stepRate = 1;
-        }
-        desc.vertexDescriptor = vd;
-    }
     for (uint32_t i = 0; i < GL_MAX_COLOR_TEXTURE_NUM; ++i)
     {
-        desc.colorAttachments[i].pixelFormat = MTLPixelFormatRGBA8Unorm;
+        auto* attachment = colors->object(i);
+        attachment->setPixelFormat(MTL::PixelFormatRGBA8Unorm);
         bool blend =
             (info.colors[i].color.func != GL_FUNC_ADD || info.colors[i].color.src != GL_ONE ||
              info.colors[i].color.dst != GL_ZERO || info.colors[i].alpha.func != GL_FUNC_ADD ||
              info.colors[i].alpha.src != GL_ONE || info.colors[i].alpha.dst != GL_ZERO);
-        desc.colorAttachments[i].blendingEnabled = blend;
-        desc.colorAttachments[i].sourceRGBBlendFactor = gl_to_mt_blend(info.colors[i].color.src);
-        desc.colorAttachments[i].destinationRGBBlendFactor = gl_to_mt_blend(info.colors[i].color.dst);
-        desc.colorAttachments[i].rgbBlendOperation = gl_to_mt_blend_op(info.colors[i].color.func);
-        desc.colorAttachments[i].sourceAlphaBlendFactor = gl_to_mt_blend(info.colors[i].alpha.src);
-        desc.colorAttachments[i].destinationAlphaBlendFactor = gl_to_mt_blend(info.colors[i].alpha.dst);
-        desc.colorAttachments[i].alphaBlendOperation = gl_to_mt_blend_op(info.colors[i].alpha.func);
+        attachment->setBlendingEnabled(blend);
+        attachment->setSourceRGBBlendFactor(gl_to_mt_blend(info.colors[i].color.src));
+        attachment->setDestinationRGBBlendFactor(gl_to_mt_blend(info.colors[i].color.dst));
+        attachment->setRgbBlendOperation(gl_to_mt_blend_op(info.colors[i].color.func));
+        attachment->setSourceAlphaBlendFactor(gl_to_mt_blend(info.colors[i].alpha.src));
+        attachment->setDestinationAlphaBlendFactor(gl_to_mt_blend(info.colors[i].alpha.dst));
+        attachment->setAlphaBlendOperation(gl_to_mt_blend_op(info.colors[i].alpha.func));
     }
+}
+
+static bool mt_create_depth_stencil(rt_module_native_t& native, rt_module_render_info_t const& info, bool stencilEnabled)
+{
+    MTL::DepthStencilDescriptor* ds = MTL::DepthStencilDescriptor::alloc()->init();
+    ds->setDepthCompareFunction(gl_to_mt_compare(info.depth.func));
+    ds->setDepthWriteEnabled(info.depth.write);
+    if (stencilEnabled)
+    {
+        MTL::StencilDescriptor* front = MTL::StencilDescriptor::alloc()->init();
+        front->setStencilCompareFunction(gl_to_mt_compare(info.stencil.front.func));
+        front->setStencilFailureOperation(gl_to_mt_stencil_op(info.stencil.front.sfail));
+        front->setDepthFailureOperation(gl_to_mt_stencil_op(info.stencil.front.zfail));
+        front->setDepthStencilPassOperation(gl_to_mt_stencil_op(info.stencil.front.zpass));
+        front->setReadMask(info.stencil.read);
+        front->setWriteMask(info.stencil.write);
+        MTL::StencilDescriptor* back = MTL::StencilDescriptor::alloc()->init();
+        back->setStencilCompareFunction(gl_to_mt_compare(info.stencil.back.func));
+        back->setStencilFailureOperation(gl_to_mt_stencil_op(info.stencil.back.sfail));
+        back->setDepthFailureOperation(gl_to_mt_stencil_op(info.stencil.back.zfail));
+        back->setDepthStencilPassOperation(gl_to_mt_stencil_op(info.stencil.back.zpass));
+        back->setReadMask(info.stencil.read);
+        back->setWriteMask(info.stencil.write);
+        ds->setFrontFaceStencil(front);
+        ds->setBackFaceStencil(back);
+        mt_release(front);
+        mt_release(back);
+    }
+    native.depthStencil = metal.device->newDepthStencilState(ds);
+    mt_release(ds);
+    native.primitive = gl_to_mt_primitive(info.primitive);
+    native.cull = gl_to_mt_cull(info.cull_mode);
+    native.winding = (info.front_face == GL_CW) ? MTL::WindingClockwise : MTL::WindingCounterClockwise;
+    for (uint32_t i = 0; i < GL_MAX_BINDING_HANDLE_NUM; ++i)
+        native.bindings[i] = info.binding[i];
+    return native.depthStencil != nullptr;
+}
+
+static bool mt_create_graphics_pipeline(rt_module_native_t& native, rt_module_render_info_t const& info, bool meshlet)
+{
     const bool depthEnabled = (info.depth.func != GL_ALWAYS || info.depth.write);
     const bool stencilEnabled =
         (info.stencil.back.func != GL_ALWAYS || info.stencil.back.sfail != GL_KEEP ||
          info.stencil.back.zfail != GL_KEEP || info.stencil.back.zpass != GL_KEEP ||
          info.stencil.front.func != GL_ALWAYS || info.stencil.front.sfail != GL_KEEP ||
          info.stencil.front.zfail != GL_KEEP || info.stencil.front.zpass != GL_KEEP);
-    if (stencilEnabled) desc.depthAttachmentPixelFormat = MTLPixelFormatDepth32Float_Stencil8;
-    else if (depthEnabled) desc.depthAttachmentPixelFormat = MTLPixelFormatDepth32Float;
 
-    NSError* error = nil;
-    native.renderPipeline = [metal.device newRenderPipelineStateWithDescriptor:desc error:&error];
-    if (!native.renderPipeline) return false;
-
-    MTLDepthStencilDescriptor* ds = [[MTLDepthStencilDescriptor alloc] init];
-    ds.depthCompareFunction = gl_to_mt_compare(info.depth.func);
-    ds.depthWriteEnabled = info.depth.write;
-    if (stencilEnabled)
+    NS::Error* error = nullptr;
+    if (meshlet)
     {
-        MTLStencilDescriptor* front = [[MTLStencilDescriptor alloc] init];
-        front.stencilCompareFunction = gl_to_mt_compare(info.stencil.front.func);
-        front.stencilFailureOperation = gl_to_mt_stencil_op(info.stencil.front.sfail);
-        front.depthFailureOperation = gl_to_mt_stencil_op(info.stencil.front.zfail);
-        front.depthStencilPassOperation = gl_to_mt_stencil_op(info.stencil.front.zpass);
-        front.readMask = info.stencil.read;
-        front.writeMask = info.stencil.write;
-        MTLStencilDescriptor* back = [[MTLStencilDescriptor alloc] init];
-        back.stencilCompareFunction = gl_to_mt_compare(info.stencil.back.func);
-        back.stencilFailureOperation = gl_to_mt_stencil_op(info.stencil.back.sfail);
-        back.depthFailureOperation = gl_to_mt_stencil_op(info.stencil.back.zfail);
-        back.depthStencilPassOperation = gl_to_mt_stencil_op(info.stencil.back.zpass);
-        back.readMask = info.stencil.read;
-        back.writeMask = info.stencil.write;
-        ds.frontFaceStencil = front;
-        ds.backFaceStencil = back;
+        MTL::MeshRenderPipelineDescriptor* desc = MTL::MeshRenderPipelineDescriptor::alloc()->init();
+        desc->setObjectFunction(native.tfn);
+        desc->setMeshFunction(native.mfn);
+        desc->setFragmentFunction(native.ffn);
+        mt_fill_color_attachments(desc->colorAttachments(), info);
+        if (stencilEnabled) desc->setDepthAttachmentPixelFormat(MTL::PixelFormatDepth32Float_Stencil8);
+        else if (depthEnabled) desc->setDepthAttachmentPixelFormat(MTL::PixelFormatDepth32Float);
+        native.renderPipeline = metal.device->newRenderPipelineState(desc, MTL::PipelineOptionNone, nullptr, &error);
+        mt_release(desc);
     }
-    native.depthStencil = [metal.device newDepthStencilStateWithDescriptor:ds];
-    native.primitive = gl_to_mt_primitive(info.primitive);
-    native.cull = gl_to_mt_cull(info.cull_mode);
-    native.winding = (info.front_face == GL_CW) ? MTLWindingClockwise : MTLWindingCounterClockwise;
-    for (uint32_t i = 0; i < GL_MAX_BINDING_HANDLE_NUM; ++i)
-        native.bindings[i] = info.binding[i];
-    return true;
+    else
+    {
+        MTL::RenderPipelineDescriptor* desc = MTL::RenderPipelineDescriptor::alloc()->init();
+        desc->setVertexFunction(native.vfn);
+        desc->setFragmentFunction(native.ffn);
+        MTL::VertexDescriptor* vd = MTL::VertexDescriptor::alloc()->init();
+        for (uint32_t i = 0; i < GL_MAX_VERTEX_BUFFER_NUM; ++i)
+        {
+            if (info.vertex[i].type == GL_NONE || info.vertex[i].count == 0) continue;
+            uint32_t loc = info.vertex[i].location;
+            vd->attributes()->object(loc)->setFormat(gl_to_mt_vertex_format(info.vertex[i].type, info.vertex[i].count));
+            vd->attributes()->object(loc)->setOffset(0);
+            vd->attributes()->object(loc)->setBufferIndex(loc);
+            vd->layouts()->object(loc)->setStride(gl_vertex_size(info.vertex[i].type, info.vertex[i].count));
+            vd->layouts()->object(loc)->setStepFunction(info.vertex[i].instance ? MTL::VertexStepFunctionPerInstance : MTL::VertexStepFunctionPerVertex);
+            vd->layouts()->object(loc)->setStepRate(1);
+        }
+        desc->setVertexDescriptor(vd);
+        mt_release(vd);
+        mt_fill_color_attachments(desc->colorAttachments(), info);
+        if (stencilEnabled) desc->setDepthAttachmentPixelFormat(MTL::PixelFormatDepth32Float_Stencil8);
+        else if (depthEnabled) desc->setDepthAttachmentPixelFormat(MTL::PixelFormatDepth32Float);
+        native.renderPipeline = metal.device->newRenderPipelineState(desc, &error);
+        mt_release(desc);
+    }
+    if (!native.renderPipeline) return false;
+    return mt_create_depth_stencil(native, info, stencilEnabled);
 }
 
 static void mt_destroy_module_native(uint32_t handle, void*& native)
@@ -623,11 +801,11 @@ static void mt_apply_push()
     if (metal.pushLength == 0) return;
     if (metal.renderEncoder)
     {
-        [metal.renderEncoder setVertexBytes:metal.pushData length:metal.pushLength atIndex:16];
-        [metal.renderEncoder setFragmentBytes:metal.pushData length:metal.pushLength atIndex:16];
+        metal.renderEncoder->setVertexBytes(metal.pushData, metal.pushLength, 16);
+        metal.renderEncoder->setFragmentBytes(metal.pushData, metal.pushLength, 16);
     }
     if (metal.computeEncoder)
-        [metal.computeEncoder setBytes:metal.pushData length:metal.pushLength atIndex:16];
+        metal.computeEncoder->setBytes(metal.pushData, metal.pushLength, 16);
 }
 
 static void mt_flush_descriptors()
@@ -647,29 +825,29 @@ static void mt_flush_descriptors()
             mt_transition_buffer(*buf, storage ? MTL_STATE_SHADER_WRITE : MTL_STATE_SHADER_READ);
             if (metal.renderEncoder)
             {
-                [metal.renderEncoder setVertexBuffer:buf->handle offset:0 atIndex:slot.buffer_bind.binding];
-                [metal.renderEncoder setFragmentBuffer:buf->handle offset:0 atIndex:slot.buffer_bind.binding];
+                metal.renderEncoder->setVertexBuffer(buf->handle, 0, slot.buffer_bind.binding);
+                metal.renderEncoder->setFragmentBuffer(buf->handle, 0, slot.buffer_bind.binding);
             }
             if (metal.computeEncoder)
-                [metal.computeEncoder setBuffer:buf->handle offset:0 atIndex:slot.buffer_bind.binding];
+                metal.computeEncoder->setBuffer(buf->handle, 0, slot.buffer_bind.binding);
         }
         else if (slot.type == GL_BINDING_TEXTURE)
         {
             auto* tex = mt_texture_native(slot.texture);
             if (!tex) continue;
             mt_transition_image(*tex, MTL_STATE_SHADER_READ);
-            id<MTLSamplerState> samp = metal.defaultSampler;
+            MTL::SamplerState* samp = metal.defaultSampler;
             if (auto* s = mt_sampler_native(slot.sampler))
                 samp = s->handle;
             if (metal.renderEncoder)
             {
-                [metal.renderEncoder setFragmentTexture:tex->handle atIndex:slot.texture_bind.binding];
-                [metal.renderEncoder setFragmentSamplerState:samp atIndex:slot.texture_bind.binding];
+                metal.renderEncoder->setFragmentTexture(tex->handle, slot.texture_bind.binding);
+                metal.renderEncoder->setFragmentSamplerState(samp, slot.texture_bind.binding);
             }
             if (metal.computeEncoder)
             {
-                [metal.computeEncoder setTexture:tex->handle atIndex:slot.texture_bind.binding];
-                [metal.computeEncoder setSamplerState:samp atIndex:slot.texture_bind.binding];
+                metal.computeEncoder->setTexture(tex->handle, slot.texture_bind.binding);
+                metal.computeEncoder->setSamplerState(samp, slot.texture_bind.binding);
             }
         }
         else if (slot.type == GL_BINDING_STORAGE_TEXTURE)
@@ -678,39 +856,46 @@ static void mt_flush_descriptors()
             if (!tex) continue;
             mt_transition_image(*tex, MTL_STATE_SHADER_WRITE);
             if (metal.renderEncoder)
-                [metal.renderEncoder setFragmentTexture:tex->handle atIndex:slot.storage_texture_bind.binding];
+                metal.renderEncoder->setFragmentTexture(tex->handle, slot.storage_texture_bind.binding);
             if (metal.computeEncoder)
-                [metal.computeEncoder setTexture:tex->handle atIndex:slot.storage_texture_bind.binding];
+                metal.computeEncoder->setTexture(tex->handle, slot.storage_texture_bind.binding);
         }
         else if (slot.type == GL_BINDING_SAMPLER)
         {
             auto* samp = mt_sampler_native(slot.sampler);
             if (!samp) continue;
             if (metal.renderEncoder)
-                [metal.renderEncoder setFragmentSamplerState:samp->handle atIndex:slot.sampler_bind.binding];
+                metal.renderEncoder->setFragmentSamplerState(samp->handle, slot.sampler_bind.binding);
             if (metal.computeEncoder)
-                [metal.computeEncoder setSamplerState:samp->handle atIndex:slot.sampler_bind.binding];
+                metal.computeEncoder->setSamplerState(samp->handle, slot.sampler_bind.binding);
         }
     }
 }
 
-void mt_load_library(id<MTLDevice> device, id<MTLCommandQueue> queue)
+void mt_load_library(MTL::Device* device, MTL::CommandQueue* queue)
 {
     metal.device = device;
     metal.queue = queue;
+    metal.ownsQueue = false;
     if (!metal.device)
     {
         fprintf(stderr, "Metal: device is null\n");
         abort();
     }
     if (!metal.queue)
-        metal.queue = [metal.device newCommandQueue];
-    metal.cmd = [metal.queue commandBuffer];
-    MTLSamplerDescriptor* samp = [[MTLSamplerDescriptor alloc] init];
-    samp.minFilter = MTLSamplerMinMagFilterLinear;
-    samp.magFilter = MTLSamplerMinMagFilterLinear;
-    samp.sAddressMode = samp.tAddressMode = samp.rAddressMode = MTLSamplerAddressModeRepeat;
-    metal.defaultSampler = [metal.device newSamplerStateWithDescriptor:samp];
+    {
+        metal.queue = metal.device->newCommandQueue();
+        metal.ownsQueue = true;
+    }
+    mt_retain_cmd(metal.queue->commandBuffer());
+    MTL::SamplerDescriptor* samp = MTL::SamplerDescriptor::alloc()->init();
+    samp->setMinFilter(MTL::SamplerMinMagFilterLinear);
+    samp->setMagFilter(MTL::SamplerMinMagFilterLinear);
+    samp->setSAddressMode(MTL::SamplerAddressModeRepeat);
+    samp->setTAddressMode(MTL::SamplerAddressModeRepeat);
+    samp->setRAddressMode(MTL::SamplerAddressModeRepeat);
+    metal.defaultSampler = metal.device->newSamplerState(samp);
+    mt_release(samp);
 
     rt_unload_library = mt_unload_library;
     rt_create_buffer = mt_create_buffer;
@@ -774,7 +959,7 @@ void mt_load_library(id<MTLDevice> device, id<MTLCommandQueue> queue)
 void mt_unload_library()
 {
     mt_end_encoder();
-    metal.cmd = nil;
+    mt_release(metal.cmd);
     mt_flush_staging();
     metal.buffers.clear();
     metal.textures.clear();
@@ -785,9 +970,11 @@ void mt_unload_library()
     metal.computePasses.clear();
     metal.renderPasses.clear();
     metal.transferPasses.clear();
-    metal.defaultSampler = nil;
-    metal.queue = nil;
-    metal.device = nil;
+    mt_release(metal.defaultSampler);
+    if (metal.ownsQueue) mt_release(metal.queue);
+    else metal.queue = nullptr;
+    metal.device = nullptr;
+    metal.ownsQueue = false;
     metal.bufferID = metal.textureID = metal.samplerID = metal.moduleID = 0;
     metal.meshID = metal.meshletID = metal.passID = 0;
     metal.currentPassType = GL_NONE;
@@ -864,11 +1051,11 @@ rt_buffer_t mt_create_buffer(rt_buffer_info_t const& info)
     uint32_t handle = metal.bufferID + 1;
     auto& native = metal.buffers[handle];
     bool hostVisible = (info.usage & (GL_BUFFER_USAGE_MAP_READ | GL_BUFFER_USAGE_MAP_WRITE)) || info.data;
-    MTLResourceOptions options = hostVisible ? MTLResourceStorageModeShared : MTLResourceStorageModePrivate;
+    MTL::ResourceOptions options = hostVisible ? MTL::ResourceStorageModeShared : MTL::ResourceStorageModePrivate;
     if (info.data && hostVisible)
-        native.handle = [metal.device newBufferWithBytes:info.data length:info.size options:options];
+        native.handle = metal.device->newBuffer(info.data, info.size, options);
     else
-        native.handle = [metal.device newBufferWithLength:info.size options:options];
+        native.handle = metal.device->newBuffer(info.size, options);
     if (!native.handle)
     {
         metal.buffers.erase(handle);
@@ -883,8 +1070,8 @@ rt_buffer_t mt_create_buffer(rt_buffer_info_t const& info)
             std::memcpy(ptr, info.data, info.size);
             mt_ensure_blit();
             mt_transition_buffer(native, MTL_STATE_COPY_DST);
-            [metal.blitEncoder copyFromBuffer:staging.buffer sourceOffset:0 toBuffer:native.handle destinationOffset:0 size:info.size];
-            metal.pendingStaging.push_back(staging);
+            metal.blitEncoder->copyFromBuffer(staging.buffer, 0, native.handle, 0, info.size);
+            metal.pendingStaging.push_back(std::move(staging));
         }
     }
     else if (info.data)
@@ -925,7 +1112,7 @@ void* mt_map_buffer(rt_buffer_t& buffer, GLenum mode, size_t offset, size_t size
     if (offset > buffer.size) return nullptr;
     if (size == 0) size = buffer.size - offset;
     if (size == 0 || offset + size > buffer.size) return nullptr;
-    void* base = [native->handle contents];
+    void* base = native->handle->contents();
     if (!base) return nullptr;
     mt_transition_buffer(*native, MTL_STATE_HOST);
     native->mapped = (uint8_t*)base + offset;
@@ -966,19 +1153,20 @@ rt_texture_t mt_create_texture(rt_texture_info_t const& info)
     else if (info.mipmaps > 1)
         native.mipLevels = info.mipmaps;
 
-    MTLTextureDescriptor* desc = [[MTLTextureDescriptor alloc] init];
-    desc.pixelFormat = native.format;
-    desc.width = native.width;
-    desc.height = native.height;
-    desc.mipmapLevelCount = native.mipLevels;
-    desc.usage = MTLTextureUsageShaderRead | MTLTextureUsageShaderWrite | MTLTextureUsageRenderTarget;
-    desc.storageMode = MTLStorageModePrivate;
-    if (info.target == GL_TEXTURE_1D) desc.textureType = MTLTextureType1D;
-    else if (info.target == GL_TEXTURE_3D) { desc.textureType = MTLTextureType3D; desc.depth = native.depth; }
-    else if (info.target == GL_TEXTURE_2D_ARRAY) { desc.textureType = MTLTextureType2DArray; desc.arrayLength = native.layers; }
-    else if (info.target == GL_TEXTURE_2D_MULTISAMPLE) { desc.textureType = MTLTextureType2DMultisample; desc.sampleCount = info.samples ? info.samples : 1; }
-    else desc.textureType = MTLTextureType2D;
-    native.handle = [metal.device newTextureWithDescriptor:desc];
+    MTL::TextureDescriptor* desc = MTL::TextureDescriptor::alloc()->init();
+    desc->setPixelFormat(native.format);
+    desc->setWidth(native.width);
+    desc->setHeight(native.height);
+    desc->setMipmapLevelCount(native.mipLevels);
+    desc->setUsage(MTL::TextureUsageShaderRead | MTL::TextureUsageShaderWrite | MTL::TextureUsageRenderTarget);
+    desc->setStorageMode(MTL::StorageModePrivate);
+    if (info.target == GL_TEXTURE_1D) desc->setTextureType(MTL::TextureType1D);
+    else if (info.target == GL_TEXTURE_3D) { desc->setTextureType(MTL::TextureType3D); desc->setDepth(native.depth); }
+    else if (info.target == GL_TEXTURE_2D_ARRAY) { desc->setTextureType(MTL::TextureType2DArray); desc->setArrayLength(native.layers); }
+    else if (info.target == GL_TEXTURE_2D_MULTISAMPLE) { desc->setTextureType(MTL::TextureType2DMultisample); desc->setSampleCount(info.samples ? info.samples : 1); }
+    else desc->setTextureType(MTL::TextureType2D);
+    native.handle = metal.device->newTexture(desc);
+    mt_release(desc);
     if (!native.handle)
     {
         metal.textures.erase(handle);
@@ -996,11 +1184,10 @@ rt_texture_t mt_create_texture(rt_texture_info_t const& info)
             std::memcpy(ptr, info.data, bytes);
             mt_ensure_blit();
             mt_transition_image(native, MTL_STATE_COPY_DST);
-            MTLSize size = {native.width, native.height, (info.target == GL_TEXTURE_3D) ? native.depth : 1};
-            [metal.blitEncoder copyFromBuffer:staging.buffer sourceOffset:0 sourceBytesPerRow:native.width * bpp
-                sourceBytesPerImage:(NSUInteger)bytes sourceSize:size toTexture:native.handle destinationSlice:0
-                destinationLevel:0 destinationOrigin:{}];
-            metal.pendingStaging.push_back(staging);
+            MTL::Size size = MTL::Size::Make(native.width, native.height, (info.target == GL_TEXTURE_3D) ? native.depth : 1);
+            metal.blitEncoder->copyFromBuffer(staging.buffer, 0, native.width * bpp, (NS::UInteger)bytes, size,
+                native.handle, 0, 0, MTL::Origin::Make(0, 0, 0));
+            metal.pendingStaging.push_back(std::move(staging));
         }
         mt_transition_image(native, MTL_STATE_SHADER_READ);
     }
@@ -1102,14 +1289,15 @@ rt_sampler_t mt_create_sampler(rt_sampler_info_t const& info)
     rt_sampler_t result = {};
     uint32_t handle = metal.samplerID + 1;
     auto& native = metal.samplers[handle];
-    MTLSamplerDescriptor* desc = [[MTLSamplerDescriptor alloc] init];
-    desc.minFilter = gl_to_mt_filter(info.min_filter);
-    desc.magFilter = gl_to_mt_filter(info.mag_filter);
-    desc.mipFilter = gl_to_mt_mip(info.min_filter);
-    desc.sAddressMode = gl_to_mt_address(info.wrap_s);
-    desc.tAddressMode = gl_to_mt_address(info.wrap_t);
-    desc.rAddressMode = gl_to_mt_address(info.wrap_r);
-    native.handle = [metal.device newSamplerStateWithDescriptor:desc];
+    MTL::SamplerDescriptor* desc = MTL::SamplerDescriptor::alloc()->init();
+    desc->setMinFilter(gl_to_mt_filter(info.min_filter));
+    desc->setMagFilter(gl_to_mt_filter(info.mag_filter));
+    desc->setMipFilter(gl_to_mt_mip(info.min_filter));
+    desc->setSAddressMode(gl_to_mt_address(info.wrap_s));
+    desc->setTAddressMode(gl_to_mt_address(info.wrap_t));
+    desc->setRAddressMode(gl_to_mt_address(info.wrap_r));
+    native.handle = metal.device->newSamplerState(desc);
+    mt_release(desc);
     metal.samplerID = handle;
     result.handle = handle;
     result.native = &native;
@@ -1141,7 +1329,6 @@ rt_module_compute_t mt_create_module_compute(rt_module_compute_info_t const& inf
     if (!info.cshader || !info.clength || !metal.device) return result;
     uint32_t handle = metal.moduleID + 1;
     auto& native = metal.modules[handle];
-    native.isCompute = true;
     native.clib = mt_create_library(info.cshader, info.clength);
     native.cfn = mt_function_from_binary(native.clib);
     if (!native.cfn)
@@ -1149,8 +1336,8 @@ rt_module_compute_t mt_create_module_compute(rt_module_compute_info_t const& inf
         metal.modules.erase(handle);
         return {};
     }
-    NSError* error = nil;
-    native.computePipeline = [metal.device newComputePipelineStateWithFunction:native.cfn error:&error];
+    NS::Error* error = nullptr;
+    native.computePipeline = metal.device->newComputePipelineState(native.cfn, &error);
     if (!native.computePipeline)
     {
         result.native = &native;
@@ -1198,7 +1385,6 @@ rt_module_render_t mt_create_module_meshlet(rt_module_render_info_t const& info)
     if (!info.mshader || !info.mlength || !metal.device) return result;
     uint32_t handle = metal.moduleID + 1;
     auto& native = metal.modules[handle];
-    native.isMeshlet = true;
     if (info.tshader)
     {
         native.tlib = mt_create_library(info.tshader, info.tlength);
@@ -1274,10 +1460,11 @@ void mt_begin_compute(rt_pass_compute_t& pass)
     metal.currentPassType = GL_MODULE_COMPUTE;
     metal.currentComputePass = &pass;
     mt_end_encoder();
-    metal.computeEncoder = [metal.cmd computeCommandEncoder];
+    metal.computeEncoder = metal.cmd->computeCommandEncoder();
+    if (metal.computeEncoder) metal.computeEncoder->retain();
     auto* mod = (rt_module_native_t*)pass.module.native;
     if (mod && mod->computePipeline)
-        [metal.computeEncoder setComputePipelineState:mod->computePipeline];
+        metal.computeEncoder->setComputePipelineState(mod->computePipeline);
 }
 
 void mt_end_compute(rt_pass_compute_t& pass)
@@ -1289,8 +1476,8 @@ void mt_end_compute(rt_pass_compute_t& pass)
     }
     if (metal.computeEncoder)
     {
-        [metal.computeEncoder endEncoding];
-        metal.computeEncoder = nil;
+        metal.computeEncoder->endEncoding();
+        mt_release(metal.computeEncoder);
     }
     metal.computePasses.erase(pass.handle);
     pass.handle = 0;
@@ -1304,15 +1491,12 @@ void mt_dispatch_compute(uint32_t groupX, uint32_t groupY, uint32_t groupZ)
 {
     mt_require_pass(GL_MODULE_COMPUTE);
     mt_flush_descriptors();
-    MTLSize groups = {std::max(1u, groupX), std::max(1u, groupY), std::max(1u, groupZ)};
-    MTLSize threads = {1, 1, 1};
+    MTL::Size groups = MTL::Size::Make(std::max(1u, groupX), std::max(1u, groupY), std::max(1u, groupZ));
+    MTL::Size threads = MTL::Size::Make(1, 1, 1);
     auto* mod = mt_current_module_native();
     if (mod && mod->computePipeline)
-    {
-        NSUInteger w = mod->computePipeline.threadExecutionWidth;
-        threads = {w, 1, 1};
-    }
-    [metal.computeEncoder dispatchThreadgroups:groups threadsPerThreadgroup:threads];
+        threads = MTL::Size::Make(mod->computePipeline->threadExecutionWidth(), 1, 1);
+    metal.computeEncoder->dispatchThreadgroups(groups, threads);
 }
 
 void mt_begin_render(rt_pass_render_t& pass)
@@ -1338,17 +1522,18 @@ void mt_begin_render(rt_pass_render_t& pass)
     for (auto& color : pass.colors)
         if (color.texture.handle) native.offscreen = true;
 
-    MTLRenderPassDescriptor* desc = [MTLRenderPassDescriptor renderPassDescriptor];
+    MTL::RenderPassDescriptor* desc = MTL::RenderPassDescriptor::renderPassDescriptor();
     uint32_t width = 0, height = 0;
     for (uint32_t i = 0; i < GL_MAX_COLOR_TEXTURE_NUM; ++i)
     {
         if (auto* tex = mt_texture_native(pass.colors[i].texture))
         {
             mt_transition_image(*tex, MTL_STATE_COLOR);
-            desc.colorAttachments[i].texture = tex->handle;
-            desc.colorAttachments[i].loadAction = pass.colors[i].clear ? MTLLoadActionClear : MTLLoadActionLoad;
-            desc.colorAttachments[i].storeAction = MTLStoreActionStore;
-            desc.colorAttachments[i].clearColor = MTLClearColorMake(pass.colors[i].value.r, pass.colors[i].value.g, pass.colors[i].value.b, pass.colors[i].value.a);
+            auto* attachment = desc->colorAttachments()->object(i);
+            attachment->setTexture(tex->handle);
+            attachment->setLoadAction(pass.colors[i].clear ? MTL::LoadActionClear : MTL::LoadActionLoad);
+            attachment->setStoreAction(MTL::StoreActionStore);
+            attachment->setClearColor(MTL::ClearColor::Make(pass.colors[i].value.r, pass.colors[i].value.g, pass.colors[i].value.b, pass.colors[i].value.a));
             width = std::max(width, pass.colors[i].texture.width);
             height = std::max(height, pass.colors[i].texture.height);
         }
@@ -1356,16 +1541,16 @@ void mt_begin_render(rt_pass_render_t& pass)
     if (auto* tex = mt_texture_native(pass.depth.texture))
     {
         mt_transition_image(*tex, MTL_STATE_DEPTH);
-        desc.depthAttachment.texture = tex->handle;
-        desc.depthAttachment.loadAction = pass.depth.clear ? MTLLoadActionClear : MTLLoadActionLoad;
-        desc.depthAttachment.storeAction = MTLStoreActionStore;
-        desc.depthAttachment.clearDepth = pass.depth.value;
+        desc->depthAttachment()->setTexture(tex->handle);
+        desc->depthAttachment()->setLoadAction(pass.depth.clear ? MTL::LoadActionClear : MTL::LoadActionLoad);
+        desc->depthAttachment()->setStoreAction(MTL::StoreActionStore);
+        desc->depthAttachment()->setClearDepth(pass.depth.value);
         if (pass.depth.texture.format == GL_DEPTH_STENCIL)
         {
-            desc.stencilAttachment.texture = tex->handle;
-            desc.stencilAttachment.loadAction = pass.stencil.clear ? MTLLoadActionClear : MTLLoadActionLoad;
-            desc.stencilAttachment.storeAction = MTLStoreActionStore;
-            desc.stencilAttachment.clearStencil = (uint32_t)pass.stencil.value;
+            desc->stencilAttachment()->setTexture(tex->handle);
+            desc->stencilAttachment()->setLoadAction(pass.stencil.clear ? MTL::LoadActionClear : MTL::LoadActionLoad);
+            desc->stencilAttachment()->setStoreAction(MTL::StoreActionStore);
+            desc->stencilAttachment()->setClearStencil((uint32_t)pass.stencil.value);
         }
         width = std::max(width, pass.depth.texture.width);
         height = std::max(height, pass.depth.texture.height);
@@ -1373,16 +1558,17 @@ void mt_begin_render(rt_pass_render_t& pass)
     native.width = width;
     native.height = height;
     mt_end_encoder();
-    metal.renderEncoder = [metal.cmd renderCommandEncoderWithDescriptor:desc];
+    metal.renderEncoder = metal.cmd->renderCommandEncoder(desc);
+    if (metal.renderEncoder) metal.renderEncoder->retain();
     auto* mod = (rt_module_native_t*)pass.module.native;
     if (mod && mod->renderPipeline)
-        [metal.renderEncoder setRenderPipelineState:mod->renderPipeline];
+        metal.renderEncoder->setRenderPipelineState(mod->renderPipeline);
     if (mod && mod->depthStencil)
-        [metal.renderEncoder setDepthStencilState:mod->depthStencil];
+        metal.renderEncoder->setDepthStencilState(mod->depthStencil);
     if (mod)
     {
-        [metal.renderEncoder setCullMode:mod->cull];
-        [metal.renderEncoder setFrontFacingWinding:mod->winding];
+        metal.renderEncoder->setCullMode(mod->cull);
+        metal.renderEncoder->setFrontFacingWinding(mod->winding);
     }
     mt_set_viewport(0, 0, (int32_t)width, (int32_t)height);
     mt_set_scissor(0, 0, (int32_t)width, (int32_t)height);
@@ -1397,8 +1583,8 @@ void mt_end_render(rt_pass_render_t& pass)
     }
     if (metal.renderEncoder)
     {
-        [metal.renderEncoder endEncoding];
-        metal.renderEncoder = nil;
+        metal.renderEncoder->endEncoding();
+        mt_release(metal.renderEncoder);
     }
     for (auto& color : pass.colors)
         if (auto* tex = mt_texture_native(color.texture))
@@ -1421,8 +1607,8 @@ void mt_set_viewport(int32_t x, int32_t y, int32_t width, int32_t height)
         abort();
     }
     if (!metal.renderEncoder) return;
-    MTLViewport vp = {(double)x, (double)y, (double)width, (double)height, 0.0, 1.0};
-    [metal.renderEncoder setViewport:vp];
+    MTL::Viewport vp = {(double)x, (double)y, (double)width, (double)height, 0.0, 1.0};
+    metal.renderEncoder->setViewport(vp);
 }
 
 void mt_set_scissor(int32_t x, int32_t y, int32_t width, int32_t height)
@@ -1433,19 +1619,16 @@ void mt_set_scissor(int32_t x, int32_t y, int32_t width, int32_t height)
         abort();
     }
     if (!metal.renderEncoder) return;
-    MTLScissorRect rect = {(NSUInteger)std::max(0, x), (NSUInteger)std::max(0, y), (NSUInteger)std::max(0, width), (NSUInteger)std::max(0, height)};
-    [metal.renderEncoder setScissorRect:rect];
+    MTL::ScissorRect rect = {(NS::UInteger)std::max(0, x), (NS::UInteger)std::max(0, y), (NS::UInteger)std::max(0, width), (NS::UInteger)std::max(0, height)};
+    metal.renderEncoder->setScissorRect(rect);
 }
 
 void mt_draw_mesh_task(uint32_t groupX, uint32_t groupY, uint32_t groupZ)
 {
     mt_require_pass(GL_MODULE_RENDER);
     mt_flush_descriptors();
-    if ([metal.renderEncoder respondsToSelector:@selector(drawMeshThreadgroups:threadsPerObjectThreadgroup:threadsPerMeshThreadgroup:)])
-    {
-        MTLSize groups = {std::max(1u, groupX), std::max(1u, groupY), std::max(1u, groupZ)};
-        [metal.renderEncoder drawMeshThreadgroups:groups threadsPerObjectThreadgroup:{1, 1, 1} threadsPerMeshThreadgroup:{1, 1, 1}];
-    }
+    MTL::Size groups = MTL::Size::Make(std::max(1u, groupX), std::max(1u, groupY), std::max(1u, groupZ));
+    metal.renderEncoder->drawMeshThreadgroups(groups, MTL::Size::Make(1, 1, 1), MTL::Size::Make(1, 1, 1));
 }
 
 void mt_begin_transfer(rt_pass_transfer_t& pass)
@@ -1472,8 +1655,8 @@ void mt_end_transfer(rt_pass_transfer_t& pass)
     }
     if (metal.blitEncoder)
     {
-        [metal.blitEncoder endEncoding];
-        metal.blitEncoder = nil;
+        metal.blitEncoder->endEncoding();
+        mt_release(metal.blitEncoder);
     }
     metal.transferPasses.erase(pass.handle);
     pass.handle = 0;
@@ -1492,7 +1675,7 @@ void mt_copy_buffer(rt_buffer_copy_t source, rt_buffer_copy_t destination, size_
         return;
     mt_transition_buffer(*src, MTL_STATE_COPY_SRC);
     mt_transition_buffer(*dst, MTL_STATE_COPY_DST);
-    [metal.blitEncoder copyFromBuffer:src->handle sourceOffset:source.offset toBuffer:dst->handle destinationOffset:destination.offset size:copySize];
+    metal.blitEncoder->copyFromBuffer(src->handle, source.offset, dst->handle, destination.offset, copySize);
 }
 
 void mt_copy_buffer_data(rt_buffer_data_t source, rt_buffer_copy_t destination, size_t copySize)
@@ -1502,7 +1685,7 @@ void mt_copy_buffer_data(rt_buffer_data_t source, rt_buffer_copy_t destination, 
     if (!source.data || !dst || copySize == 0) return;
     if (source.offset + copySize > source.size || destination.offset + copySize > destination.buffer.size)
         return;
-    if (void* mapped = [dst->handle contents])
+    if (void* mapped = dst->handle->contents())
     {
         std::memcpy((uint8_t*)mapped + destination.offset, source.data + source.offset, copySize);
         dst->state = MTL_STATE_HOST;
@@ -1513,8 +1696,8 @@ void mt_copy_buffer_data(rt_buffer_data_t source, rt_buffer_copy_t destination, 
     if (!mt_create_staging(copySize, staging, &ptr)) return;
     std::memcpy(ptr, source.data + source.offset, copySize);
     mt_transition_buffer(*dst, MTL_STATE_COPY_DST);
-    [metal.blitEncoder copyFromBuffer:staging.buffer sourceOffset:0 toBuffer:dst->handle destinationOffset:destination.offset size:copySize];
-    metal.pendingStaging.push_back(staging);
+    metal.blitEncoder->copyFromBuffer(staging.buffer, 0, dst->handle, destination.offset, copySize);
+    metal.pendingStaging.push_back(std::move(staging));
 }
 
 void mt_copy_buffer_texture(rt_texture_copy_t source, rt_buffer_texel_t destination, rt_size_t copySize)
@@ -1526,12 +1709,12 @@ void mt_copy_buffer_texture(rt_texture_copy_t source, rt_buffer_texel_t destinat
     mt_transition_image(*src, MTL_STATE_COPY_SRC);
     mt_transition_buffer(*dst, MTL_STATE_COPY_DST);
     uint32_t bpp = mt_format_bytes(src->format);
-    [metal.blitEncoder copyFromTexture:src->handle sourceSlice:0 sourceLevel:source.mipLevel
-        sourceOrigin:{source.origin.x, source.origin.y, source.origin.z}
-        sourceSize:{copySize.x, copySize.y, copySize.z ? copySize.z : 1}
-        toBuffer:dst->handle destinationOffset:destination.offset
-        destinationBytesPerRow:destination.bytesPerRow ? destination.bytesPerRow : copySize.x * bpp
-        destinationBytesPerImage:destination.rowsPerImage ? destination.rowsPerImage * (destination.bytesPerRow ? destination.bytesPerRow : copySize.x * bpp) : 0];
+    metal.blitEncoder->copyFromTexture(src->handle, 0, source.mipLevel,
+        MTL::Origin::Make(source.origin.x, source.origin.y, source.origin.z),
+        MTL::Size::Make(copySize.x, copySize.y, copySize.z ? copySize.z : 1),
+        dst->handle, destination.offset,
+        destination.bytesPerRow ? destination.bytesPerRow : copySize.x * bpp,
+        destination.rowsPerImage ? destination.rowsPerImage * (destination.bytesPerRow ? destination.bytesPerRow : copySize.x * bpp) : 0);
 }
 
 void mt_copy_texture(rt_texture_copy_t source, rt_texture_copy_t destination, rt_size_t copySize)
@@ -1542,11 +1725,11 @@ void mt_copy_texture(rt_texture_copy_t source, rt_texture_copy_t destination, rt
     if (!src || !dst || copySize.x == 0 || copySize.y == 0) return;
     mt_transition_image(*src, MTL_STATE_COPY_SRC);
     mt_transition_image(*dst, MTL_STATE_COPY_DST);
-    [metal.blitEncoder copyFromTexture:src->handle sourceSlice:0 sourceLevel:source.mipLevel
-        sourceOrigin:{source.origin.x, source.origin.y, source.origin.z}
-        sourceSize:{copySize.x, copySize.y, copySize.z ? copySize.z : 1}
-        toTexture:dst->handle destinationSlice:0 destinationLevel:destination.mipLevel
-        destinationOrigin:{destination.origin.x, destination.origin.y, destination.origin.z}];
+    metal.blitEncoder->copyFromTexture(src->handle, 0, source.mipLevel,
+        MTL::Origin::Make(source.origin.x, source.origin.y, source.origin.z),
+        MTL::Size::Make(copySize.x, copySize.y, copySize.z ? copySize.z : 1),
+        dst->handle, 0, destination.mipLevel,
+        MTL::Origin::Make(destination.origin.x, destination.origin.y, destination.origin.z));
 }
 
 void mt_copy_texture_data(rt_texture_data_t source, rt_texture_copy_t destination, rt_size_t copySize)
@@ -1561,13 +1744,13 @@ void mt_copy_texture_data(rt_texture_data_t source, rt_texture_copy_t destinatio
     if (!mt_create_staging(bytes, staging, &ptr)) return;
     std::memcpy(ptr, source.data + source.offset, std::min(bytes, source.size ? source.size - source.offset : bytes));
     mt_transition_image(*dst, MTL_STATE_COPY_DST);
-    [metal.blitEncoder copyFromBuffer:staging.buffer sourceOffset:0
-        sourceBytesPerRow:source.bytesPerRow ? source.bytesPerRow : copySize.x * bpp
-        sourceBytesPerImage:source.rowsPerImage ? source.rowsPerImage * (source.bytesPerRow ? source.bytesPerRow : copySize.x * bpp) : (NSUInteger)bytes
-        sourceSize:{copySize.x, copySize.y, copySize.z ? copySize.z : 1}
-        toTexture:dst->handle destinationSlice:0 destinationLevel:destination.mipLevel
-        destinationOrigin:{destination.origin.x, destination.origin.y, destination.origin.z}];
-    metal.pendingStaging.push_back(staging);
+    metal.blitEncoder->copyFromBuffer(staging.buffer, 0,
+        source.bytesPerRow ? source.bytesPerRow : copySize.x * bpp,
+        source.rowsPerImage ? source.rowsPerImage * (source.bytesPerRow ? source.bytesPerRow : copySize.x * bpp) : (NS::UInteger)bytes,
+        MTL::Size::Make(copySize.x, copySize.y, copySize.z ? copySize.z : 1),
+        dst->handle, 0, destination.mipLevel,
+        MTL::Origin::Make(destination.origin.x, destination.origin.y, destination.origin.z));
+    metal.pendingStaging.push_back(std::move(staging));
 }
 
 void mt_copy_texture_buffer(rt_buffer_texel_t source, rt_texture_copy_t destination, rt_size_t copySize)
@@ -1579,12 +1762,12 @@ void mt_copy_texture_buffer(rt_buffer_texel_t source, rt_texture_copy_t destinat
     mt_transition_image(*dst, MTL_STATE_COPY_DST);
     mt_transition_buffer(*src, MTL_STATE_COPY_SRC);
     uint32_t bpp = mt_format_bytes(dst->format);
-    [metal.blitEncoder copyFromBuffer:src->handle sourceOffset:source.offset
-        sourceBytesPerRow:source.bytesPerRow ? source.bytesPerRow : copySize.x * bpp
-        sourceBytesPerImage:source.rowsPerImage ? source.rowsPerImage * (source.bytesPerRow ? source.bytesPerRow : copySize.x * bpp) : 0
-        sourceSize:{copySize.x, copySize.y, copySize.z ? copySize.z : 1}
-        toTexture:dst->handle destinationSlice:0 destinationLevel:destination.mipLevel
-        destinationOrigin:{destination.origin.x, destination.origin.y, destination.origin.z}];
+    metal.blitEncoder->copyFromBuffer(src->handle, source.offset,
+        source.bytesPerRow ? source.bytesPerRow : copySize.x * bpp,
+        source.rowsPerImage ? source.rowsPerImage * (source.bytesPerRow ? source.bytesPerRow : copySize.x * bpp) : 0,
+        MTL::Size::Make(copySize.x, copySize.y, copySize.z ? copySize.z : 1),
+        dst->handle, 0, destination.mipLevel,
+        MTL::Origin::Make(destination.origin.x, destination.origin.y, destination.origin.z));
 }
 
 rt_mesh_t mt_create_mesh(const float* vertices, const float* normals, const float* uvs, size_t vertex_count, const unsigned int* indices, size_t index_count)
@@ -1637,25 +1820,25 @@ static void mt_draw_mesh_impl(rt_mesh_t& mesh, uint32_t instanceCount)
             auto* native = mt_buffer_native(mesh.vertex[k]);
             if (!native) break;
             mt_transition_buffer(*native, MTL_STATE_VERTEX);
-            [metal.renderEncoder setVertexBuffer:native->handle offset:0 atIndex:layout.location];
+            metal.renderEncoder->setVertexBuffer(native->handle, 0, layout.location);
             uint32_t stride = gl_vertex_size(layout.type, layout.count);
             if (vertex_count == 0 && stride)
                 vertex_count = (uint32_t)(mesh.vertex[k].size / stride);
             break;
         }
     }
-    MTLPrimitiveType primitive = mod ? mod->primitive : MTLPrimitiveTypeTriangle;
+    MTL::PrimitiveType primitive = mod ? mod->primitive : MTL::PrimitiveTypeTriangle;
     if (mesh.index.handle)
     {
         auto* native = mt_buffer_native(mesh.index);
         if (!native) return;
         uint32_t indexStride = gl_index_type_size(module.index_type);
         mt_transition_buffer(*native, MTL_STATE_INDEX);
-        [metal.renderEncoder drawIndexedPrimitives:primitive indexCount:(NSUInteger)(mesh.index.size / indexStride)
-            indexType:gl_to_mt_index_type(module.index_type) indexBuffer:native->handle indexBufferOffset:0 instanceCount:instanceCount];
+        metal.renderEncoder->drawIndexedPrimitives(primitive, (NS::UInteger)(mesh.index.size / indexStride),
+            gl_to_mt_index_type(module.index_type), native->handle, 0, instanceCount);
     }
     else
-        [metal.renderEncoder drawPrimitives:primitive vertexStart:0 vertexCount:vertex_count instanceCount:instanceCount];
+        metal.renderEncoder->drawPrimitives(primitive, 0, vertex_count, instanceCount);
 }
 
 void mt_draw_mesh(rt_mesh_t& mesh)
@@ -1724,8 +1907,7 @@ void mt_draw_meshlet(rt_meshlet_t& meshlet)
     mt_flush_descriptors();
     auto* native = (rt_meshlet_native_t*)meshlet.native;
     uint32_t tasks = native && native->indexCount ? native->indexCount / 3 : 1;
-    if ([metal.renderEncoder respondsToSelector:@selector(drawMeshThreadgroups:threadsPerObjectThreadgroup:threadsPerMeshThreadgroup:)])
-        [metal.renderEncoder drawMeshThreadgroups:{std::max(1u, tasks), 1, 1} threadsPerObjectThreadgroup:{1, 1, 1} threadsPerMeshThreadgroup:{1, 1, 1}];
+    metal.renderEncoder->drawMeshThreadgroups(MTL::Size::Make(std::max(1u, tasks), 1, 1), MTL::Size::Make(1, 1, 1), MTL::Size::Make(1, 1, 1));
 }
 
 rt_mesh_t mt_create_mesh_screen()
@@ -1755,11 +1937,14 @@ void mt_submit()
 {
     if (!metal.cmd) return;
     mt_end_encoder();
-    [metal.cmd commit];
-    [metal.cmd waitUntilCompleted];
+    metal.cmd->commit();
+    metal.cmd->waitUntilCompleted();
     mt_flush_staging();
-    metal.cmd = [metal.queue commandBuffer];
+    mt_release(metal.cmd);
+    mt_retain_cmd(metal.queue->commandBuffer());
 }
 
 #endif
 #endif
+
+   

@@ -424,8 +424,6 @@ struct rt_module_native_t
     VkDescriptorSetLayout descriptorSetLayout = nullptr;
     VkDescriptorSet descriptorSet = nullptr;
     VkShaderStageFlags shaderStages = 0;
-    bool isMeshlet = false;
-    bool isCompute = false;
 
     VkDescriptorType descriptorTypes[GL_MAX_BINDING_HANDLE_NUM] = {};
     uint32_t descriptorBindings[GL_MAX_BINDING_HANDLE_NUM] = {};
@@ -1656,7 +1654,6 @@ rt_module_compute_t vk_create_module_compute(rt_module_compute_info_t const& inf
     if (!info.cshader || !info.clength || !vulkan.device) return result;
     uint32_t handle = vulkan.moduleID + 1;
     auto& native = vulkan.modules[handle];
-    native.isCompute = true;
     native.shaderStages = VK_SHADER_STAGE_COMPUTE_BIT;
     native.cshader = vk_create_shader_module(info.cshader, info.clength);
     if (!native.cshader)
@@ -1794,7 +1791,6 @@ rt_module_render_t vk_create_module_meshlet(rt_module_render_info_t const& info)
     if (!info.mshader || !info.mlength || !vulkan.device) return result;
     uint32_t handle = vulkan.moduleID + 1;
     auto& native = vulkan.modules[handle];
-    native.isMeshlet = true;
     native.shaderStages = VK_SHADER_STAGE_MESH_BIT_NV | VK_SHADER_STAGE_FRAGMENT_BIT;
     if (info.tshader)
     {
