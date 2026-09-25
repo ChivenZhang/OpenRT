@@ -422,7 +422,7 @@ struct dx_native_t
     D3D12_CPU_DESCRIPTOR_HANDLE defaultSamplerCPU = {};
     std::vector<dx_staging_t> pendingStaging;
 
-    struct Binding
+    struct
     {
         GLenum type = GL_NONE;
         rt_buffer_t buffer = {};
@@ -443,23 +443,23 @@ struct dx_native_t
         rt_pass_compute_t* currentComputePass;
         rt_pass_transfer_t* currentTransferPass;
     };
-} static dx;
+} static direct;
 
 static void dx_wait_gpu()
 {
-    if (!dx.queue || !dx.fence) return;
-    uint64_t value = ++dx.fenceValue;
-    dx.queue->Signal(dx.fence.Get(), value);
-    if (dx.fence->GetCompletedValue() < value)
+    if (!direct.queue || !direct.fence) return;
+    uint64_t value = ++direct.fenceValue;
+    direct.queue->Signal(direct.fence.Get(), value);
+    if (direct.fence->GetCompletedValue() < value)
     {
-        dx.fence->SetEventOnCompletion(value, dx.fenceEvent);
-        WaitForSingleObject(dx.fenceEvent, INFINITE);
+        direct.fence->SetEventOnCompletion(value, direct.fenceEvent);
+        WaitForSingleObject(direct.fenceEvent, INFINITE);
     }
 }
 
 static void dx_flush_staging()
 {
-    dx.pendingStaging.clear();
+    direct.pendingStaging.clear();
 }
 
 static bool dx_create_staging(size_t size, dx_staging_t& staging, void** mapped)
@@ -474,7 +474,7 @@ static bool dx_create_staging(size_t size, dx_staging_t& staging, void** mapped)
     desc.MipLevels = 1;
     desc.SampleDesc.Count = 1;
     desc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
-    if (FAILED(dx.device->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &desc,
+    if (FAILED(direct.device->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &desc,
         D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(&staging.buffer))))
         return false;
     if (mapped)
@@ -495,7 +495,7 @@ static void dx_transition_buffer(rt_buffer_native_t& buffer, D3D12_RESOURCE_STAT
     barrier.Transition.StateBefore = buffer.state;
     barrier.Transition.StateAfter = dst;
     barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-    dx.cmd->ResourceBarrier(1, &barrier);
+    direct.cmd->ResourceBarrier(1, &barrier);
     buffer.state = dst;
 }
 
@@ -508,43 +508,43 @@ static void dx_transition_image(rt_texture_native_t& image, D3D12_RESOURCE_STATE
     barrier.Transition.StateBefore = image.state;
     barrier.Transition.StateAfter = dst;
     barrier.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-    dx.cmd->ResourceBarrier(1, &barrier);
+    direct.cmd->ResourceBarrier(1, &barrier);
     image.state = dst;
 }
 
 static rt_buffer_native_t* dx_buffer_native(rt_buffer_t const& buffer)
 {
     if (!buffer.native || buffer.handle == 0) return nullptr;
-    auto it = dx.buffers.find(buffer.handle);
-    return it == dx.buffers.end() ? nullptr : &it->second;
+    auto it = direct.buffers.find(buffer.handle);
+    return it == direct.buffers.end() ? nullptr : &it->second;
 }
 
 static rt_texture_native_t* dx_texture_native(rt_texture_t const& texture)
 {
     if (!texture.native || texture.handle == 0) return nullptr;
-    auto it = dx.textures.find(texture.handle);
-    return it == dx.textures.end() ? nullptr : &it->second;
+    auto it = direct.textures.find(texture.handle);
+    return it == direct.textures.end() ? nullptr : &it->second;
 }
 
 static rt_sampler_native_t* dx_sampler_native(rt_sampler_t const& sampler)
 {
     if (!sampler.native || sampler.handle == 0) return nullptr;
-    auto it = dx.samplers.find(sampler.handle);
-    return it == dx.samplers.end() ? nullptr : &it->second;
+    auto it = direct.samplers.find(sampler.handle);
+    return it == direct.samplers.end() ? nullptr : &it->second;
 }
 
 static rt_module_native_t* dx_current_module_native()
 {
-    if (dx.currentPassType == GL_MODULE_COMPUTE && dx.currentComputePass)
-        return (rt_module_native_t*)dx.currentComputePass->module.native;
-    if (dx.currentPassType == GL_MODULE_RENDER && dx.currentRenderPass)
-        return (rt_module_native_t*)dx.currentRenderPass->module.native;
+    if (direct.currentPassType == GL_MODULE_COMPUTE && direct.currentComputePass)
+        return (rt_module_native_t*)direct.currentComputePass->module.native;
+    if (direct.currentPassType == GL_MODULE_RENDER && direct.currentRenderPass)
+        return (rt_module_native_t*)direct.currentRenderPass->module.native;
     return nullptr;
 }
 
 static void dx_require_pass(GLenum type)
 {
-    if (dx.currentPipeline == nullptr || dx.currentPassType != type)
+    if (direct.currentPipeline == nullptr || direct.currentPassType != type)
     {
         fprintf(stderr, "Pipeline not begin");
         abort();
@@ -553,7 +553,7 @@ static void dx_require_pass(GLenum type)
 
 static void dx_clear_bindings()
 {
-    for (auto& binding : dx.currentBinding)
+    for (auto& binding : direct.currentBinding)
         binding = {};
 }
 
@@ -625,7 +625,7 @@ static bool dx_setup_root(rt_module_native_t& native, rt_binding_t const* bindin
     ComPtr<ID3DBlob> blob, error;
     if (FAILED(D3D12SerializeRootSignature(&desc, D3D_ROOT_SIGNATURE_VERSION_1, &blob, &error)))
         return false;
-    return SUCCEEDED(dx.device->CreateRootSignature(0, blob->GetBufferPointer(), blob->GetBufferSize(),
+    return SUCCEEDED(direct.device->CreateRootSignature(0, blob->GetBufferPointer(), blob->GetBufferSize(),
         IID_PPV_ARGS(&native.rootSignature)));
 }
 
@@ -746,45 +746,45 @@ static bool dx_create_graphics_pipeline(rt_module_native_t& native, rt_module_re
     if (stencilEnabled) pso.DSVFormat = DXGI_FORMAT_D24_UNORM_S8_UINT;
     else if (depthEnabled) pso.DSVFormat = DXGI_FORMAT_D32_FLOAT;
     native.topology = gl_to_dx_topology(info.primitive);
-    return SUCCEEDED(dx.device->CreateGraphicsPipelineState(&pso, IID_PPV_ARGS(&native.pipeline)));
+    return SUCCEEDED(direct.device->CreateGraphicsPipelineState(&pso, IID_PPV_ARGS(&native.pipeline)));
 }
 
 static void dx_destroy_module_native(uint32_t handle, void*& native)
 {
-    dx.modules.erase(handle);
+    direct.modules.erase(handle);
     native = nullptr;
 }
 
 static D3D12_GPU_DESCRIPTOR_HANDLE dx_alloc_srv()
 {
-    if (dx.srvCursor >= 2047) dx.srvCursor = 1;
-    uint32_t index = dx.srvCursor++;
-    D3D12_GPU_DESCRIPTOR_HANDLE handle = dx.srvHeap->GetGPUDescriptorHandleForHeapStart();
-    handle.ptr += (SIZE_T)index * dx.srvSize;
+    if (direct.srvCursor >= 2047) direct.srvCursor = 1;
+    uint32_t index = direct.srvCursor++;
+    D3D12_GPU_DESCRIPTOR_HANDLE handle = direct.srvHeap->GetGPUDescriptorHandleForHeapStart();
+    handle.ptr += (SIZE_T)index * direct.srvSize;
     return handle;
 }
 
 static D3D12_CPU_DESCRIPTOR_HANDLE dx_srv_cpu(D3D12_GPU_DESCRIPTOR_HANDLE gpu)
 {
-    SIZE_T offset = gpu.ptr - dx.srvHeap->GetGPUDescriptorHandleForHeapStart().ptr;
-    D3D12_CPU_DESCRIPTOR_HANDLE cpu = dx.srvHeap->GetCPUDescriptorHandleForHeapStart();
+    SIZE_T offset = gpu.ptr - direct.srvHeap->GetGPUDescriptorHandleForHeapStart().ptr;
+    D3D12_CPU_DESCRIPTOR_HANDLE cpu = direct.srvHeap->GetCPUDescriptorHandleForHeapStart();
     cpu.ptr += offset;
     return cpu;
 }
 
 static D3D12_GPU_DESCRIPTOR_HANDLE dx_alloc_sampler()
 {
-    if (dx.samplerCursor >= 255) dx.samplerCursor = 1;
-    uint32_t index = dx.samplerCursor++;
-    D3D12_GPU_DESCRIPTOR_HANDLE handle = dx.samplerHeap->GetGPUDescriptorHandleForHeapStart();
-    handle.ptr += (SIZE_T)index * dx.samplerSize;
+    if (direct.samplerCursor >= 255) direct.samplerCursor = 1;
+    uint32_t index = direct.samplerCursor++;
+    D3D12_GPU_DESCRIPTOR_HANDLE handle = direct.samplerHeap->GetGPUDescriptorHandleForHeapStart();
+    handle.ptr += (SIZE_T)index * direct.samplerSize;
     return handle;
 }
 
 static D3D12_CPU_DESCRIPTOR_HANDLE dx_sampler_cpu(D3D12_GPU_DESCRIPTOR_HANDLE gpu)
 {
-    SIZE_T offset = gpu.ptr - dx.samplerHeap->GetGPUDescriptorHandleForHeapStart().ptr;
-    D3D12_CPU_DESCRIPTOR_HANDLE cpu = dx.samplerHeap->GetCPUDescriptorHandleForHeapStart();
+    SIZE_T offset = gpu.ptr - direct.samplerHeap->GetGPUDescriptorHandleForHeapStart().ptr;
+    D3D12_CPU_DESCRIPTOR_HANDLE cpu = direct.samplerHeap->GetCPUDescriptorHandleForHeapStart();
     cpu.ptr += offset;
     return cpu;
 }
@@ -794,17 +794,17 @@ static void dx_flush_descriptors()
     auto* mod = dx_current_module_native();
     if (!mod || !mod->rootSignature) return;
 
-    ID3D12DescriptorHeap* heaps[] = {dx.srvHeap.Get(), dx.samplerHeap.Get()};
-    dx.cmd->SetDescriptorHeaps(2, heaps);
+    ID3D12DescriptorHeap* heaps[] = {direct.srvHeap.Get(), direct.samplerHeap.Get()};
+    direct.cmd->SetDescriptorHeaps(2, heaps);
     if (mod->isCompute)
-        dx.cmd->SetComputeRootSignature(mod->rootSignature.Get());
+        direct.cmd->SetComputeRootSignature(mod->rootSignature.Get());
     else
-        dx.cmd->SetGraphicsRootSignature(mod->rootSignature.Get());
+        direct.cmd->SetGraphicsRootSignature(mod->rootSignature.Get());
 
     for (uint32_t i = 0; i < mod->descriptorCount; ++i)
     {
         uint32_t binding = mod->descriptorBindings[i];
-        auto& slot = dx.currentBinding[binding];
+        auto& slot = direct.currentBinding[binding];
         uint32_t root = i + 1;
         if (mod->kinds[i] == DX_KIND_CBV || (mod->kinds[i] == DX_KIND_SRV && slot.type == GL_BINDING_BUFFER) ||
             (slot.buffer_bind.target == GL_SHADER_STORAGE_BUFFER && slot.buffer.handle))
@@ -821,14 +821,14 @@ static void dx_flush_descriptors()
                 uav.ViewDimension = D3D12_UAV_DIMENSION_BUFFER;
                 uav.Buffer.NumElements = (UINT)(slot.buffer.size / 4);
                 uav.Buffer.Flags = D3D12_BUFFER_UAV_FLAG_RAW;
-                dx.device->CreateUnorderedAccessView(buf->handle.Get(), nullptr, &uav, dx_srv_cpu(gpu));
+                direct.device->CreateUnorderedAccessView(buf->handle.Get(), nullptr, &uav, dx_srv_cpu(gpu));
             }
             else if (mod->kinds[i] == DX_KIND_CBV)
             {
                 D3D12_CONSTANT_BUFFER_VIEW_DESC cbv = {};
                 cbv.BufferLocation = buf->handle->GetGPUVirtualAddress();
                 cbv.SizeInBytes = (UINT)((slot.buffer.size + 255) & ~255ull);
-                dx.device->CreateConstantBufferView(&cbv, dx_srv_cpu(gpu));
+                direct.device->CreateConstantBufferView(&cbv, dx_srv_cpu(gpu));
             }
             else
             {
@@ -838,10 +838,10 @@ static void dx_flush_descriptors()
                 srv.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
                 srv.Buffer.NumElements = (UINT)(slot.buffer.size / 4);
                 srv.Buffer.Flags = D3D12_BUFFER_SRV_FLAG_RAW;
-                dx.device->CreateShaderResourceView(buf->handle.Get(), &srv, dx_srv_cpu(gpu));
+                direct.device->CreateShaderResourceView(buf->handle.Get(), &srv, dx_srv_cpu(gpu));
             }
-            if (mod->isCompute) dx.cmd->SetComputeRootDescriptorTable(root, gpu);
-            else dx.cmd->SetGraphicsRootDescriptorTable(root, gpu);
+            if (mod->isCompute) direct.cmd->SetComputeRootDescriptorTable(root, gpu);
+            else direct.cmd->SetGraphicsRootDescriptorTable(root, gpu);
         }
         else if (mod->kinds[i] == DX_KIND_SAMPLER)
         {
@@ -852,9 +852,9 @@ static void dx_flush_descriptors()
             desc.MaxLOD = D3D12_FLOAT32_MAX;
             if (auto* samp = dx_sampler_native(slot.sampler))
                 desc = samp->desc;
-            dx.device->CreateSampler(&desc, dx_sampler_cpu(gpu));
-            if (mod->isCompute) dx.cmd->SetComputeRootDescriptorTable(root, gpu);
-            else dx.cmd->SetGraphicsRootDescriptorTable(root, gpu);
+            direct.device->CreateSampler(&desc, dx_sampler_cpu(gpu));
+            if (mod->isCompute) direct.cmd->SetComputeRootDescriptorTable(root, gpu);
+            else direct.cmd->SetGraphicsRootDescriptorTable(root, gpu);
         }
         else if (mod->kinds[i] == DX_KIND_SRV)
         {
@@ -886,9 +886,9 @@ static void dx_flush_descriptors()
                 srv.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
                 srv.Texture2D.MipLevels = tex->mipLevels;
             }
-            dx.device->CreateShaderResourceView(tex->handle.Get(), &srv, dx_srv_cpu(gpu));
-            if (mod->isCompute) dx.cmd->SetComputeRootDescriptorTable(root, gpu);
-            else dx.cmd->SetGraphicsRootDescriptorTable(root, gpu);
+            direct.device->CreateShaderResourceView(tex->handle.Get(), &srv, dx_srv_cpu(gpu));
+            if (mod->isCompute) direct.cmd->SetComputeRootDescriptorTable(root, gpu);
+            else direct.cmd->SetGraphicsRootDescriptorTable(root, gpu);
         }
         else if (mod->kinds[i] == DX_KIND_UAV)
         {
@@ -900,9 +900,9 @@ static void dx_flush_descriptors()
             uav.Format = dx_srv_format(tex->format);
             uav.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D;
             uav.Texture2D.MipSlice = slot.storage_texture_bind.base_level;
-            dx.device->CreateUnorderedAccessView(tex->handle.Get(), nullptr, &uav, dx_srv_cpu(gpu));
-            if (mod->isCompute) dx.cmd->SetComputeRootDescriptorTable(root, gpu);
-            else dx.cmd->SetGraphicsRootDescriptorTable(root, gpu);
+            direct.device->CreateUnorderedAccessView(tex->handle.Get(), nullptr, &uav, dx_srv_cpu(gpu));
+            if (mod->isCompute) direct.cmd->SetComputeRootDescriptorTable(root, gpu);
+            else direct.cmd->SetGraphicsRootDescriptorTable(root, gpu);
         }
     }
 }
@@ -1029,89 +1029,89 @@ static void dx_unbind_api()
 
 void dx_load_library(ID3D12Device* device, ID3D12CommandQueue* queue)
 {
-    dx.device = device;
-    dx.queue = queue;
-    if (!dx.device)
+    direct.device = device;
+    direct.queue = queue;
+    if (!direct.device)
     {
         fprintf(stderr, "DirectX: device is null\n");
         abort();
     }
 
-    if (FAILED(dx.device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&dx.allocator))) ||
-        FAILED(dx.device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, dx.allocator.Get(), nullptr, IID_PPV_ARGS(&dx.cmd))))
+    if (FAILED(direct.device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&direct.allocator))) ||
+        FAILED(direct.device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, direct.allocator.Get(), nullptr, IID_PPV_ARGS(&direct.cmd))))
     {
         fprintf(stderr, "DirectX: failed to create command list\n");
         abort();
     }
-    dx.cmd.As(&dx.cmdMesh);
+    direct.cmd.As(&direct.cmdMesh);
 
     D3D12_DESCRIPTOR_HEAP_DESC heapDesc = {};
     heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
     heapDesc.NumDescriptors = 64;
-    dx.device->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&dx.rtvHeap));
+    direct.device->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&direct.rtvHeap));
     heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
-    dx.device->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&dx.dsvHeap));
+    direct.device->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&direct.dsvHeap));
     heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
     heapDesc.NumDescriptors = 2048;
     heapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
-    dx.device->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&dx.srvHeap));
+    direct.device->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&direct.srvHeap));
     heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER;
     heapDesc.NumDescriptors = 256;
-    dx.device->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&dx.samplerHeap));
+    direct.device->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&direct.samplerHeap));
 
-    dx.rtvSize = dx.device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
-    dx.dsvSize = dx.device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_DSV);
-    dx.srvSize = dx.device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-    dx.samplerSize = dx.device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER);
-    dx.srvCursor = 1;
-    dx.samplerCursor = 1;
+    direct.rtvSize = direct.device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
+    direct.dsvSize = direct.device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_DSV);
+    direct.srvSize = direct.device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+    direct.samplerSize = direct.device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER);
+    direct.srvCursor = 1;
+    direct.samplerCursor = 1;
 
     D3D12_SAMPLER_DESC samp = {};
     samp.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
     samp.AddressU = samp.AddressV = samp.AddressW = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
     samp.MaxLOD = D3D12_FLOAT32_MAX;
-    dx.defaultSamplerCPU = dx.samplerHeap->GetCPUDescriptorHandleForHeapStart();
-    dx.device->CreateSampler(&samp, dx.defaultSamplerCPU);
+    direct.defaultSamplerCPU = direct.samplerHeap->GetCPUDescriptorHandleForHeapStart();
+    direct.device->CreateSampler(&samp, direct.defaultSamplerCPU);
 
-    dx.device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&dx.fence));
-    dx.fenceEvent = CreateEventW(nullptr, FALSE, FALSE, nullptr);
+    direct.device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&direct.fence));
+    direct.fenceEvent = CreateEventW(nullptr, FALSE, FALSE, nullptr);
     dx_bind_api();
 }
 
 void dx_unload_library()
 {
-    if (!dx.device) return;
-    if (dx.cmd) dx.cmd->Close();
+    if (!direct.device) return;
+    if (direct.cmd) direct.cmd->Close();
     dx_wait_gpu();
     dx_flush_staging();
-    if (dx.fenceEvent)
+    if (direct.fenceEvent)
     {
-        CloseHandle(dx.fenceEvent);
-        dx.fenceEvent = nullptr;
+        CloseHandle(direct.fenceEvent);
+        direct.fenceEvent = nullptr;
     }
-    dx.buffers.clear();
-    dx.textures.clear();
-    dx.samplers.clear();
-    dx.modules.clear();
-    dx.meshes.clear();
-    dx.meshlets.clear();
-    dx.computePasses.clear();
-    dx.renderPasses.clear();
-    dx.transferPasses.clear();
-    dx.cmdMesh.Reset();
-    dx.cmd.Reset();
-    dx.allocator.Reset();
-    dx.rtvHeap.Reset();
-    dx.dsvHeap.Reset();
-    dx.srvHeap.Reset();
-    dx.samplerHeap.Reset();
-    dx.fence.Reset();
-    dx.queue.Reset();
-    dx.device.Reset();
-    dx.bufferID = dx.textureID = dx.samplerID = dx.moduleID = 0;
-    dx.meshID = dx.meshletID = dx.passID = 0;
-    dx.currentPassType = GL_NONE;
-    dx.currentPipeline = nullptr;
+    direct.buffers.clear();
+    direct.textures.clear();
+    direct.samplers.clear();
+    direct.modules.clear();
+    direct.meshes.clear();
+    direct.meshlets.clear();
+    direct.computePasses.clear();
+    direct.renderPasses.clear();
+    direct.transferPasses.clear();
+    direct.cmdMesh.Reset();
+    direct.cmd.Reset();
+    direct.allocator.Reset();
+    direct.rtvHeap.Reset();
+    direct.dsvHeap.Reset();
+    direct.srvHeap.Reset();
+    direct.samplerHeap.Reset();
+    direct.fence.Reset();
+    direct.queue.Reset();
+    direct.device.Reset();
+    direct.bufferID = direct.textureID = direct.samplerID = direct.moduleID = 0;
+    direct.meshID = direct.meshletID = direct.passID = 0;
+    direct.currentPassType = GL_NONE;
+    direct.currentPipeline = nullptr;
     dx_unbind_api();
 }
 
@@ -1123,10 +1123,10 @@ rt_buffer_t dx_create_buffer(rt_buffer_info_t const& info)
         abort();
     }
     rt_buffer_t result = {};
-    if (!dx.device || info.size == 0) return result;
+    if (!direct.device || info.size == 0) return result;
 
-    uint32_t handle = dx.bufferID + 1;
-    auto& native = dx.buffers[handle];
+    uint32_t handle = direct.bufferID + 1;
+    auto& native = direct.buffers[handle];
     bool hostVisible = (info.usage & (GL_BUFFER_USAGE_MAP_READ | GL_BUFFER_USAGE_MAP_WRITE)) || info.data;
     native.heap = hostVisible ? D3D12_HEAP_TYPE_UPLOAD : D3D12_HEAP_TYPE_DEFAULT;
 
@@ -1142,9 +1142,9 @@ rt_buffer_t dx_create_buffer(rt_buffer_info_t const& info)
     desc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
     D3D12_RESOURCE_STATES init = (native.heap == D3D12_HEAP_TYPE_UPLOAD) ?
         D3D12_RESOURCE_STATE_GENERIC_READ : D3D12_RESOURCE_STATE_COMMON;
-    if (FAILED(dx.device->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &desc, init, nullptr, IID_PPV_ARGS(&native.handle))))
+    if (FAILED(direct.device->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &desc, init, nullptr, IID_PPV_ARGS(&native.handle))))
     {
-        dx.buffers.erase(handle);
+        direct.buffers.erase(handle);
         return {};
     }
     native.state = init;
@@ -1168,13 +1168,13 @@ rt_buffer_t dx_create_buffer(rt_buffer_info_t const& info)
                 std::memcpy(ptr, info.data, info.size);
                 staging.buffer->Unmap(0, nullptr);
                 dx_transition_buffer(native, D3D12_RESOURCE_STATE_COPY_DEST);
-                dx.cmd->CopyBufferRegion(native.handle.Get(), 0, staging.buffer.Get(), 0, info.size);
-                dx.pendingStaging.push_back(std::move(staging));
+                direct.cmd->CopyBufferRegion(native.handle.Get(), 0, staging.buffer.Get(), 0, info.size);
+                direct.pendingStaging.push_back(std::move(staging));
             }
         }
     }
 
-    dx.bufferID = handle;
+    direct.bufferID = handle;
     result.handle = handle;
     result.size = info.size;
     result.usage = info.usage;
@@ -1186,12 +1186,12 @@ void dx_destroy_buffer(rt_buffer_t& buffer)
 {
     if (buffer.native)
     {
-        auto it = dx.buffers.find(buffer.handle);
-        if (it != dx.buffers.end())
+        auto it = direct.buffers.find(buffer.handle);
+        if (it != direct.buffers.end())
         {
             if (it->second.mapped && it->second.handle)
                 it->second.handle->Unmap(0, nullptr);
-            dx.buffers.erase(it);
+            direct.buffers.erase(it);
         }
     }
     buffer = {};
@@ -1199,14 +1199,14 @@ void dx_destroy_buffer(rt_buffer_t& buffer)
 
 void dx_bind_buffer(rt_buffer_t& buffer, rt_buffer_bind_t bind)
 {
-    if (dx.currentPipeline == nullptr)
+    if (direct.currentPipeline == nullptr)
     {
         fprintf(stderr, "Pipeline not begin");
         abort();
     }
-    dx.currentBinding[bind.binding].type = GL_BINDING_BUFFER;
-    dx.currentBinding[bind.binding].buffer = buffer;
-    dx.currentBinding[bind.binding].buffer_bind = bind;
+    direct.currentBinding[bind.binding].type = GL_BINDING_BUFFER;
+    direct.currentBinding[bind.binding].buffer = buffer;
+    direct.currentBinding[bind.binding].buffer_bind = bind;
 }
 
 void* dx_map_buffer(rt_buffer_t& buffer, GLenum mode, size_t offset, size_t size)
@@ -1244,11 +1244,11 @@ void dx_unmap_buffer(rt_buffer_t& buffer)
 rt_texture_t dx_create_texture(rt_texture_info_t const& info)
 {
     rt_texture_t result = {};
-    if (!dx.device || info.width == 0) return result;
+    if (!direct.device || info.width == 0) return result;
     if (info.target != GL_TEXTURE_1D && info.height == 0) return result;
 
-    uint32_t handle = dx.textureID + 1;
-    auto& native = dx.textures[handle];
+    uint32_t handle = direct.textureID + 1;
+    auto& native = direct.textures[handle];
     native.format = gl_to_dx_format(info.format, info.type, info.internal_format);
     native.width = info.width;
     native.height = info.target == GL_TEXTURE_1D ? 1 : info.height;
@@ -1289,9 +1289,9 @@ rt_texture_t dx_create_texture(rt_texture_info_t const& info)
         clear.DepthStencil.Depth = 1.0f;
     D3D12_CLEAR_VALUE* pClear = (desc.Flags & (D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET | D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL)) ? &clear : nullptr;
     D3D12_RESOURCE_STATES init = D3D12_RESOURCE_STATE_COMMON;
-    if (FAILED(dx.device->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &desc, init, pClear, IID_PPV_ARGS(&native.handle))))
+    if (FAILED(direct.device->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &desc, init, pClear, IID_PPV_ARGS(&native.handle))))
     {
-        dx.textures.erase(handle);
+        direct.textures.erase(handle);
         return {};
     }
     native.state = init;
@@ -1317,8 +1317,8 @@ rt_texture_t dx_create_texture(rt_texture_info_t const& info)
             src.PlacedFootprint.Footprint.Height = native.height;
             src.PlacedFootprint.Footprint.Depth = (info.target == GL_TEXTURE_3D) ? native.depth : 1;
             src.PlacedFootprint.Footprint.RowPitch = native.width * dx_format_bytes(native.format);
-            dx.cmd->CopyTextureRegion(&dst, 0, 0, 0, &src, nullptr);
-            dx.pendingStaging.push_back(std::move(staging));
+            direct.cmd->CopyTextureRegion(&dst, 0, 0, 0, &src, nullptr);
+            direct.pendingStaging.push_back(std::move(staging));
         }
         dx_transition_image(native, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
     }
@@ -1327,7 +1327,7 @@ rt_texture_t dx_create_texture(rt_texture_info_t const& info)
         dx_transition_image(native, dx_is_depth(native.format) ? D3D12_RESOURCE_STATE_DEPTH_WRITE : D3D12_RESOURCE_STATE_RENDER_TARGET);
     }
 
-    dx.textureID = handle;
+    direct.textureID = handle;
     result.handle = handle;
     result.width = info.width;
     result.height = native.height;
@@ -1389,46 +1389,46 @@ rt_texture_t dx_create_texture_depth_stencil(uint32_t width, uint32_t height, co
 void dx_destroy_texture(rt_texture_t& texture)
 {
     if (texture.native)
-        dx.textures.erase(texture.handle);
+        direct.textures.erase(texture.handle);
     texture = {};
 }
 
 void dx_bind_texture(rt_texture_t& texture, rt_texture_bind_t bind)
 {
-    if (dx.currentPipeline == nullptr)
+    if (direct.currentPipeline == nullptr)
     {
         fprintf(stderr, "Pipeline not begin");
         abort();
     }
-    dx.currentBinding[bind.binding].type = GL_BINDING_TEXTURE;
-    dx.currentBinding[bind.binding].texture = texture;
-    dx.currentBinding[bind.binding].texture_bind = bind;
+    direct.currentBinding[bind.binding].type = GL_BINDING_TEXTURE;
+    direct.currentBinding[bind.binding].texture = texture;
+    direct.currentBinding[bind.binding].texture_bind = bind;
 }
 
 void dx_bind_texture_storage(rt_texture_t& texture, rt_texture_storage_bind_t bind)
 {
-    if (dx.currentPipeline == nullptr)
+    if (direct.currentPipeline == nullptr)
     {
         fprintf(stderr, "Pipeline not begin");
         abort();
     }
-    dx.currentBinding[bind.binding].type = GL_BINDING_STORAGE_TEXTURE;
-    dx.currentBinding[bind.binding].storage_texture = texture;
-    dx.currentBinding[bind.binding].storage_texture_bind = bind;
+    direct.currentBinding[bind.binding].type = GL_BINDING_STORAGE_TEXTURE;
+    direct.currentBinding[bind.binding].storage_texture = texture;
+    direct.currentBinding[bind.binding].storage_texture_bind = bind;
 }
 
 rt_sampler_t dx_create_sampler(rt_sampler_info_t const& info)
 {
     rt_sampler_t result = {};
-    uint32_t handle = dx.samplerID + 1;
-    auto& native = dx.samplers[handle];
+    uint32_t handle = direct.samplerID + 1;
+    auto& native = direct.samplers[handle];
     native.desc.Filter = gl_to_dx_filter(info.min_filter, info.mag_filter);
     native.desc.AddressU = gl_to_dx_address(info.wrap_s);
     native.desc.AddressV = gl_to_dx_address(info.wrap_t);
     native.desc.AddressW = gl_to_dx_address(info.wrap_r);
     native.desc.MaxLOD = gl_has_mipmap_filter(info.min_filter) ? D3D12_FLOAT32_MAX : 0.0f;
     native.desc.MinLOD = 0.0f;
-    dx.samplerID = handle;
+    direct.samplerID = handle;
     result.handle = handle;
     result.native = &native;
     return result;
@@ -1437,45 +1437,45 @@ rt_sampler_t dx_create_sampler(rt_sampler_info_t const& info)
 void dx_destroy_sampler(rt_sampler_t& sampler)
 {
     if (sampler.native)
-        dx.samplers.erase(sampler.handle);
+        direct.samplers.erase(sampler.handle);
     sampler = {};
 }
 
 void dx_bind_sampler(rt_sampler_t& sampler, rt_sampler_bind_t bind)
 {
-    if (dx.currentPipeline == nullptr)
+    if (direct.currentPipeline == nullptr)
     {
         fprintf(stderr, "Pipeline not begin");
         abort();
     }
-    dx.currentBinding[bind.binding].type = GL_BINDING_SAMPLER;
-    dx.currentBinding[bind.binding].sampler = sampler;
-    dx.currentBinding[bind.binding].sampler_bind = bind;
+    direct.currentBinding[bind.binding].type = GL_BINDING_SAMPLER;
+    direct.currentBinding[bind.binding].sampler = sampler;
+    direct.currentBinding[bind.binding].sampler_bind = bind;
 }
 
 rt_module_compute_t dx_create_module_compute(rt_module_compute_info_t const& info)
 {
     rt_module_compute_t result = {};
-    if (!info.cshader || !info.clength || !dx.device) return result;
-    uint32_t handle = dx.moduleID + 1;
-    auto& native = dx.modules[handle];
+    if (!info.cshader || !info.clength || !direct.device) return result;
+    uint32_t handle = direct.moduleID + 1;
+    auto& native = direct.modules[handle];
     native.isCompute = true;
     dx_copy_shader(native.cshader, native.ccode, info.cshader, info.clength);
     if (!dx_setup_root(native, nullptr))
     {
-        dx.modules.erase(handle);
+        direct.modules.erase(handle);
         return {};
     }
     D3D12_COMPUTE_PIPELINE_STATE_DESC pso = {};
     pso.pRootSignature = native.rootSignature.Get();
     pso.CS = native.cshader;
-    if (FAILED(dx.device->CreateComputePipelineState(&pso, IID_PPV_ARGS(&native.pipeline))))
+    if (FAILED(direct.device->CreateComputePipelineState(&pso, IID_PPV_ARGS(&native.pipeline))))
     {
         result.native = &native;
         dx_destroy_module_native(handle, result.native);
         return {};
     }
-    dx.moduleID = handle;
+    direct.moduleID = handle;
     result.handle = handle;
     result.native = &native;
     return result;
@@ -1484,9 +1484,9 @@ rt_module_compute_t dx_create_module_compute(rt_module_compute_info_t const& inf
 rt_module_render_t dx_create_module_render(rt_module_render_info_t const& info)
 {
     rt_module_render_t result = {};
-    if (!dx.device) return result;
-    uint32_t handle = dx.moduleID + 1;
-    auto& native = dx.modules[handle];
+    if (!direct.device) return result;
+    uint32_t handle = direct.moduleID + 1;
+    auto& native = direct.modules[handle];
     if (info.vshader) dx_copy_shader(native.vshader, native.vcode, info.vshader, info.vlength);
     if (info.fshader) dx_copy_shader(native.fshader, native.fcode, info.fshader, info.flength);
     if (!dx_setup_root(native, info.binding) || !dx_create_graphics_pipeline(native, info, false))
@@ -1495,7 +1495,7 @@ rt_module_render_t dx_create_module_render(rt_module_render_info_t const& info)
         dx_destroy_module_native(handle, result.native);
         return {};
     }
-    dx.moduleID = handle;
+    direct.moduleID = handle;
     result.handle = handle;
     result.native = &native;
     dx_fill_render_state(result, info);
@@ -1505,9 +1505,9 @@ rt_module_render_t dx_create_module_render(rt_module_render_info_t const& info)
 rt_module_render_t dx_create_module_meshlet(rt_module_render_info_t const& info)
 {
     rt_module_render_t result = {};
-    if (!info.mshader || !info.mlength || !dx.device) return result;
-    uint32_t handle = dx.moduleID + 1;
-    auto& native = dx.modules[handle];
+    if (!info.mshader || !info.mlength || !direct.device) return result;
+    uint32_t handle = direct.moduleID + 1;
+    auto& native = direct.modules[handle];
     native.isMeshlet = true;
     if (info.tshader) dx_copy_shader(native.tshader, native.tcode, info.tshader, info.tlength);
     dx_copy_shader(native.mshader, native.mcode, info.mshader, info.mlength);
@@ -1518,7 +1518,7 @@ rt_module_render_t dx_create_module_meshlet(rt_module_render_info_t const& info)
         dx_destroy_module_native(handle, result.native);
         return {};
     }
-    dx.moduleID = handle;
+    direct.moduleID = handle;
     result.handle = handle;
     result.native = &native;
     dx_fill_render_state(result, info);
@@ -1540,14 +1540,14 @@ void dx_destroy_module_compute(rt_module_compute_t& module)
 
 void dx_push_constant(uint8_t const* buffer, size_t length)
 {
-    dx_require_pass(dx.currentPassType);
+    dx_require_pass(direct.currentPassType);
     auto* mod = dx_current_module_native();
     if (!buffer || length == 0 || !mod) return;
     uint32_t count = (uint32_t)((length + 3) / 4);
     if (mod->isCompute)
-        dx.cmd->SetComputeRoot32BitConstants(0, count, buffer, 0);
+        direct.cmd->SetComputeRoot32BitConstants(0, count, buffer, 0);
     else
-        dx.cmd->SetGraphicsRoot32BitConstants(0, count, buffer, 0);
+        direct.cmd->SetGraphicsRoot32BitConstants(0, count, buffer, 0);
 }
 
 void dx_push_const_int(const char*, int32_t) {}
@@ -1566,36 +1566,36 @@ void dx_begin_compute(rt_pass_compute_t& pass)
         fprintf(stderr, "Pipeline module is not created\n");
         abort();
     }
-    if (dx.currentPipeline)
+    if (direct.currentPipeline)
     {
         fprintf(stderr, "Pipeline not end");
         abort();
     }
     dx_clear_bindings();
-    pass.handle = ++dx.passID;
-    auto& native = dx.computePasses[pass.handle];
+    pass.handle = ++direct.passID;
+    auto& native = direct.computePasses[pass.handle];
     pass.native = &native;
-    dx.currentPassType = GL_MODULE_COMPUTE;
-    dx.currentComputePass = &pass;
+    direct.currentPassType = GL_MODULE_COMPUTE;
+    direct.currentComputePass = &pass;
     auto* mod = (rt_module_native_t*)pass.module.native;
     if (mod && mod->pipeline)
-        dx.cmd->SetPipelineState(mod->pipeline.Get());
+        direct.cmd->SetPipelineState(mod->pipeline.Get());
     if (mod && mod->rootSignature)
-        dx.cmd->SetComputeRootSignature(mod->rootSignature.Get());
+        direct.cmd->SetComputeRootSignature(mod->rootSignature.Get());
 }
 
 void dx_end_compute(rt_pass_compute_t& pass)
 {
-    if (dx.currentComputePass != &pass)
+    if (direct.currentComputePass != &pass)
     {
         fprintf(stderr, "Pipeline not begin");
         abort();
     }
-    dx.computePasses.erase(pass.handle);
+    direct.computePasses.erase(pass.handle);
     pass.handle = 0;
     pass.native = nullptr;
-    dx.currentPassType = GL_NONE;
-    dx.currentPipeline = nullptr;
+    direct.currentPassType = GL_NONE;
+    direct.currentPipeline = nullptr;
     dx_clear_bindings();
 }
 
@@ -1603,7 +1603,7 @@ void dx_dispatch_compute(uint32_t groupX, uint32_t groupY, uint32_t groupZ)
 {
     dx_require_pass(GL_MODULE_COMPUTE);
     dx_flush_descriptors();
-    dx.cmd->Dispatch(max(1u, groupX), max(1u, groupY), max(1u, groupZ));
+    direct.cmd->Dispatch(max(1u, groupX), max(1u, groupY), max(1u, groupZ));
 }
 
 void dx_begin_render(rt_pass_render_t& pass)
@@ -1613,25 +1613,25 @@ void dx_begin_render(rt_pass_render_t& pass)
         fprintf(stderr, "Pipeline module is not created\n");
         abort();
     }
-    if (dx.currentPipeline)
+    if (direct.currentPipeline)
     {
         fprintf(stderr, "Pipeline not end");
         abort();
     }
     dx_clear_bindings();
-    pass.handle = ++dx.passID;
-    auto& native = dx.renderPasses[pass.handle];
+    pass.handle = ++direct.passID;
+    auto& native = direct.renderPasses[pass.handle];
     pass.native = &native;
-    dx.currentPassType = GL_MODULE_RENDER;
-    dx.currentRenderPass = &pass;
+    direct.currentPassType = GL_MODULE_RENDER;
+    direct.currentRenderPass = &pass;
 
     auto* mod = (rt_module_native_t*)pass.module.native;
     if (mod && mod->pipeline)
-        dx.cmd->SetPipelineState(mod->pipeline.Get());
+        direct.cmd->SetPipelineState(mod->pipeline.Get());
     if (mod && mod->rootSignature)
-        dx.cmd->SetGraphicsRootSignature(mod->rootSignature.Get());
+        direct.cmd->SetGraphicsRootSignature(mod->rootSignature.Get());
     if (mod)
-        dx.cmd->IASetPrimitiveTopology(mod->topology);
+        direct.cmd->IASetPrimitiveTopology(mod->topology);
 
     native.offscreen = pass.depth.texture.handle != 0;
     for (auto& color : pass.colors)
@@ -1640,23 +1640,23 @@ void dx_begin_render(rt_pass_render_t& pass)
     D3D12_CPU_DESCRIPTOR_HANDLE rtvs[GL_MAX_COLOR_TEXTURE_NUM] = {};
     uint32_t colorCount = 0;
     uint32_t width = 0, height = 0;
-    D3D12_CPU_DESCRIPTOR_HANDLE rtvStart = dx.rtvHeap->GetCPUDescriptorHandleForHeapStart();
+    D3D12_CPU_DESCRIPTOR_HANDLE rtvStart = direct.rtvHeap->GetCPUDescriptorHandleForHeapStart();
     for (uint32_t i = 0; i < GL_MAX_COLOR_TEXTURE_NUM; ++i)
     {
         if (auto* tex = dx_texture_native(pass.colors[i].texture))
         {
             dx_transition_image(*tex, D3D12_RESOURCE_STATE_RENDER_TARGET);
             D3D12_CPU_DESCRIPTOR_HANDLE rtv = rtvStart;
-            rtv.ptr += (SIZE_T)i * dx.rtvSize;
+            rtv.ptr += (SIZE_T)i * direct.rtvSize;
             D3D12_RENDER_TARGET_VIEW_DESC rtvDesc = {};
             rtvDesc.Format = tex->format;
             rtvDesc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2D;
-            dx.device->CreateRenderTargetView(tex->handle.Get(), &rtvDesc, rtv);
+            direct.device->CreateRenderTargetView(tex->handle.Get(), &rtvDesc, rtv);
             rtvs[i] = rtv;
             if (pass.colors[i].clear)
             {
                 float clear[4] = {pass.colors[i].value.r, pass.colors[i].value.g, pass.colors[i].value.b, pass.colors[i].value.a};
-                dx.cmd->ClearRenderTargetView(rtv, clear, 0, nullptr);
+                direct.cmd->ClearRenderTargetView(rtv, clear, 0, nullptr);
             }
             width = max(width, pass.colors[i].texture.width);
             height = max(height, pass.colors[i].texture.height);
@@ -1669,17 +1669,17 @@ void dx_begin_render(rt_pass_render_t& pass)
     if (auto* tex = dx_texture_native(pass.depth.texture))
     {
         dx_transition_image(*tex, D3D12_RESOURCE_STATE_DEPTH_WRITE);
-        dsv = dx.dsvHeap->GetCPUDescriptorHandleForHeapStart();
+        dsv = direct.dsvHeap->GetCPUDescriptorHandleForHeapStart();
         D3D12_DEPTH_STENCIL_VIEW_DESC dsvDesc = {};
         dsvDesc.Format = tex->format;
         dsvDesc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D;
-        dx.device->CreateDepthStencilView(tex->handle.Get(), &dsvDesc, dsv);
+        direct.device->CreateDepthStencilView(tex->handle.Get(), &dsvDesc, dsv);
         if (pass.depth.clear || pass.stencil.clear)
         {
             D3D12_CLEAR_FLAGS flags = {};
             if (pass.depth.clear) flags |= D3D12_CLEAR_FLAG_DEPTH;
             if (pass.stencil.clear) flags |= D3D12_CLEAR_FLAG_STENCIL;
-            dx.cmd->ClearDepthStencilView(dsv, flags, pass.depth.value, (UINT8)pass.stencil.value, 0, nullptr);
+            direct.cmd->ClearDepthStencilView(dsv, flags, pass.depth.value, (UINT8)pass.stencil.value, 0, nullptr);
         }
         width = max(width, pass.depth.texture.width);
         height = max(height, pass.depth.texture.height);
@@ -1688,14 +1688,14 @@ void dx_begin_render(rt_pass_render_t& pass)
 
     native.width = width;
     native.height = height;
-    dx.cmd->OMSetRenderTargets(max(colorCount, (uint32_t)GL_MAX_COLOR_TEXTURE_NUM), rtvs, FALSE, hasDepth ? &dsv : nullptr);
+    direct.cmd->OMSetRenderTargets(max(colorCount, (uint32_t)GL_MAX_COLOR_TEXTURE_NUM), rtvs, FALSE, hasDepth ? &dsv : nullptr);
     dx_set_viewport(0, 0, (int32_t)width, (int32_t)height);
     dx_set_scissor(0, 0, (int32_t)width, (int32_t)height);
 }
 
 void dx_end_render(rt_pass_render_t& pass)
 {
-    if (dx.currentRenderPass != &pass)
+    if (direct.currentRenderPass != &pass)
     {
         fprintf(stderr, "Pipeline not begin");
         abort();
@@ -1705,70 +1705,70 @@ void dx_end_render(rt_pass_render_t& pass)
             dx_transition_image(*tex, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
     if (auto* tex = dx_texture_native(pass.depth.texture))
         dx_transition_image(*tex, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-    dx.renderPasses.erase(pass.handle);
+    direct.renderPasses.erase(pass.handle);
     pass.handle = 0;
     pass.native = nullptr;
-    dx.currentPassType = GL_NONE;
-    dx.currentPipeline = nullptr;
+    direct.currentPassType = GL_NONE;
+    direct.currentPipeline = nullptr;
     dx_clear_bindings();
 }
 
 void dx_set_viewport(int32_t x, int32_t y, int32_t width, int32_t height)
 {
-    if (dx.currentPipeline == nullptr)
+    if (direct.currentPipeline == nullptr)
     {
         fprintf(stderr, "Pipeline not begin");
         abort();
     }
     D3D12_VIEWPORT viewport = {(float)x, (float)y, (float)width, (float)height, 0.0f, 1.0f};
-    dx.cmd->RSSetViewports(1, &viewport);
+    direct.cmd->RSSetViewports(1, &viewport);
 }
 
 void dx_set_scissor(int32_t x, int32_t y, int32_t width, int32_t height)
 {
-    if (dx.currentPipeline == nullptr)
+    if (direct.currentPipeline == nullptr)
     {
         fprintf(stderr, "Pipeline not begin");
         abort();
     }
     D3D12_RECT scissor = {x, y, x + max(0, width), y + max(0, height)};
-    dx.cmd->RSSetScissorRects(1, &scissor);
+    direct.cmd->RSSetScissorRects(1, &scissor);
 }
 
 void dx_draw_mesh_task(uint32_t groupX, uint32_t groupY, uint32_t groupZ)
 {
     dx_require_pass(GL_MODULE_RENDER);
     dx_flush_descriptors();
-    if (dx.cmdMesh)
-        dx.cmdMesh->DispatchMesh(max(1u, groupX), max(1u, groupY), max(1u, groupZ));
+    if (direct.cmdMesh)
+        direct.cmdMesh->DispatchMesh(max(1u, groupX), max(1u, groupY), max(1u, groupZ));
 }
 
 void dx_begin_transfer(rt_pass_transfer_t& pass)
 {
-    if (dx.currentPipeline)
+    if (direct.currentPipeline)
     {
         fprintf(stderr, "Pipeline not end");
         abort();
     }
-    pass.handle = ++dx.passID;
-    auto& native = dx.transferPasses[pass.handle];
+    pass.handle = ++direct.passID;
+    auto& native = direct.transferPasses[pass.handle];
     pass.native = &native;
-    dx.currentPassType = GL_MODULE_TRANSFER;
-    dx.currentTransferPass = &pass;
+    direct.currentPassType = GL_MODULE_TRANSFER;
+    direct.currentTransferPass = &pass;
 }
 
 void dx_end_transfer(rt_pass_transfer_t& pass)
 {
-    if (dx.currentTransferPass != &pass)
+    if (direct.currentTransferPass != &pass)
     {
         fprintf(stderr, "Pipeline not begin");
         abort();
     }
-    dx.transferPasses.erase(pass.handle);
+    direct.transferPasses.erase(pass.handle);
     pass.handle = 0;
     pass.native = nullptr;
-    dx.currentPassType = GL_NONE;
-    dx.currentPipeline = nullptr;
+    direct.currentPassType = GL_NONE;
+    direct.currentPipeline = nullptr;
 }
 
 void dx_copy_buffer(rt_buffer_copy_t source, rt_buffer_copy_t destination, size_t copySize)
@@ -1781,7 +1781,7 @@ void dx_copy_buffer(rt_buffer_copy_t source, rt_buffer_copy_t destination, size_
         return;
     dx_transition_buffer(*src, D3D12_RESOURCE_STATE_COPY_SOURCE);
     dx_transition_buffer(*dst, D3D12_RESOURCE_STATE_COPY_DEST);
-    dx.cmd->CopyBufferRegion(dst->handle.Get(), destination.offset, src->handle.Get(), source.offset, copySize);
+    direct.cmd->CopyBufferRegion(dst->handle.Get(), destination.offset, src->handle.Get(), source.offset, copySize);
 }
 
 void dx_copy_buffer_data(rt_buffer_data_t source, rt_buffer_copy_t destination, size_t copySize)
@@ -1808,8 +1808,8 @@ void dx_copy_buffer_data(rt_buffer_data_t source, rt_buffer_copy_t destination, 
     std::memcpy(ptr, source.data + source.offset, copySize);
     staging.buffer->Unmap(0, nullptr);
     dx_transition_buffer(*dst, D3D12_RESOURCE_STATE_COPY_DEST);
-    dx.cmd->CopyBufferRegion(dst->handle.Get(), destination.offset, staging.buffer.Get(), 0, copySize);
-    dx.pendingStaging.push_back(std::move(staging));
+    direct.cmd->CopyBufferRegion(dst->handle.Get(), destination.offset, staging.buffer.Get(), 0, copySize);
+    direct.pendingStaging.push_back(std::move(staging));
 }
 
 static void dx_fill_placed(D3D12_PLACED_SUBRESOURCE_FOOTPRINT& footprint, rt_texture_native_t& tex, uint32_t bytesPerRow, rt_size_t copySize)
@@ -1841,7 +1841,7 @@ void dx_copy_buffer_texture(rt_texture_copy_t source, rt_buffer_texel_t destinat
     D3D12_BOX box = {source.origin.x, source.origin.y, source.origin.z,
                      (source.origin.x + copySize.x), (source.origin.y + copySize.y),
                      (source.origin.z + (copySize.z ? copySize.z : 1))};
-    dx.cmd->CopyTextureRegion(&dstLoc, 0, 0, 0, &srcLoc, &box);
+    direct.cmd->CopyTextureRegion(&dstLoc, 0, 0, 0, &srcLoc, &box);
 }
 
 void dx_copy_texture(rt_texture_copy_t source, rt_texture_copy_t destination, rt_size_t copySize)
@@ -1863,7 +1863,7 @@ void dx_copy_texture(rt_texture_copy_t source, rt_texture_copy_t destination, rt
     D3D12_BOX box = {source.origin.x, source.origin.y, source.origin.z,
                      (source.origin.x + copySize.x), (source.origin.y + copySize.y),
                      (source.origin.z + (copySize.z ? copySize.z : 1))};
-    dx.cmd->CopyTextureRegion(&dstLoc, destination.origin.x, destination.origin.y, destination.origin.z, &srcLoc, &box);
+    direct.cmd->CopyTextureRegion(&dstLoc, destination.origin.x, destination.origin.y, destination.origin.z, &srcLoc, &box);
 }
 
 void dx_copy_texture_data(rt_texture_data_t source, rt_texture_copy_t destination, rt_size_t copySize)
@@ -1887,8 +1887,8 @@ void dx_copy_texture_data(rt_texture_data_t source, rt_texture_copy_t destinatio
     srcLoc.pResource = staging.buffer.Get();
     srcLoc.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
     dx_fill_placed(srcLoc.PlacedFootprint, *dst, source.bytesPerRow, copySize);
-    dx.cmd->CopyTextureRegion(&dstLoc, destination.origin.x, destination.origin.y, destination.origin.z, &srcLoc, nullptr);
-    dx.pendingStaging.push_back(std::move(staging));
+    direct.cmd->CopyTextureRegion(&dstLoc, destination.origin.x, destination.origin.y, destination.origin.z, &srcLoc, nullptr);
+    direct.pendingStaging.push_back(std::move(staging));
 }
 
 void dx_copy_texture_buffer(rt_buffer_texel_t source, rt_texture_copy_t destination, rt_size_t copySize)
@@ -1908,15 +1908,15 @@ void dx_copy_texture_buffer(rt_buffer_texel_t source, rt_texture_copy_t destinat
     srcLoc.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
     srcLoc.PlacedFootprint.Offset = source.offset;
     dx_fill_placed(srcLoc.PlacedFootprint, *dst, source.bytesPerRow, copySize);
-    dx.cmd->CopyTextureRegion(&dstLoc, destination.origin.x, destination.origin.y, destination.origin.z, &srcLoc, nullptr);
+    direct.cmd->CopyTextureRegion(&dstLoc, destination.origin.x, destination.origin.y, destination.origin.z, &srcLoc, nullptr);
 }
 
 rt_mesh_t dx_create_mesh(const float* vertices, const float* normals, const float* uvs, size_t vertex_count, const unsigned int* indices, size_t index_count)
 {
     rt_mesh_t result = {};
     if (!vertices || vertex_count == 0) return result;
-    uint32_t handle = dx.meshID + 1;
-    auto& native = dx.meshes[handle];
+    uint32_t handle = direct.meshID + 1;
+    auto& native = direct.meshes[handle];
     native.vertexCount = (uint32_t)vertex_count;
     native.indexCount = (uint32_t)index_count;
     if (vertices)
@@ -1928,7 +1928,7 @@ rt_mesh_t dx_create_mesh(const float* vertices, const float* normals, const floa
     if (indices)
         result.index = dx_create_buffer({.size = index_count * sizeof(uint32_t), .usage = GL_BUFFER_USAGE_INDEX | GL_BUFFER_USAGE_COPY_DST, .data = indices});
     std::iota(result.location, result.location + std::size(result.location), 0);
-    dx.meshID = handle;
+    direct.meshID = handle;
     result.handle = handle;
     result.native = &native;
     return result;
@@ -1939,7 +1939,7 @@ void dx_destroy_mesh(rt_mesh_t& mesh)
     for (auto& vertex : mesh.vertex)
         dx_destroy_buffer(vertex);
     dx_destroy_buffer(mesh.index);
-    dx.meshes.erase(mesh.handle);
+    direct.meshes.erase(mesh.handle);
     mesh.handle = 0;
     mesh.native = nullptr;
 }
@@ -1948,7 +1948,7 @@ static void dx_draw_mesh_impl(rt_mesh_t& mesh, uint32_t instanceCount)
 {
     dx_require_pass(GL_MODULE_RENDER);
     dx_flush_descriptors();
-    rt_module_render_t const& module = dx.currentRenderPass->module;
+    rt_module_render_t const& module = direct.currentRenderPass->module;
     uint32_t vertex_count = 0;
     for (uint32_t i = 0; i < std::size(module.vertex); ++i)
     {
@@ -1965,7 +1965,7 @@ static void dx_draw_mesh_impl(rt_mesh_t& mesh, uint32_t instanceCount)
             view.BufferLocation = native->handle->GetGPUVirtualAddress();
             view.SizeInBytes = (UINT)mesh.vertex[k].size;
             view.StrideInBytes = stride;
-            dx.cmd->IASetVertexBuffers(layout.location, 1, &view);
+            direct.cmd->IASetVertexBuffers(layout.location, 1, &view);
             if (vertex_count == 0 && stride)
                 vertex_count = (uint32_t)(mesh.vertex[k].size / stride);
             break;
@@ -1981,11 +1981,11 @@ static void dx_draw_mesh_impl(rt_mesh_t& mesh, uint32_t instanceCount)
         view.BufferLocation = native->handle->GetGPUVirtualAddress();
         view.SizeInBytes = (UINT)mesh.index.size;
         view.Format = gl_to_dx_index_type(module.index_type);
-        dx.cmd->IASetIndexBuffer(&view);
-        dx.cmd->DrawIndexedInstanced((UINT)(mesh.index.size / indexStride), instanceCount, 0, 0, 0);
+        direct.cmd->IASetIndexBuffer(&view);
+        direct.cmd->DrawIndexedInstanced((UINT)(mesh.index.size / indexStride), instanceCount, 0, 0, 0);
     }
     else
-        dx.cmd->DrawInstanced(vertex_count, instanceCount, 0, 0);
+        direct.cmd->DrawInstanced(vertex_count, instanceCount, 0, 0);
 }
 
 void dx_draw_mesh(rt_mesh_t& mesh)
@@ -2002,8 +2002,8 @@ rt_meshlet_t dx_create_meshlet(const float* vertices, const float* normals, cons
 {
     rt_meshlet_t result = {};
     if (!vertices || vertex_count == 0) return result;
-    uint32_t handle = dx.meshletID + 1;
-    auto& native = dx.meshlets[handle];
+    uint32_t handle = direct.meshletID + 1;
+    auto& native = direct.meshlets[handle];
     native.vertexCount = (uint32_t)vertex_count;
     native.indexCount = (uint32_t)index_count;
     if (vertices)
@@ -2015,7 +2015,7 @@ rt_meshlet_t dx_create_meshlet(const float* vertices, const float* normals, cons
     if (indices)
         result.index = dx_create_buffer({.size = index_count * sizeof(uint32_t), .usage = GL_BUFFER_USAGE_STORAGE | GL_BUFFER_USAGE_COPY_DST, .data = indices});
     std::iota(result.location, result.location + std::size(result.location), 0);
-    dx.meshletID = handle;
+    direct.meshletID = handle;
     result.handle = handle;
     result.native = &native;
     return result;
@@ -2026,7 +2026,7 @@ void dx_destroy_meshlet(rt_meshlet_t& meshlet)
     for (auto& vertex : meshlet.vertex)
         dx_destroy_buffer(vertex);
     dx_destroy_buffer(meshlet.index);
-    dx.meshlets.erase(meshlet.handle);
+    direct.meshlets.erase(meshlet.handle);
     meshlet.handle = 0;
     meshlet.native = nullptr;
 }
@@ -2034,7 +2034,7 @@ void dx_destroy_meshlet(rt_meshlet_t& meshlet)
 void dx_draw_meshlet(rt_meshlet_t& meshlet)
 {
     dx_require_pass(GL_MODULE_RENDER);
-    rt_module_render_t const& module = dx.currentRenderPass->module;
+    rt_module_render_t const& module = direct.currentRenderPass->module;
     uint32_t index_binding = 0;
     for (uint32_t i = 0; i < std::size(module.vertex); ++i)
     {
@@ -2054,8 +2054,8 @@ void dx_draw_meshlet(rt_meshlet_t& meshlet)
     dx_flush_descriptors();
     auto* native = (rt_meshlet_native_t*)meshlet.native;
     uint32_t tasks = native && native->indexCount ? native->indexCount / 3 : 1;
-    if (dx.cmdMesh)
-        dx.cmdMesh->DispatchMesh(max(1u, tasks), 1, 1);
+    if (direct.cmdMesh)
+        direct.cmdMesh->DispatchMesh(max(1u, tasks), 1, 1);
 }
 
 rt_mesh_t dx_create_mesh_screen()
@@ -2083,19 +2083,19 @@ void dx_draw_screen(int width, int height, rt_color_t clear, rt_texture_t& textu
 
 void dx_submit()
 {
-    if (!dx.cmd) return;
-    if (FAILED(dx.cmd->Close()))
+    if (!direct.cmd) return;
+    if (FAILED(direct.cmd->Close()))
     {
         fprintf(stderr, "DirectX: failed to close command list\n");
         abort();
     }
-    ID3D12CommandList* lists[] = {dx.cmd.Get()};
-    if (dx.queue)
-        dx.queue->ExecuteCommandLists(1, lists);
+    ID3D12CommandList* lists[] = {direct.cmd.Get()};
+    if (direct.queue)
+        direct.queue->ExecuteCommandLists(1, lists);
     dx_wait_gpu();
     dx_flush_staging();
-    dx.allocator->Reset();
-    if (FAILED(dx.cmd->Reset(dx.allocator.Get(), nullptr)))
+    direct.allocator->Reset();
+    if (FAILED(direct.cmd->Reset(direct.allocator.Get(), nullptr)))
     {
         fprintf(stderr, "DirectX: failed to reset command list\n");
         abort();

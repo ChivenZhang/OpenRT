@@ -503,7 +503,7 @@ struct vk_native_t
 
     PFN_vkCmdDrawMeshTasksNV fnDrawMeshTasksNV = nullptr;
 
-    struct Binding
+    struct
     {
         GLenum type = GL_NONE;
         rt_buffer_t buffer = {};
