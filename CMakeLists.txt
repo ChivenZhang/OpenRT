@@ -17,8 +17,8 @@ endif()
 add_definitions(
 #        -DOPENRT_STATIC
         -DOPENGL_IMPLEMENTATION
-#        -DVULKAN_IMPLEMENTATION
-#        -DDIRECTX_IMPLEMENTATION
+        -DVULKAN_IMPLEMENTATION
+        -DDIRECTX_IMPLEMENTATION
 #        -DMETAL_IMPLEMENTATION
 )
 
@@ -37,11 +37,11 @@ target_link_libraries(OpenRT PRIVATE GLEW::GLEW)
 find_package(Vulkan REQUIRED)
 target_link_libraries(OpenRT PRIVATE Vulkan::Vulkan)
 if(WIN32)
-    target_link_libraries(OpenRT PRIVATE d3d12 dxgi)
+target_link_libraries(OpenRT PRIVATE d3d12 dxgi)
 endif()
 if(APPLE)
-    target_include_directories(OpenRT PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/metal-cpp)
-    target_link_libraries(OpenRT PRIVATE "-framework Metal" "-framework Foundation" "-framework QuartzCore")
+target_include_directories(OpenRT PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/metal-cpp ${CMAKE_CURRENT_SOURCE_DIR}/metal-cpp-extensions)
+target_link_libraries(OpenRT PRIVATE "-framework Metal" "-framework MetalKit" "-framework AppKit" "-framework Foundation" "-framework QuartzCore")
 endif()
 
 add_executable(Default Example/Default.cpp)

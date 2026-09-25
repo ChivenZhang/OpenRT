@@ -30,15 +30,15 @@ void rt_load_library(const char* backend)
 #endif
 
 #ifdef VULKAN_IMPLEMENTATION
-    if (strcmp(backend, "vulkan") == 0) { vk_load_library(instance, device, queue, family); return; }
+    // if (strcmp(backend, "vulkan") == 0) { vk_load_library(instance, device, queue, family); return; }
 #endif
 
 #ifdef DIRECTX_IMPLEMENTATION
-    if (strcmp(backend, "directx") == 0) { dx_load_library(device, queue); return; }
+    // if (strcmp(backend, "directx") == 0) { dx_load_library(device, queue); return; }
 #endif
     
 #ifdef METAL_IMPLEMENTATION
-    if (strcmp(backend, "metal") == 0) { mt_load_library(device, queue); return; }
+    // if (strcmp(backend, "metal") == 0) { mt_load_library(device, queue); return; }
 #endif
 
 #ifdef OPENGL_IMPLEMENTATION

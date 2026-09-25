@@ -327,7 +327,7 @@ enum dx_binding_kind_t : uint32_t
 
 // ====================================================================
 
-struct rt_buffer_native_t
+struct dx_buffer_native_t
 {
     ComPtr<ID3D12Resource> handle;
     D3D12_RESOURCE_STATES state = D3D12_RESOURCE_STATE_COMMON;
@@ -337,7 +337,7 @@ struct rt_buffer_native_t
     size_t mappedSize = 0;
 };
 
-struct rt_texture_native_t
+struct dx_texture_native_t
 {
     ComPtr<ID3D12Resource> handle;
     D3D12_RESOURCE_STATES state = D3D12_RESOURCE_STATE_COMMON;
@@ -349,12 +349,12 @@ struct rt_texture_native_t
     uint32_t samples = 1;
 };
 
-struct rt_sampler_native_t
+struct dx_sampler_native_t
 {
     D3D12_SAMPLER_DESC desc = {};
 };
 
-struct rt_module_native_t
+struct dx_module_native_t
 {
     ComPtr<ID3D12RootSignature> rootSignature;
     ComPtr<ID3D12PipelineState> pipeline;
@@ -367,21 +367,21 @@ struct rt_module_native_t
     uint32_t descriptorCount = 0;
 };
 
-struct rt_mesh_native_t
+struct dx_mesh_native_t
 {
     uint32_t vertexCount = 0;
     uint32_t indexCount = 0;
 };
 
-struct rt_meshlet_native_t
+struct dx_meshlet_native_t
 {
     uint32_t vertexCount = 0;
     uint32_t indexCount = 0;
 };
 
-struct rt_pass_compute_native_t { uint32_t dummy = 0; };
-struct rt_pass_render_native_t { bool offscreen = false; uint32_t width = 0, height = 0; };
-struct rt_pass_transfer_native_t { uint32_t dummy = 0; };
+struct dx_pass_compute_native_t { uint32_t dummy = 0; };
+struct dx_pass_render_native_t { bool offscreen = false; uint32_t width = 0, height = 0; };
+struct dx_pass_transfer_native_t { uint32_t dummy = 0; };
 
 struct dx_staging_t
 {
@@ -393,15 +393,15 @@ struct dx_native_t
     uint32_t bufferID = 0, textureID = 0, samplerID = 0, moduleID = 0;
     uint32_t meshID = 0, meshletID = 0, passID = 0;
 
-    std::map<uint32_t, rt_buffer_native_t> buffers;
-    std::map<uint32_t, rt_texture_native_t> textures;
-    std::map<uint32_t, rt_sampler_native_t> samplers;
-    std::map<uint32_t, rt_module_native_t> modules;
-    std::map<uint32_t, rt_mesh_native_t> meshes;
-    std::map<uint32_t, rt_meshlet_native_t> meshlets;
-    std::map<uint32_t, rt_pass_compute_native_t> computePasses;
-    std::map<uint32_t, rt_pass_render_native_t> renderPasses;
-    std::map<uint32_t, rt_pass_transfer_native_t> transferPasses;
+    std::map<uint32_t, dx_buffer_native_t> buffers;
+    std::map<uint32_t, dx_texture_native_t> textures;
+    std::map<uint32_t, dx_sampler_native_t> samplers;
+    std::map<uint32_t, dx_module_native_t> modules;
+    std::map<uint32_t, dx_mesh_native_t> meshes;
+    std::map<uint32_t, dx_meshlet_native_t> meshlets;
+    std::map<uint32_t, dx_pass_compute_native_t> computePasses;
+    std::map<uint32_t, dx_pass_render_native_t> renderPasses;
+    std::map<uint32_t, dx_pass_transfer_native_t> transferPasses;
 
     ComPtr<ID3D12Device> device;
     ComPtr<ID3D12CommandQueue> queue;
@@ -484,7 +484,7 @@ static bool dx_create_staging(size_t size, dx_staging_t& staging, void** mapped)
     return true;
 }
 
-static void dx_transition_buffer(rt_buffer_native_t& buffer, D3D12_RESOURCE_STATES dst)
+static void dx_transition_buffer(dx_buffer_native_t& buffer, D3D12_RESOURCE_STATES dst)
 {
     if (!buffer.handle || buffer.state == dst) return;
     D3D12_RESOURCE_BARRIER barrier = {};
@@ -497,7 +497,7 @@ static void dx_transition_buffer(rt_buffer_native_t& buffer, D3D12_RESOURCE_STAT
     buffer.state = dst;
 }
 
-static void dx_transition_image(rt_texture_native_t& image, D3D12_RESOURCE_STATES dst)
+static void dx_transition_image(dx_texture_native_t& image, D3D12_RESOURCE_STATES dst)
 {
     if (!image.handle || image.state == dst) return;
     D3D12_RESOURCE_BARRIER barrier = {};
@@ -510,33 +510,33 @@ static void dx_transition_image(rt_texture_native_t& image, D3D12_RESOURCE_STATE
     image.state = dst;
 }
 
-static rt_buffer_native_t* dx_buffer_native(rt_buffer_t const& buffer)
+static dx_buffer_native_t* dx_buffer_native(rt_buffer_t const& buffer)
 {
     if (!buffer.native || buffer.handle == 0) return nullptr;
     auto it = direct.buffers.find(buffer.handle);
     return it == direct.buffers.end() ? nullptr : &it->second;
 }
 
-static rt_texture_native_t* dx_texture_native(rt_texture_t const& texture)
+static dx_texture_native_t* dx_texture_native(rt_texture_t const& texture)
 {
     if (!texture.native || texture.handle == 0) return nullptr;
     auto it = direct.textures.find(texture.handle);
     return it == direct.textures.end() ? nullptr : &it->second;
 }
 
-static rt_sampler_native_t* dx_sampler_native(rt_sampler_t const& sampler)
+static dx_sampler_native_t* dx_sampler_native(rt_sampler_t const& sampler)
 {
     if (!sampler.native || sampler.handle == 0) return nullptr;
     auto it = direct.samplers.find(sampler.handle);
     return it == direct.samplers.end() ? nullptr : &it->second;
 }
 
-static rt_module_native_t* dx_current_module_native()
+static dx_module_native_t* dx_current_module_native()
 {
     if (direct.currentPassType == GL_MODULE_COMPUTE && direct.currentComputePass)
-        return (rt_module_native_t*)direct.currentComputePass->module.native;
+        return (dx_module_native_t*)direct.currentComputePass->module.native;
     if (direct.currentPassType == GL_MODULE_RENDER && direct.currentRenderPass)
-        return (rt_module_native_t*)direct.currentRenderPass->module.native;
+        return (dx_module_native_t*)direct.currentRenderPass->module.native;
     return nullptr;
 }
 
@@ -565,7 +565,7 @@ static void dx_copy_shader(D3D12_SHADER_BYTECODE& dest, std::vector<uint8_t>& st
     dest.BytecodeLength = store.size();
 }
 
-static bool dx_setup_root(rt_module_native_t& native, rt_binding_t const* bindings)
+static bool dx_setup_root(dx_module_native_t& native, rt_binding_t const* bindings)
 {
     native.descriptorCount = 0;
     D3D12_DESCRIPTOR_RANGE ranges[GL_MAX_BINDING_HANDLE_NUM] = {};
@@ -664,7 +664,7 @@ static void dx_fill_render_state(rt_module_render_t& result, rt_module_render_in
     result.primitive = info.primitive;
 }
 
-static bool dx_create_graphics_pipeline(rt_module_native_t& native, rt_module_render_info_t const& info, bool meshlet)
+static bool dx_create_graphics_pipeline(dx_module_native_t& native, rt_module_render_info_t const& info, bool meshlet)
 {
     D3D12_INPUT_ELEMENT_DESC elements[GL_MAX_VERTEX_BUFFER_NUM] = {};
     uint32_t attrCount = 0;
@@ -1567,7 +1567,7 @@ void dx_begin_compute(rt_pass_compute_t& pass)
     pass.native = &native;
     direct.currentPassType = GL_MODULE_COMPUTE;
     direct.currentComputePass = &pass;
-    auto* mod = (rt_module_native_t*)pass.module.native;
+    auto* mod = (dx_module_native_t*)pass.module.native;
     if (mod && mod->pipeline)
         direct.cmd->SetPipelineState(mod->pipeline.Get());
     if (mod && mod->rootSignature)
@@ -1615,7 +1615,7 @@ void dx_begin_render(rt_pass_render_t& pass)
     direct.currentPassType = GL_MODULE_RENDER;
     direct.currentRenderPass = &pass;
 
-    auto* mod = (rt_module_native_t*)pass.module.native;
+    auto* mod = (dx_module_native_t*)pass.module.native;
     if (mod && mod->pipeline)
         direct.cmd->SetPipelineState(mod->pipeline.Get());
     if (mod && mod->rootSignature)
@@ -1802,7 +1802,7 @@ void dx_copy_buffer_data(rt_buffer_data_t source, rt_buffer_copy_t destination, 
     direct.pendingStaging.push_back(std::move(staging));
 }
 
-static void dx_fill_placed(D3D12_PLACED_SUBRESOURCE_FOOTPRINT& footprint, rt_texture_native_t& tex, uint32_t bytesPerRow, rt_size_t copySize)
+static void dx_fill_placed(D3D12_PLACED_SUBRESOURCE_FOOTPRINT& footprint, dx_texture_native_t& tex, uint32_t bytesPerRow, rt_size_t copySize)
 {
     footprint.Footprint.Format = tex.format;
     footprint.Footprint.Width = copySize.x;
@@ -2042,7 +2042,7 @@ void dx_draw_meshlet(rt_meshlet_t& meshlet)
     if (meshlet.index.handle)
         dx_bind_buffer(meshlet.index, {.binding = index_binding, .target = GL_SHADER_STORAGE_BUFFER});
     dx_flush_descriptors();
-    auto* native = (rt_meshlet_native_t*)meshlet.native;
+    auto* native = (dx_meshlet_native_t*)meshlet.native;
     uint32_t tasks = native && native->indexCount ? native->indexCount / 3 : 1;
     if (direct.cmdMesh)
         direct.cmdMesh->DispatchMesh(max(1u, tasks), 1, 1);

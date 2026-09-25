@@ -379,7 +379,7 @@ static VkImageAspectFlags vk_image_aspect(GLenum aspect, GLenum format)
 
 // ====================================================================
 
-struct rt_buffer_native_t
+struct vk_buffer_native_t
 {
     VkBuffer handle = nullptr;
     VkDeviceMemory memory = nullptr;
@@ -392,7 +392,7 @@ struct rt_buffer_native_t
     VkAccessFlags access = 0;
 };
 
-struct rt_texture_native_t
+struct vk_texture_native_t
 {
     VkImage handle = nullptr;
     VkDeviceMemory memory = nullptr;
@@ -407,12 +407,12 @@ struct rt_texture_native_t
     VkAccessFlags access = 0;
 };
 
-struct rt_sampler_native_t
+struct vk_sampler_native_t
 {
     VkSampler handle = nullptr;
 };
 
-struct rt_module_native_t
+struct vk_module_native_t
 {
     VkShaderModule vshader = nullptr;
     VkShaderModule tshader = nullptr;
@@ -430,31 +430,31 @@ struct rt_module_native_t
     uint32_t descriptorCount = 0;
 };
 
-struct rt_mesh_native_t
+struct vk_mesh_native_t
 {
     uint32_t vertexCount = 0;
     uint32_t indexCount = 0;
 };
 
-struct rt_meshlet_native_t
+struct vk_meshlet_native_t
 {
     uint32_t vertexCount = 0;
     uint32_t indexCount = 0;
 };
 
-struct rt_pass_compute_native_t
+struct vk_pass_compute_native_t
 {
     VkPipelineBindPoint bindPoint = VK_PIPELINE_BIND_POINT_COMPUTE;
 };
 
-struct rt_pass_render_native_t
+struct vk_pass_render_native_t
 {
     bool offscreen = false;
     uint32_t width = 0;
     uint32_t height = 0;
 };
 
-struct rt_pass_transfer_native_t
+struct vk_pass_transfer_native_t
 {
     uint32_t dummy = 0;
 };
@@ -475,15 +475,15 @@ struct vk_native_t
     uint32_t meshletID = 0;
     uint32_t passID = 0;
 
-    std::map<uint32_t, rt_buffer_native_t> buffers;
-    std::map<uint32_t, rt_texture_native_t> textures;
-    std::map<uint32_t, rt_sampler_native_t> samplers;
-    std::map<uint32_t, rt_module_native_t> modules;
-    std::map<uint32_t, rt_mesh_native_t> meshes;
-    std::map<uint32_t, rt_meshlet_native_t> meshlets;
-    std::map<uint32_t, rt_pass_compute_native_t> computePasses;
-    std::map<uint32_t, rt_pass_render_native_t> renderPasses;
-    std::map<uint32_t, rt_pass_transfer_native_t> transferPasses;
+    std::map<uint32_t, vk_buffer_native_t> buffers;
+    std::map<uint32_t, vk_texture_native_t> textures;
+    std::map<uint32_t, vk_sampler_native_t> samplers;
+    std::map<uint32_t, vk_module_native_t> modules;
+    std::map<uint32_t, vk_mesh_native_t> meshes;
+    std::map<uint32_t, vk_meshlet_native_t> meshlets;
+    std::map<uint32_t, vk_pass_compute_native_t> computePasses;
+    std::map<uint32_t, vk_pass_render_native_t> renderPasses;
+    std::map<uint32_t, vk_pass_transfer_native_t> transferPasses;
 
     VkInstance instance = nullptr;
     VkPhysicalDevice physicalDevice = nullptr;
@@ -587,7 +587,7 @@ static bool vk_create_staging(VkDeviceSize size, vk_staging_t& staging, void** m
     return true;
 }
 
-static void vk_transition_image(rt_texture_native_t& image, VkImageLayout newLayout)
+static void vk_transition_image(vk_texture_native_t& image, VkImageLayout newLayout)
 {
     if (!image.handle)
         return;
@@ -647,7 +647,7 @@ static void vk_transition_image(rt_texture_native_t& image, VkImageLayout newLay
     }
 }
 
-static void vk_transition_buffer(rt_buffer_native_t& buffer, VkPipelineStageFlags dstStage, VkAccessFlags dstAccess)
+static void vk_transition_buffer(vk_buffer_native_t& buffer, VkPipelineStageFlags dstStage, VkAccessFlags dstAccess)
 {
     if (!buffer.handle)
         return;
@@ -668,7 +668,7 @@ static void vk_transition_buffer(rt_buffer_native_t& buffer, VkPipelineStageFlag
     buffer.access = dstAccess;
 }
 
-static rt_buffer_native_t* vk_buffer_native(rt_buffer_t const& buffer)
+static vk_buffer_native_t* vk_buffer_native(rt_buffer_t const& buffer)
 {
     if (!buffer.native || buffer.handle == 0) return nullptr;
     auto it = vulkan.buffers.find(buffer.handle);
@@ -676,7 +676,7 @@ static rt_buffer_native_t* vk_buffer_native(rt_buffer_t const& buffer)
     return &it->second;
 }
 
-static rt_texture_native_t* vk_texture_native(rt_texture_t const& texture)
+static vk_texture_native_t* vk_texture_native(rt_texture_t const& texture)
 {
     if (!texture.native || texture.handle == 0) return nullptr;
     auto it = vulkan.textures.find(texture.handle);
@@ -684,7 +684,7 @@ static rt_texture_native_t* vk_texture_native(rt_texture_t const& texture)
     return &it->second;
 }
 
-static rt_sampler_native_t* vk_sampler_native(rt_sampler_t const& sampler)
+static vk_sampler_native_t* vk_sampler_native(rt_sampler_t const& sampler)
 {
     if (!sampler.native || sampler.handle == 0) return nullptr;
     auto it = vulkan.samplers.find(sampler.handle);
@@ -692,12 +692,12 @@ static rt_sampler_native_t* vk_sampler_native(rt_sampler_t const& sampler)
     return &it->second;
 }
 
-static rt_module_native_t* vk_current_module_native()
+static vk_module_native_t* vk_current_module_native()
 {
     if (vulkan.currentPassType == GL_MODULE_COMPUTE && vulkan.currentComputePass)
-        return (rt_module_native_t*)vulkan.currentComputePass->module.native;
+        return (vk_module_native_t*)vulkan.currentComputePass->module.native;
     if (vulkan.currentPassType == GL_MODULE_RENDER && vulkan.currentRenderPass)
-        return (rt_module_native_t*)vulkan.currentRenderPass->module.native;
+        return (vk_module_native_t*)vulkan.currentRenderPass->module.native;
     return nullptr;
 }
 
@@ -716,7 +716,7 @@ static VkShaderModule vk_create_shader_module(const char* spirv, uint32_t length
     return module;
 }
 
-static bool vk_setup_descriptors(rt_module_native_t& native, rt_binding_t const* bindings, VkShaderStageFlags stages)
+static bool vk_setup_descriptors(vk_module_native_t& native, rt_binding_t const* bindings, VkShaderStageFlags stages)
 {
     VkDescriptorSetLayoutBinding layoutBindings[GL_MAX_BINDING_HANDLE_NUM] = {};
     native.descriptorCount = 0;
@@ -754,7 +754,7 @@ static bool vk_setup_descriptors(rt_module_native_t& native, rt_binding_t const*
     return true;
 }
 
-static bool vk_create_graphics_pipeline(rt_module_native_t& native, rt_module_render_info_t const& info, bool meshlet)
+static bool vk_create_graphics_pipeline(vk_module_native_t& native, rt_module_render_info_t const& info, bool meshlet)
 {
     VkPipelineShaderStageCreateInfo shaderStages[3] = {};
     uint32_t shaderCount = 0;
@@ -1927,7 +1927,7 @@ void vk_begin_compute(rt_pass_compute_t& pass)
     pass.native = &native;
     vulkan.currentPassType = GL_MODULE_COMPUTE;
     vulkan.currentComputePass = &pass;
-    auto* mod = (rt_module_native_t*)pass.module.native;
+    auto* mod = (vk_module_native_t*)pass.module.native;
     if (mod && mod->pipeline)
         vkCmdBindPipeline(vulkan.cmdBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, mod->pipeline);
 }
@@ -1973,7 +1973,7 @@ void vk_begin_render(rt_pass_render_t& pass)
     vulkan.currentPassType = GL_MODULE_RENDER;
     vulkan.currentRenderPass = &pass;
 
-    auto* mod = (rt_module_native_t*)pass.module.native;
+    auto* mod = (vk_module_native_t*)pass.module.native;
     if (mod && mod->pipeline)
         vkCmdBindPipeline(vulkan.cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, mod->pipeline);
 
@@ -2378,7 +2378,7 @@ void vk_draw_meshlet(rt_meshlet_t& meshlet)
     if (meshlet.index.handle)
         vk_bind_buffer(meshlet.index, {.binding = index_binding, .target = GL_SHADER_STORAGE_BUFFER});
     vk_flush_descriptors();
-    auto* native = (rt_meshlet_native_t*)meshlet.native;
+    auto* native = (vk_meshlet_native_t*)meshlet.native;
     uint32_t tasks = native && native->indexCount ? native->indexCount / 3 : 1;
     if (vulkan.fnDrawMeshTasksNV)
         vulkan.fnDrawMeshTasksNV(vulkan.cmdBuffer, std::max(1u, tasks), 0);
