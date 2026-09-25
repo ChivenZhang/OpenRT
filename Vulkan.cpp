@@ -451,7 +451,6 @@ struct rt_pass_compute_native_t
 
 struct rt_pass_render_native_t
 {
-    bool rendering = false;
     bool offscreen = false;
     uint32_t width = 0;
     uint32_t height = 0;
@@ -497,7 +496,6 @@ struct vk_native_t
     VkAllocationCallbacks* allocator = nullptr;
     VkCommandPool cmdPool = nullptr;
     VkCommandBuffer cmdBuffer = nullptr;
-    bool inRendering = false;
     VkDescriptorPool descriptorPool = nullptr;
     VkPipelineCache pipelineCache = nullptr;
     VkSampler defaultSampler = nullptr;
@@ -1220,7 +1218,6 @@ void vk_unload_library()
     vulkan.moduleID = vulkan.meshID = vulkan.meshletID = vulkan.passID = 0;
     vulkan.currentPassType = GL_NONE;
     vulkan.currentPipeline = nullptr;
-    vulkan.inRendering = false;
 
     if (rt_create_buffer == vk_create_buffer) rt_create_buffer = nullptr;
     if (rt_destroy_buffer == vk_destroy_buffer) rt_destroy_buffer = nullptr;
@@ -2025,13 +2022,6 @@ void vk_begin_render(rt_pass_render_t& pass)
         hasDepth = true;
     }
 
-    if (!native.offscreen)
-    {
-        native.width = native.height = 0;
-        native.rendering = false;
-        return;
-    }
-
     native.width = width;
     native.height = height;
     VkRenderingInfo renderingInfo = {};
@@ -2043,8 +2033,6 @@ void vk_begin_render(rt_pass_render_t& pass)
     renderingInfo.pDepthAttachment = hasDepth ? &depthAttachment : nullptr;
     renderingInfo.pStencilAttachment = (hasDepth && pass.depth.texture.format == GL_DEPTH_STENCIL) ? &depthAttachment : nullptr;
     vkCmdBeginRendering(vulkan.cmdBuffer, &renderingInfo);
-    native.rendering = true;
-    vulkan.inRendering = true;
     vk_set_viewport(0, 0, (int32_t)width, (int32_t)height);
     vk_set_scissor(0, 0, (int32_t)width, (int32_t)height);
 }
@@ -2056,18 +2044,12 @@ void vk_end_render(rt_pass_render_t& pass)
         fprintf(stderr, "Pipeline not begin");
         abort();
     }
-    auto* native = (rt_pass_render_native_t*)pass.native;
-    if (native && native->rendering)
-    {
-        vkCmdEndRendering(vulkan.cmdBuffer);
-        for (auto& color : pass.colors)
-            if (auto* tex = vk_texture_native(color.texture))
-                vk_transition_image(*tex, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-        if (auto* tex = vk_texture_native(pass.depth.texture))
+    vkCmdEndRendering(vulkan.cmdBuffer);
+    for (auto& color : pass.colors)
+        if (auto* tex = vk_texture_native(color.texture))
             vk_transition_image(*tex, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-        native->rendering = false;
-        vulkan.inRendering = false;
-    }
+    if (auto* tex = vk_texture_native(pass.depth.texture))
+        vk_transition_image(*tex, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
     vulkan.renderPasses.erase(pass.handle);
     pass.handle = 0;
     pass.native = nullptr;
@@ -2442,11 +2424,6 @@ void vk_submit()
 {
     if (!vulkan.cmdBuffer)
         return;
-    if (vulkan.inRendering)
-    {
-        vkCmdEndRendering(vulkan.cmdBuffer);
-        vulkan.inRendering = false;
-    }
     if (vkEndCommandBuffer(vulkan.cmdBuffer) != VK_SUCCESS)
     {
         fprintf(stderr, "Vulkan: failed to end command buffer\n");
