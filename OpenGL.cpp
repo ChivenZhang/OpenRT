@@ -55,6 +55,7 @@ void gl_load_library()
 
     // ====================================================================
 
+    rt_unload_library = gl_unload_library;
     rt_create_buffer = gl_create_buffer;
     rt_destroy_buffer = gl_destroy_buffer;
     rt_bind_buffer = gl_bind_buffer;
@@ -120,6 +121,7 @@ void gl_unload_library()
 
     // ====================================================================
 
+    if(rt_unload_library == gl_unload_library) rt_unload_library = nullptr;
     if(rt_create_buffer == gl_create_buffer) rt_create_buffer = nullptr;
     if(rt_destroy_buffer == gl_destroy_buffer) rt_destroy_buffer = nullptr;
     if(rt_bind_buffer == gl_bind_buffer) rt_bind_buffer = nullptr;

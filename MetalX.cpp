@@ -10,6 +10,7 @@
 * =================================================*/
 #ifdef METAL_IMPLEMENTATION
 #ifdef __APPLE__
+#include "OpenRT.h"
 #include "MetalX.h"
 #include <algorithm>
 #include <cstdio>
@@ -695,6 +696,7 @@ static void mt_flush_descriptors()
 
 static void mt_bind_api()
 {
+    rt_unload_library = mt_unload_library;
     rt_create_buffer = mt_create_buffer;
     rt_destroy_buffer = mt_destroy_buffer;
     rt_bind_buffer = mt_bind_buffer;
@@ -755,6 +757,7 @@ static void mt_bind_api()
 
 static void mt_unbind_api()
 {
+    if (rt_unload_library == mt_unload_library) rt_unload_library = nullptr;
     if (rt_create_buffer == mt_create_buffer) rt_create_buffer = nullptr;
     if (rt_destroy_buffer == mt_destroy_buffer) rt_destroy_buffer = nullptr;
     if (rt_bind_buffer == mt_bind_buffer) rt_bind_buffer = nullptr;

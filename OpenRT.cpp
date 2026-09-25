@@ -10,16 +10,35 @@
 * =================================================*/
 #include "OpenRT.h"
 #include "OpenGL.h"
+#include "Vulkan.h"
+#include "DirectX.h"
+#include "MetalX.h"
+#include <string>
 
 void rt_load_library(const char* backend)
 {
+#ifdef OPENGL_IMPLEMENTATION
+    if (strcmp(backend, "opengl") == 0) { gl_load_library(); return; }
+#endif
+
+#ifdef VULKAN_IMPLEMENTATION
+    // if (strcmp(backend, "vulkan") == 0) { vk_load_library(); return; }
+#endif
+
+#ifdef DIRECTX_IMPLEMENTATION
+    // if (strcmp(backend, "directx") == 0) { dx_load_library(); return; }
+#endif
+    
+#ifdef METAL_IMPLEMENTATION
+    // if (strcmp(backend, "metal") == 0) { mt_load_library(); return; }
+#endif
+
+#ifdef OPENGL_IMPLEMENTATION
     gl_load_library();
+#endif
 }
 
-void rt_unload_library()
-{
-    gl_unload_library();
-}
+void (*rt_unload_library)() = nullptr;
 
 rt_buffer_t (*rt_create_buffer)(rt_buffer_info_t const& info) = nullptr;
 void (*rt_destroy_buffer)(rt_buffer_t& buffer) = nullptr;

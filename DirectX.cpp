@@ -909,6 +909,7 @@ static void dx_flush_descriptors()
 
 static void dx_bind_api()
 {
+    rt_unload_library = dx_unload_library;
     rt_create_buffer = dx_create_buffer;
     rt_destroy_buffer = dx_destroy_buffer;
     rt_bind_buffer = dx_bind_buffer;
@@ -969,6 +970,7 @@ static void dx_bind_api()
 
 static void dx_unbind_api()
 {
+    if (rt_unload_library == dx_unload_library) rt_unload_library = nullptr;
     if (rt_create_buffer == dx_create_buffer) rt_create_buffer = nullptr;
     if (rt_destroy_buffer == dx_destroy_buffer) rt_destroy_buffer = nullptr;
     if (rt_bind_buffer == dx_bind_buffer) rt_bind_buffer = nullptr;

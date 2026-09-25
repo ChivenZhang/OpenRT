@@ -437,7 +437,7 @@ struct rt_texture_data_t
 // ====================================================================
 
 OPENRT_API void rt_load_library(const char* backend = nullptr);
-OPENRT_API void rt_unload_library();
+OPENRT_API void (*rt_unload_library)();
 
 OPENRT_API rt_buffer_t (*rt_create_buffer)(rt_buffer_info_t const& info);
 OPENRT_API void (*rt_destroy_buffer)(rt_buffer_t& buffer);

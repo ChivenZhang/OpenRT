@@ -1112,6 +1112,7 @@ void vk_load_library(VkInstance instance, VkDevice device, uint32_t family)
     samplerInfo.maxLod = VK_LOD_CLAMP_NONE;
     vkCreateSampler(vulkan.device, &samplerInfo, vulkan.allocator, &vulkan.defaultSampler);
 
+    rt_unload_library = vk_unload_library;
     rt_create_buffer = vk_create_buffer;
     rt_destroy_buffer = vk_destroy_buffer;
     rt_bind_buffer = vk_bind_buffer;
@@ -1219,6 +1220,7 @@ void vk_unload_library()
     vulkan.currentPassType = GL_NONE;
     vulkan.currentPipeline = nullptr;
 
+    if (rt_unload_library == vk_unload_library) rt_unload_library = nullptr;
     if (rt_create_buffer == vk_create_buffer) rt_create_buffer = nullptr;
     if (rt_destroy_buffer == vk_destroy_buffer) rt_destroy_buffer = nullptr;
     if (rt_bind_buffer == vk_bind_buffer) rt_bind_buffer = nullptr;
