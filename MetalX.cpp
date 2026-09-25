@@ -599,15 +599,6 @@ static mt_module_native_t* mt_current_module_native()
     return nullptr;
 }
 
-static void mt_require_pass(GLenum type)
-{
-    if (metal.currentPipeline == nullptr || metal.currentPassType != type)
-    {
-        fprintf(stderr, "Pipeline not begin");
-        abort();
-    }
-}
-
 static void mt_clear_bindings()
 {
     for (auto& binding : metal.currentBinding)
@@ -1424,7 +1415,11 @@ void mt_destroy_module_compute(rt_module_compute_t& module)
 
 void mt_push_constant(uint8_t const* buffer, size_t length)
 {
-    mt_require_pass(metal.currentPassType);
+    if (metal.currentPipeline == nullptr)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
     if (!buffer || length == 0) return;
     metal.pushLength = (uint32_t)std::min(length, sizeof(metal.pushData));
     std::memcpy(metal.pushData, buffer, metal.pushLength);
@@ -1442,14 +1437,14 @@ void mt_push_const_mat4(const char*, const float*) {}
 
 void mt_begin_compute(rt_pass_compute_t& pass)
 {
-    if (pass.module.handle == 0 || !pass.module.native)
-    {
-        fprintf(stderr, "Pipeline module is not created\n");
-        abort();
-    }
     if (metal.currentPipeline)
     {
         fprintf(stderr, "Pipeline not end");
+        abort();
+    }
+    if (pass.module.handle == 0 || !pass.module.native)
+    {
+        fprintf(stderr, "Pipeline module is not created\n");
         abort();
     }
     mt_clear_bindings();
@@ -1488,7 +1483,16 @@ void mt_end_compute(rt_pass_compute_t& pass)
 
 void mt_dispatch_compute(uint32_t groupX, uint32_t groupY, uint32_t groupZ)
 {
-    mt_require_pass(GL_MODULE_COMPUTE);
+    if (metal.currentPipeline == nullptr)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    if (metal.currentPassType != GL_MODULE_COMPUTE)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
     mt_flush_descriptors();
     MTL::Size groups = MTL::Size::Make(std::max(1u, groupX), std::max(1u, groupY), std::max(1u, groupZ));
     MTL::Size threads = MTL::Size::Make(1, 1, 1);
@@ -1500,14 +1504,14 @@ void mt_dispatch_compute(uint32_t groupX, uint32_t groupY, uint32_t groupZ)
 
 void mt_begin_render(rt_pass_render_t& pass)
 {
-    if (pass.module.handle == 0 || !pass.module.native)
-    {
-        fprintf(stderr, "Pipeline module is not created\n");
-        abort();
-    }
     if (metal.currentPipeline)
     {
         fprintf(stderr, "Pipeline not end");
+        abort();
+    }
+    if (pass.module.handle == 0 || !pass.module.native)
+    {
+        fprintf(stderr, "Pipeline module is not created\n");
         abort();
     }
     mt_clear_bindings();
@@ -1624,7 +1628,16 @@ void mt_set_scissor(int32_t x, int32_t y, int32_t width, int32_t height)
 
 void mt_draw_mesh_task(uint32_t groupX, uint32_t groupY, uint32_t groupZ)
 {
-    mt_require_pass(GL_MODULE_RENDER);
+    if (metal.currentPipeline == nullptr)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    if (metal.currentPassType != GL_MODULE_RENDER)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
     mt_flush_descriptors();
     MTL::Size groups = MTL::Size::Make(std::max(1u, groupX), std::max(1u, groupY), std::max(1u, groupZ));
     metal.renderEncoder->drawMeshThreadgroups(groups, MTL::Size::Make(1, 1, 1), MTL::Size::Make(1, 1, 1));
@@ -1666,7 +1679,16 @@ void mt_end_transfer(rt_pass_transfer_t& pass)
 
 void mt_copy_buffer(rt_buffer_copy_t source, rt_buffer_copy_t destination, size_t copySize)
 {
-    mt_require_pass(GL_MODULE_TRANSFER);
+    if (metal.currentPipeline == nullptr)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    if (metal.currentPassType != GL_MODULE_TRANSFER)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
     auto* src = mt_buffer_native(source.buffer);
     auto* dst = mt_buffer_native(destination.buffer);
     if (!src || !dst || copySize == 0) return;
@@ -1679,7 +1701,16 @@ void mt_copy_buffer(rt_buffer_copy_t source, rt_buffer_copy_t destination, size_
 
 void mt_copy_buffer_data(rt_buffer_data_t source, rt_buffer_copy_t destination, size_t copySize)
 {
-    mt_require_pass(GL_MODULE_TRANSFER);
+    if (metal.currentPipeline == nullptr)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    if (metal.currentPassType != GL_MODULE_TRANSFER)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
     auto* dst = mt_buffer_native(destination.buffer);
     if (!source.data || !dst || copySize == 0) return;
     if (source.offset + copySize > source.size || destination.offset + copySize > destination.buffer.size)
@@ -1701,7 +1732,16 @@ void mt_copy_buffer_data(rt_buffer_data_t source, rt_buffer_copy_t destination, 
 
 void mt_copy_buffer_texture(rt_texture_copy_t source, rt_buffer_texel_t destination, rt_size_t copySize)
 {
-    mt_require_pass(GL_MODULE_TRANSFER);
+    if (metal.currentPipeline == nullptr)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    if (metal.currentPassType != GL_MODULE_TRANSFER)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
     auto* src = mt_texture_native(source.texture);
     auto* dst = mt_buffer_native(destination.buffer);
     if (!src || !dst || copySize.x == 0 || copySize.y == 0) return;
@@ -1718,7 +1758,16 @@ void mt_copy_buffer_texture(rt_texture_copy_t source, rt_buffer_texel_t destinat
 
 void mt_copy_texture(rt_texture_copy_t source, rt_texture_copy_t destination, rt_size_t copySize)
 {
-    mt_require_pass(GL_MODULE_TRANSFER);
+    if (metal.currentPipeline == nullptr)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    if (metal.currentPassType != GL_MODULE_TRANSFER)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
     auto* src = mt_texture_native(source.texture);
     auto* dst = mt_texture_native(destination.texture);
     if (!src || !dst || copySize.x == 0 || copySize.y == 0) return;
@@ -1733,7 +1782,16 @@ void mt_copy_texture(rt_texture_copy_t source, rt_texture_copy_t destination, rt
 
 void mt_copy_texture_data(rt_texture_data_t source, rt_texture_copy_t destination, rt_size_t copySize)
 {
-    mt_require_pass(GL_MODULE_TRANSFER);
+    if (metal.currentPipeline == nullptr)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    if (metal.currentPassType != GL_MODULE_TRANSFER)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
     auto* dst = mt_texture_native(destination.texture);
     if (!source.data || !dst || copySize.x == 0 || copySize.y == 0) return;
     uint32_t bpp = mt_format_bytes(dst->format);
@@ -1754,7 +1812,16 @@ void mt_copy_texture_data(rt_texture_data_t source, rt_texture_copy_t destinatio
 
 void mt_copy_texture_buffer(rt_buffer_texel_t source, rt_texture_copy_t destination, rt_size_t copySize)
 {
-    mt_require_pass(GL_MODULE_TRANSFER);
+    if (metal.currentPipeline == nullptr)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    if (metal.currentPassType != GL_MODULE_TRANSFER)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
     auto* src = mt_buffer_native(source.buffer);
     auto* dst = mt_texture_native(destination.texture);
     if (!src || !dst || copySize.x == 0 || copySize.y == 0) return;
@@ -1804,7 +1871,16 @@ void mt_destroy_mesh(rt_mesh_t& mesh)
 
 static void mt_draw_mesh_impl(rt_mesh_t& mesh, uint32_t instanceCount)
 {
-    mt_require_pass(GL_MODULE_RENDER);
+    if (metal.currentPipeline == nullptr)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    if (metal.currentPassType != GL_MODULE_RENDER)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
     mt_flush_descriptors();
     rt_module_render_t const& module = metal.currentRenderPass->module;
     auto* mod = (mt_module_native_t*)module.native;
@@ -1885,7 +1961,16 @@ void mt_destroy_meshlet(rt_meshlet_t& meshlet)
 
 void mt_draw_meshlet(rt_meshlet_t& meshlet)
 {
-    mt_require_pass(GL_MODULE_RENDER);
+    if (metal.currentPipeline == nullptr)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    if (metal.currentPassType != GL_MODULE_RENDER)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
     rt_module_render_t const& module = metal.currentRenderPass->module;
     uint32_t index_binding = 0;
     for (uint32_t i = 0; i < std::size(module.vertex); ++i)

@@ -1033,15 +1033,6 @@ static void vk_flush_descriptors()
     vkCmdBindDescriptorSets(vulkan.cmdBuffer, bindPoint, mod->pipelineLayout, 0, 1, &mod->descriptorSet, 0, nullptr);
 }
 
-static void vk_require_pass(GLenum type)
-{
-    if (vulkan.currentPipeline == nullptr || vulkan.currentPassType != type)
-    {
-        fprintf(stderr, "Pipeline not begin");
-        abort();
-    }
-}
-
 static void vk_clear_bindings()
 {
     for (auto& binding : vulkan.currentBinding)
@@ -1912,7 +1903,11 @@ void vk_destroy_module_compute(rt_module_compute_t& module)
 
 void vk_push_constant(uint8_t const* buffer, size_t length)
 {
-    vk_require_pass(vulkan.currentPassType);
+    if (vulkan.currentPipeline == nullptr)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
     auto* mod = vk_current_module_native();
     if (!buffer || length == 0 || !mod || !mod->pipelineLayout) return;
     vkCmdPushConstants(vulkan.cmdBuffer, mod->pipelineLayout, mod->shaderStages, 0, (uint32_t)length, buffer);
@@ -1929,14 +1924,14 @@ void vk_push_const_mat4(const char*, const float*) {}
 
 void vk_begin_compute(rt_pass_compute_t& pass)
 {
-    if (pass.module.handle == 0 || !pass.module.native)
-    {
-        fprintf(stderr, "Pipeline module is not created\n");
-        abort();
-    }
     if (vulkan.currentPipeline)
     {
         fprintf(stderr, "Pipeline not end");
+        abort();
+    }
+    if (pass.module.handle == 0 || !pass.module.native)
+    {
+        fprintf(stderr, "Pipeline module is not created\n");
         abort();
     }
     vk_clear_bindings();
@@ -1968,21 +1963,30 @@ void vk_end_compute(rt_pass_compute_t& pass)
 
 void vk_dispatch_compute(uint32_t groupX, uint32_t groupY, uint32_t groupZ)
 {
-    vk_require_pass(GL_MODULE_COMPUTE);
+    if (vulkan.currentPipeline == nullptr)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    if (vulkan.currentPassType != GL_MODULE_COMPUTE)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
     vk_flush_descriptors();
     vkCmdDispatch(vulkan.cmdBuffer, std::max(1u, groupX), std::max(1u, groupY), std::max(1u, groupZ));
 }
 
 void vk_begin_render(rt_pass_render_t& pass)
 {
-    if (pass.module.handle == 0 || !pass.module.native)
-    {
-        fprintf(stderr, "Pipeline module is not created\n");
-        abort();
-    }
     if (vulkan.currentPipeline)
     {
         fprintf(stderr, "Pipeline not end");
+        abort();
+    }
+    if (pass.module.handle == 0 || !pass.module.native)
+    {
+        fprintf(stderr, "Pipeline module is not created\n");
         abort();
     }
     vk_clear_bindings();
@@ -2107,7 +2111,16 @@ void vk_set_scissor(int32_t x, int32_t y, int32_t width, int32_t height)
 
 void vk_draw_mesh_task(uint32_t groupX, uint32_t groupY, uint32_t groupZ)
 {
-    vk_require_pass(GL_MODULE_RENDER);
+    if (vulkan.currentPipeline == nullptr)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    if (vulkan.currentPassType != GL_MODULE_RENDER)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
     vk_flush_descriptors();
     if (vulkan.fnDrawMeshTasksNV)
         vulkan.fnDrawMeshTasksNV(vulkan.cmdBuffer, std::max(1u, groupX) * std::max(1u, groupY) * std::max(1u, groupZ), 0);
@@ -2143,7 +2156,16 @@ void vk_end_transfer(rt_pass_transfer_t& pass)
 
 void vk_copy_buffer(rt_buffer_copy_t source, rt_buffer_copy_t destination, size_t copySize)
 {
-    vk_require_pass(GL_MODULE_TRANSFER);
+    if (vulkan.currentPipeline == nullptr)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    if (vulkan.currentPassType != GL_MODULE_TRANSFER)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
     auto* src = vk_buffer_native(source.buffer);
     auto* dst = vk_buffer_native(destination.buffer);
     if (!src || !dst || copySize == 0) return;
@@ -2157,7 +2179,16 @@ void vk_copy_buffer(rt_buffer_copy_t source, rt_buffer_copy_t destination, size_
 
 void vk_copy_buffer_data(rt_buffer_data_t source, rt_buffer_copy_t destination, size_t copySize)
 {
-    vk_require_pass(GL_MODULE_TRANSFER);
+    if (vulkan.currentPipeline == nullptr)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    if (vulkan.currentPassType != GL_MODULE_TRANSFER)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
     auto* dst = vk_buffer_native(destination.buffer);
     if (!source.data || !dst || copySize == 0) return;
     if (source.offset + copySize > source.size || destination.offset + copySize > destination.buffer.size)
@@ -2187,7 +2218,16 @@ void vk_copy_buffer_data(rt_buffer_data_t source, rt_buffer_copy_t destination, 
 
 void vk_copy_buffer_texture(rt_texture_copy_t source, rt_buffer_texel_t destination, rt_size_t copySize)
 {
-    vk_require_pass(GL_MODULE_TRANSFER);
+    if (vulkan.currentPipeline == nullptr)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    if (vulkan.currentPassType != GL_MODULE_TRANSFER)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
     auto* src = vk_texture_native(source.texture);
     auto* dst = vk_buffer_native(destination.buffer);
     if (!src || !dst || copySize.x == 0 || copySize.y == 0) return;
@@ -2207,7 +2247,16 @@ void vk_copy_buffer_texture(rt_texture_copy_t source, rt_buffer_texel_t destinat
 
 void vk_copy_texture(rt_texture_copy_t source, rt_texture_copy_t destination, rt_size_t copySize)
 {
-    vk_require_pass(GL_MODULE_TRANSFER);
+    if (vulkan.currentPipeline == nullptr)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    if (vulkan.currentPassType != GL_MODULE_TRANSFER)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
     auto* src = vk_texture_native(source.texture);
     auto* dst = vk_texture_native(destination.texture);
     if (!src || !dst || copySize.x == 0 || copySize.y == 0) return;
@@ -2229,7 +2278,16 @@ void vk_copy_texture(rt_texture_copy_t source, rt_texture_copy_t destination, rt
 
 void vk_copy_texture_data(rt_texture_data_t source, rt_texture_copy_t destination, rt_size_t copySize)
 {
-    vk_require_pass(GL_MODULE_TRANSFER);
+    if (vulkan.currentPipeline == nullptr)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    if (vulkan.currentPassType != GL_MODULE_TRANSFER)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
     auto* dst = vk_texture_native(destination.texture);
     if (!source.data || !dst || copySize.x == 0 || copySize.y == 0) return;
     uint32_t bpp = vk_format_bytes(dst->format);
@@ -2255,7 +2313,16 @@ void vk_copy_texture_data(rt_texture_data_t source, rt_texture_copy_t destinatio
 
 void vk_copy_texture_buffer(rt_buffer_texel_t source, rt_texture_copy_t destination, rt_size_t copySize)
 {
-    vk_require_pass(GL_MODULE_TRANSFER);
+    if (vulkan.currentPipeline == nullptr)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    if (vulkan.currentPassType != GL_MODULE_TRANSFER)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
     auto* src = vk_buffer_native(source.buffer);
     auto* dst = vk_texture_native(destination.texture);
     if (!src || !dst || copySize.x == 0 || copySize.y == 0) return;
@@ -2308,7 +2375,16 @@ void vk_destroy_mesh(rt_mesh_t& mesh)
 
 void vk_draw_mesh(rt_mesh_t& mesh)
 {
-    vk_require_pass(GL_MODULE_RENDER);
+    if (vulkan.currentPipeline == nullptr)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    if (vulkan.currentPassType != GL_MODULE_RENDER)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
     vk_flush_descriptors();
     rt_module_render_t const& module = vulkan.currentRenderPass->module;
     uint32_t vertex_count = 0;
@@ -2378,7 +2454,16 @@ void vk_destroy_meshlet(rt_meshlet_t& meshlet)
 
 void vk_draw_meshlet(rt_meshlet_t& meshlet)
 {
-    vk_require_pass(GL_MODULE_RENDER);
+    if (vulkan.currentPipeline == nullptr)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    if (vulkan.currentPassType != GL_MODULE_RENDER)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
     rt_module_render_t const& module = vulkan.currentRenderPass->module;
     uint32_t index_binding = 0;
     for (uint32_t i = 0; i < std::size(module.vertex); ++i)

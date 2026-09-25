@@ -540,15 +540,6 @@ static dx_module_native_t* dx_current_module_native()
     return nullptr;
 }
 
-static void dx_require_pass(GLenum type)
-{
-    if (direct.currentPipeline == nullptr || direct.currentPassType != type)
-    {
-        fprintf(stderr, "Pipeline not begin");
-        abort();
-    }
-}
-
 static void dx_clear_bindings()
 {
     for (auto& binding : direct.currentBinding)
@@ -1577,7 +1568,11 @@ void dx_destroy_module_compute(rt_module_compute_t& module)
 
 void dx_push_constant(uint8_t const* buffer, size_t length)
 {
-    dx_require_pass(direct.currentPassType);
+    if (direct.currentPipeline == nullptr)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
     auto* mod = dx_current_module_native();
     if (!buffer || length == 0 || !mod) return;
     uint32_t count = (uint32_t)((length + 3) / 4);
@@ -1598,14 +1593,14 @@ void dx_push_const_mat4(const char*, const float*) {}
 
 void dx_begin_compute(rt_pass_compute_t& pass)
 {
-    if (pass.module.handle == 0 || !pass.module.native)
-    {
-        fprintf(stderr, "Pipeline module is not created\n");
-        abort();
-    }
     if (direct.currentPipeline)
     {
         fprintf(stderr, "Pipeline not end");
+        abort();
+    }
+    if (pass.module.handle == 0 || !pass.module.native)
+    {
+        fprintf(stderr, "Pipeline module is not created\n");
         abort();
     }
     dx_clear_bindings();
@@ -1638,21 +1633,30 @@ void dx_end_compute(rt_pass_compute_t& pass)
 
 void dx_dispatch_compute(uint32_t groupX, uint32_t groupY, uint32_t groupZ)
 {
-    dx_require_pass(GL_MODULE_COMPUTE);
+    if (direct.currentPipeline == nullptr)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    if (direct.currentPassType != GL_MODULE_COMPUTE)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
     dx_flush_descriptors();
     direct.cmd->Dispatch(max(1u, groupX), max(1u, groupY), max(1u, groupZ));
 }
 
 void dx_begin_render(rt_pass_render_t& pass)
 {
-    if (pass.module.handle == 0 || !pass.module.native)
-    {
-        fprintf(stderr, "Pipeline module is not created\n");
-        abort();
-    }
     if (direct.currentPipeline)
     {
         fprintf(stderr, "Pipeline not end");
+        abort();
+    }
+    if (pass.module.handle == 0 || !pass.module.native)
+    {
+        fprintf(stderr, "Pipeline module is not created\n");
         abort();
     }
     dx_clear_bindings();
@@ -1774,7 +1778,16 @@ void dx_set_scissor(int32_t x, int32_t y, int32_t width, int32_t height)
 
 void dx_draw_mesh_task(uint32_t groupX, uint32_t groupY, uint32_t groupZ)
 {
-    dx_require_pass(GL_MODULE_RENDER);
+    if (direct.currentPipeline == nullptr)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    if (direct.currentPassType != GL_MODULE_RENDER)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
     dx_flush_descriptors();
     if (direct.cmdMesh)
         direct.cmdMesh->DispatchMesh(max(1u, groupX), max(1u, groupY), max(1u, groupZ));
@@ -1810,7 +1823,16 @@ void dx_end_transfer(rt_pass_transfer_t& pass)
 
 void dx_copy_buffer(rt_buffer_copy_t source, rt_buffer_copy_t destination, size_t copySize)
 {
-    dx_require_pass(GL_MODULE_TRANSFER);
+    if (direct.currentPipeline == nullptr)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    if (direct.currentPassType != GL_MODULE_TRANSFER)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
     auto* src = dx_buffer_native(source.buffer);
     auto* dst = dx_buffer_native(destination.buffer);
     if (!src || !dst || copySize == 0) return;
@@ -1823,7 +1845,16 @@ void dx_copy_buffer(rt_buffer_copy_t source, rt_buffer_copy_t destination, size_
 
 void dx_copy_buffer_data(rt_buffer_data_t source, rt_buffer_copy_t destination, size_t copySize)
 {
-    dx_require_pass(GL_MODULE_TRANSFER);
+    if (direct.currentPipeline == nullptr)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    if (direct.currentPassType != GL_MODULE_TRANSFER)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
     auto* dst = dx_buffer_native(destination.buffer);
     if (!source.data || !dst || copySize == 0) return;
     if (source.offset + copySize > source.size || destination.offset + copySize > destination.buffer.size)
@@ -1860,7 +1891,16 @@ static void dx_fill_placed(D3D12_PLACED_SUBRESOURCE_FOOTPRINT& footprint, dx_tex
 
 void dx_copy_buffer_texture(rt_texture_copy_t source, rt_buffer_texel_t destination, rt_size_t copySize)
 {
-    dx_require_pass(GL_MODULE_TRANSFER);
+    if (direct.currentPipeline == nullptr)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    if (direct.currentPassType != GL_MODULE_TRANSFER)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
     auto* src = dx_texture_native(source.texture);
     auto* dst = dx_buffer_native(destination.buffer);
     if (!src || !dst || copySize.x == 0 || copySize.y == 0) return;
@@ -1883,7 +1923,16 @@ void dx_copy_buffer_texture(rt_texture_copy_t source, rt_buffer_texel_t destinat
 
 void dx_copy_texture(rt_texture_copy_t source, rt_texture_copy_t destination, rt_size_t copySize)
 {
-    dx_require_pass(GL_MODULE_TRANSFER);
+    if (direct.currentPipeline == nullptr)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    if (direct.currentPassType != GL_MODULE_TRANSFER)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
     auto* src = dx_texture_native(source.texture);
     auto* dst = dx_texture_native(destination.texture);
     if (!src || !dst || copySize.x == 0 || copySize.y == 0) return;
@@ -1905,7 +1954,16 @@ void dx_copy_texture(rt_texture_copy_t source, rt_texture_copy_t destination, rt
 
 void dx_copy_texture_data(rt_texture_data_t source, rt_texture_copy_t destination, rt_size_t copySize)
 {
-    dx_require_pass(GL_MODULE_TRANSFER);
+    if (direct.currentPipeline == nullptr)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    if (direct.currentPassType != GL_MODULE_TRANSFER)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
     auto* dst = dx_texture_native(destination.texture);
     if (!source.data || !dst || copySize.x == 0 || copySize.y == 0) return;
     uint32_t bpp = dx_format_bytes(dst->format);
@@ -1930,7 +1988,16 @@ void dx_copy_texture_data(rt_texture_data_t source, rt_texture_copy_t destinatio
 
 void dx_copy_texture_buffer(rt_buffer_texel_t source, rt_texture_copy_t destination, rt_size_t copySize)
 {
-    dx_require_pass(GL_MODULE_TRANSFER);
+    if (direct.currentPipeline == nullptr)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    if (direct.currentPassType != GL_MODULE_TRANSFER)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
     auto* src = dx_buffer_native(source.buffer);
     auto* dst = dx_texture_native(destination.texture);
     if (!src || !dst || copySize.x == 0 || copySize.y == 0) return;
@@ -1983,7 +2050,16 @@ void dx_destroy_mesh(rt_mesh_t& mesh)
 
 static void dx_draw_mesh_impl(rt_mesh_t& mesh, uint32_t instanceCount)
 {
-    dx_require_pass(GL_MODULE_RENDER);
+    if (direct.currentPipeline == nullptr)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    if (direct.currentPassType != GL_MODULE_RENDER)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
     dx_flush_descriptors();
     rt_module_render_t const& module = direct.currentRenderPass->module;
     uint32_t vertex_count = 0;
@@ -2070,7 +2146,16 @@ void dx_destroy_meshlet(rt_meshlet_t& meshlet)
 
 void dx_draw_meshlet(rt_meshlet_t& meshlet)
 {
-    dx_require_pass(GL_MODULE_RENDER);
+    if (direct.currentPipeline == nullptr)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    if (direct.currentPassType != GL_MODULE_RENDER)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
     rt_module_render_t const& module = direct.currentRenderPass->module;
     uint32_t index_binding = 0;
     for (uint32_t i = 0; i < std::size(module.vertex); ++i)
