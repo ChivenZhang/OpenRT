@@ -555,16 +555,6 @@ static void dx_clear_bindings()
         binding = {};
 }
 
-static void dx_copy_shader(D3D12_SHADER_BYTECODE& dest, std::vector<uint8_t>& store, const char* data, uint32_t length)
-{
-    dest = {};
-    store.clear();
-    if (!data || !length) return;
-    store.assign((const uint8_t*)data, (const uint8_t*)data + length);
-    dest.pShaderBytecode = store.data();
-    dest.BytecodeLength = store.size();
-}
-
 static bool dx_setup_root(dx_module_native_t& native, rt_binding_t const* bindings)
 {
     native.descriptorCount = 0;
@@ -581,10 +571,14 @@ static bool dx_setup_root(dx_module_native_t& native, rt_binding_t const* bindin
     {
         for (uint32_t i = 0; i < GL_MAX_BINDING_HANDLE_NUM; ++i)
         {
-            if (bindings[i].type == GL_NONE) continue;
-            dx_binding_kind_t kind = DX_KIND_CBV;
+            dx_binding_kind_t kind = DX_KIND_NONE;
             D3D12_DESCRIPTOR_RANGE_TYPE rangeType = D3D12_DESCRIPTOR_RANGE_TYPE_CBV;
-            if (bindings[i].type == GL_BINDING_TEXTURE)
+            if (bindings[i].type == GL_BINDING_BUFFER)
+            {
+                kind = DX_KIND_CBV;
+                rangeType = D3D12_DESCRIPTOR_RANGE_TYPE_CBV;
+            }
+            else if (bindings[i].type == GL_BINDING_TEXTURE)
             {
                 kind = DX_KIND_SRV;
                 rangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
@@ -599,6 +593,8 @@ static bool dx_setup_root(dx_module_native_t& native, rt_binding_t const* bindin
                 kind = DX_KIND_SAMPLER;
                 rangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SAMPLER;
             }
+            else continue;
+            
             native.kinds[native.descriptorCount] = kind;
             native.descriptorBindings[native.descriptorCount] = bindings[i].binding;
             ranges[native.descriptorCount].RangeType = rangeType;
@@ -625,43 +621,6 @@ static bool dx_setup_root(dx_module_native_t& native, rt_binding_t const* bindin
         return false;
     return SUCCEEDED(direct.device->CreateRootSignature(0, blob->GetBufferPointer(), blob->GetBufferSize(),
         IID_PPV_ARGS(&native.rootSignature)));
-}
-
-static void dx_fill_render_state(rt_module_render_t& result, rt_module_render_info_t const& info)
-{
-    for (size_t i = 0; i < std::size(info.colors); ++i)
-    {
-        result.colors[i].color.func = info.colors[i].color.func;
-        result.colors[i].color.src = info.colors[i].color.src;
-        result.colors[i].color.dst = info.colors[i].color.dst;
-        result.colors[i].alpha.func = info.colors[i].alpha.func;
-        result.colors[i].alpha.src = info.colors[i].alpha.src;
-        result.colors[i].alpha.dst = info.colors[i].alpha.dst;
-    }
-    result.depth.write = info.depth.write;
-    result.depth.bias = info.depth.bias;
-    result.depth.biasSlope = info.depth.biasSlope;
-    result.depth.biasClamp = info.depth.biasClamp;
-    result.depth.func = info.depth.func;
-    result.stencil.read = info.stencil.read;
-    result.stencil.write = info.stencil.write;
-    result.stencil.back.func = info.stencil.back.func;
-    result.stencil.back.sfail = info.stencil.back.sfail;
-    result.stencil.back.zfail = info.stencil.back.zfail;
-    result.stencil.back.zpass = info.stencil.back.zpass;
-    result.stencil.front.func = info.stencil.front.func;
-    result.stencil.front.sfail = info.stencil.front.sfail;
-    result.stencil.front.zfail = info.stencil.front.zfail;
-    result.stencil.front.zpass = info.stencil.front.zpass;
-    result.index_type = info.index_type;
-    for (size_t i = 0; i < std::size(info.vertex); ++i)
-        result.vertex[i] = info.vertex[i];
-    for (size_t i = 0; i < std::size(info.binding); ++i)
-        result.binding[i] = info.binding[i];
-    result.cull_mode = info.cull_mode;
-    result.front_face = info.front_face;
-    result.fill_mode = info.fill_mode;
-    result.primitive = info.primitive;
 }
 
 static bool dx_create_graphics_pipeline(dx_module_native_t& native, rt_module_render_info_t const& info, bool meshlet)
@@ -1451,7 +1410,9 @@ rt_module_compute_t dx_create_module_compute(rt_module_compute_info_t const& inf
     if (!info.cshader || !info.clength || !direct.device) return result;
     uint32_t handle = direct.moduleID + 1;
     auto& native = direct.modules[handle];
-    dx_copy_shader(native.cshader, native.ccode, info.cshader, info.clength);
+    native.ccode.assign((const uint8_t*)info.cshader, (const uint8_t*)info.cshader + info.clength);
+    native.cshader.pShaderBytecode = native.ccode.data();
+    native.cshader.BytecodeLength = native.ccode.size();
     if (!dx_setup_root(native, nullptr))
     {
         direct.modules.erase(handle);
@@ -1478,8 +1439,18 @@ rt_module_render_t dx_create_module_render(rt_module_render_info_t const& info)
     if (!direct.device) return result;
     uint32_t handle = direct.moduleID + 1;
     auto& native = direct.modules[handle];
-    if (info.vshader) dx_copy_shader(native.vshader, native.vcode, info.vshader, info.vlength);
-    if (info.fshader) dx_copy_shader(native.fshader, native.fcode, info.fshader, info.flength);
+    if (info.vshader && info.vlength)
+    {
+        native.vcode.assign((const uint8_t*)info.vshader, (const uint8_t*)info.vshader + info.vlength);
+        native.vshader.pShaderBytecode = native.vcode.data();
+        native.vshader.BytecodeLength = native.vcode.size();
+    }
+    if (info.fshader && info.flength)
+    {
+        native.fcode.assign((const uint8_t*)info.fshader, (const uint8_t*)info.fshader + info.flength);
+        native.fshader.pShaderBytecode = native.fcode.data();
+        native.fshader.BytecodeLength = native.fcode.size();
+    }
     if (!dx_setup_root(native, info.binding) || !dx_create_graphics_pipeline(native, info, false))
     {
         result.native = &native;
@@ -1489,7 +1460,39 @@ rt_module_render_t dx_create_module_render(rt_module_render_info_t const& info)
     direct.moduleID = handle;
     result.handle = handle;
     result.native = &native;
-    dx_fill_render_state(result, info);
+    for (size_t i = 0; i < std::size(info.colors); ++i)
+    {
+        result.colors[i].color.func = info.colors[i].color.func;
+        result.colors[i].color.src = info.colors[i].color.src;
+        result.colors[i].color.dst = info.colors[i].color.dst;
+        result.colors[i].alpha.func = info.colors[i].alpha.func;
+        result.colors[i].alpha.src = info.colors[i].alpha.src;
+        result.colors[i].alpha.dst = info.colors[i].alpha.dst;
+    }
+    result.depth.write = info.depth.write;
+    result.depth.bias = info.depth.bias;
+    result.depth.biasSlope = info.depth.biasSlope;
+    result.depth.biasClamp = info.depth.biasClamp;
+    result.depth.func = info.depth.func;
+    result.stencil.read = info.stencil.read;
+    result.stencil.write = info.stencil.write;
+    result.stencil.back.func = info.stencil.back.func;
+    result.stencil.back.sfail = info.stencil.back.sfail;
+    result.stencil.back.zfail = info.stencil.back.zfail;
+    result.stencil.back.zpass = info.stencil.back.zpass;
+    result.stencil.front.func = info.stencil.front.func;
+    result.stencil.front.sfail = info.stencil.front.sfail;
+    result.stencil.front.zfail = info.stencil.front.zfail;
+    result.stencil.front.zpass = info.stencil.front.zpass;
+    result.index_type = info.index_type;
+    for (size_t i = 0; i < std::size(info.vertex); ++i)
+        result.vertex[i] = info.vertex[i];
+    for (size_t i = 0; i < std::size(info.binding); ++i)
+        result.binding[i] = info.binding[i];
+    result.cull_mode = info.cull_mode;
+    result.front_face = info.front_face;
+    result.fill_mode = info.fill_mode;
+    result.primitive = info.primitive;
     return result;
 }
 
@@ -1499,9 +1502,21 @@ rt_module_render_t dx_create_module_meshlet(rt_module_render_info_t const& info)
     if (!info.mshader || !info.mlength || !direct.device) return result;
     uint32_t handle = direct.moduleID + 1;
     auto& native = direct.modules[handle];
-    if (info.tshader) dx_copy_shader(native.tshader, native.tcode, info.tshader, info.tlength);
-    dx_copy_shader(native.mshader, native.mcode, info.mshader, info.mlength);
-    if (info.fshader) dx_copy_shader(native.fshader, native.fcode, info.fshader, info.flength);
+    if (info.tshader && info.tlength)
+    {
+        native.tcode.assign((const uint8_t*)info.tshader, (const uint8_t*)info.tshader + info.tlength);
+        native.tshader.pShaderBytecode = native.tcode.data();
+        native.tshader.BytecodeLength = native.tcode.size();
+    }
+    native.mcode.assign((const uint8_t*)info.mshader, (const uint8_t*)info.mshader + info.mlength);
+    native.mshader.pShaderBytecode = native.mcode.data();
+    native.mshader.BytecodeLength = native.mcode.size();
+    if (info.fshader && info.flength)
+    {
+        native.fcode.assign((const uint8_t*)info.fshader, (const uint8_t*)info.fshader + info.flength);
+        native.fshader.pShaderBytecode = native.fcode.data();
+        native.fshader.BytecodeLength = native.fcode.size();
+    }
     if (!dx_setup_root(native, info.binding) || !dx_create_graphics_pipeline(native, info, true))
     {
         result.native = &native;
@@ -1511,7 +1526,39 @@ rt_module_render_t dx_create_module_meshlet(rt_module_render_info_t const& info)
     direct.moduleID = handle;
     result.handle = handle;
     result.native = &native;
-    dx_fill_render_state(result, info);
+    for (size_t i = 0; i < std::size(info.colors); ++i)
+    {
+        result.colors[i].color.func = info.colors[i].color.func;
+        result.colors[i].color.src = info.colors[i].color.src;
+        result.colors[i].color.dst = info.colors[i].color.dst;
+        result.colors[i].alpha.func = info.colors[i].alpha.func;
+        result.colors[i].alpha.src = info.colors[i].alpha.src;
+        result.colors[i].alpha.dst = info.colors[i].alpha.dst;
+    }
+    result.depth.write = info.depth.write;
+    result.depth.bias = info.depth.bias;
+    result.depth.biasSlope = info.depth.biasSlope;
+    result.depth.biasClamp = info.depth.biasClamp;
+    result.depth.func = info.depth.func;
+    result.stencil.read = info.stencil.read;
+    result.stencil.write = info.stencil.write;
+    result.stencil.back.func = info.stencil.back.func;
+    result.stencil.back.sfail = info.stencil.back.sfail;
+    result.stencil.back.zfail = info.stencil.back.zfail;
+    result.stencil.back.zpass = info.stencil.back.zpass;
+    result.stencil.front.func = info.stencil.front.func;
+    result.stencil.front.sfail = info.stencil.front.sfail;
+    result.stencil.front.zfail = info.stencil.front.zfail;
+    result.stencil.front.zpass = info.stencil.front.zpass;
+    result.index_type = info.index_type;
+    for (size_t i = 0; i < std::size(info.vertex); ++i)
+        result.vertex[i] = info.vertex[i];
+    for (size_t i = 0; i < std::size(info.binding); ++i)
+        result.binding[i] = info.binding[i];
+    result.cull_mode = info.cull_mode;
+    result.front_face = info.front_face;
+    result.fill_mode = info.fill_mode;
+    result.primitive = info.primitive;
     return result;
 }
 

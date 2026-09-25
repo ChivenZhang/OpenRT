@@ -614,15 +614,14 @@ static void mt_clear_bindings()
         binding = {};
 }
 
-static MTL::Function* mt_function_from_binary(MTL::Library* library)
+static MTL::Function* mt_function_from_binary(MTL::Library* library, const char* entry)
 {
     if (!library) return nullptr;
-    MTL::Function* fn = library->newFunction(MTLSTR("main"));
-    if (fn) return fn;
-    NS::Array* names = library->functionNames();
-    if (names && names->count() > 0)
-        return library->newFunction(static_cast<const NS::String*>(names->object(0)));
-    return nullptr;
+    const char* name = (entry && entry[0]) ? entry : "main";
+    NS::String* fnName = NS::String::alloc()->init(name, NS::UTF8StringEncoding);
+    MTL::Function* fn = library->newFunction(fnName);
+    mt_release(fnName);
+    return fn;
 }
 
 static MTL::Library* mt_create_library(const char* data, uint32_t length)
@@ -1330,7 +1329,7 @@ rt_module_compute_t mt_create_module_compute(rt_module_compute_info_t const& inf
     uint32_t handle = metal.moduleID + 1;
     auto& native = metal.modules[handle];
     native.clib = mt_create_library(info.cshader, info.clength);
-    native.cfn = mt_function_from_binary(native.clib);
+    native.cfn = mt_function_from_binary(native.clib, info.centry);
     if (!native.cfn)
     {
         metal.modules.erase(handle);
@@ -1359,12 +1358,12 @@ rt_module_render_t mt_create_module_render(rt_module_render_info_t const& info)
     if (info.vshader)
     {
         native.vlib = mt_create_library(info.vshader, info.vlength);
-        native.vfn = mt_function_from_binary(native.vlib);
+        native.vfn = mt_function_from_binary(native.vlib, info.ventry);
     }
     if (info.fshader)
     {
         native.flib = mt_create_library(info.fshader, info.flength);
-        native.ffn = mt_function_from_binary(native.flib);
+        native.ffn = mt_function_from_binary(native.flib, info.fentry);
     }
     if (!mt_create_graphics_pipeline(native, info, false))
     {
@@ -1388,14 +1387,14 @@ rt_module_render_t mt_create_module_meshlet(rt_module_render_info_t const& info)
     if (info.tshader)
     {
         native.tlib = mt_create_library(info.tshader, info.tlength);
-        native.tfn = mt_function_from_binary(native.tlib);
+        native.tfn = mt_function_from_binary(native.tlib, info.tentry);
     }
     native.mlib = mt_create_library(info.mshader, info.mlength);
-    native.mfn = mt_function_from_binary(native.mlib);
+    native.mfn = mt_function_from_binary(native.mlib, info.mentry);
     if (info.fshader)
     {
         native.flib = mt_create_library(info.fshader, info.flength);
-        native.ffn = mt_function_from_binary(native.flib);
+        native.ffn = mt_function_from_binary(native.flib, info.fentry);
     }
     if (!native.mfn || !mt_create_graphics_pipeline(native, info, true))
     {

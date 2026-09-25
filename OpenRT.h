@@ -150,6 +150,7 @@ struct rt_sampler_bind_t
 
 struct rt_module_compute_info_t
 {
+    const char* centry = "main";
     const char* cshader = nullptr;
     uint32_t clength = 0;
 };
@@ -187,12 +188,16 @@ struct rt_binding_t
 
 struct rt_module_render_info_t
 {
+    const char* ventry = "main";
     const char* vshader = nullptr;
     uint32_t vlength = 0;
+    const char* tentry = "main";
     const char* tshader = nullptr;
     uint32_t tlength = 0;
+    const char* mentry = "main";
     const char* mshader = nullptr;
     uint32_t mlength = 0;
+    const char* fentry = "main";
     const char* fshader = nullptr;
     uint32_t flength = 0;
 

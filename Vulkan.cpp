@@ -758,19 +758,38 @@ static bool vk_create_graphics_pipeline(vk_module_native_t& native, rt_module_re
 {
     VkPipelineShaderStageCreateInfo shaderStages[3] = {};
     uint32_t shaderCount = 0;
-    auto add_stage = [&](VkShaderModule module, VkShaderStageFlagBits stage)
+    if (native.vshader)
     {
-        if (!module) return;
         shaderStages[shaderCount].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-        shaderStages[shaderCount].stage = stage;
-        shaderStages[shaderCount].module = module;
-        shaderStages[shaderCount].pName = "main";
+        shaderStages[shaderCount].stage = VK_SHADER_STAGE_VERTEX_BIT;
+        shaderStages[shaderCount].module = native.vshader;
+        shaderStages[shaderCount].pName = (info.ventry && info.ventry[0]) ? info.ventry : "main";
         shaderCount++;
-    };
-    add_stage(native.vshader, VK_SHADER_STAGE_VERTEX_BIT);
-    add_stage(native.tshader, VK_SHADER_STAGE_TASK_BIT_NV);
-    add_stage(native.mshader, VK_SHADER_STAGE_MESH_BIT_NV);
-    add_stage(native.fshader, VK_SHADER_STAGE_FRAGMENT_BIT);
+    }
+    if (native.tshader)
+    {
+        shaderStages[shaderCount].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+        shaderStages[shaderCount].stage = VK_SHADER_STAGE_TASK_BIT_NV;
+        shaderStages[shaderCount].module = native.tshader;
+        shaderStages[shaderCount].pName = (info.tentry && info.tentry[0]) ? info.tentry : "main";
+        shaderCount++;
+    }
+    if (native.mshader)
+    {
+        shaderStages[shaderCount].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+        shaderStages[shaderCount].stage = VK_SHADER_STAGE_MESH_BIT_NV;
+        shaderStages[shaderCount].module = native.mshader;
+        shaderStages[shaderCount].pName = (info.mentry && info.mentry[0]) ? info.mentry : "main";
+        shaderCount++;
+    }
+    if (native.fshader)
+    {
+        shaderStages[shaderCount].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+        shaderStages[shaderCount].stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+        shaderStages[shaderCount].module = native.fshader;
+        shaderStages[shaderCount].pName = (info.fentry && info.fentry[0]) ? info.fentry : "main";
+        shaderCount++;
+    }
 
     VkVertexInputBindingDescription bindingDescs[GL_MAX_VERTEX_BUFFER_NUM] = {};
     VkVertexInputAttributeDescription attrDescs[GL_MAX_VERTEX_BUFFER_NUM] = {};
@@ -1687,7 +1706,7 @@ rt_module_compute_t vk_create_module_compute(rt_module_compute_info_t const& inf
     pipelineInfo.stage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
     pipelineInfo.stage.stage = VK_SHADER_STAGE_COMPUTE_BIT;
     pipelineInfo.stage.module = native.cshader;
-    pipelineInfo.stage.pName = "main";
+    pipelineInfo.stage.pName = (info.centry && info.centry[0]) ? info.centry : "main";
     if (vkCreateComputePipelines(vulkan.device, vulkan.pipelineCache, 1, &pipelineInfo, vulkan.allocator, &native.pipeline) != VK_SUCCESS)
     {
         result.native = &native;
