@@ -13,7 +13,6 @@
 #include "DirectX.h"
 #include <algorithm>
 #include <cstdio>
-#include <cstring>
 #include <map>
 #include <numeric>
 #include <vector>
@@ -1260,7 +1259,7 @@ rt_texture_t dx_create_texture(rt_texture_info_t const& info)
     native.mipLevels = 1;
     if (info.mipmaps == 0 && gl_has_mipmap_filter(info.min_filter))
     {
-        uint32_t maxDim = std::max(native.width, native.height);
+        uint32_t maxDim = max(native.width, native.height);
         while (maxDim >>= 1) native.mipLevels++;
     }
     else if (info.mipmaps > 1)
@@ -1604,7 +1603,7 @@ void dx_dispatch_compute(uint32_t groupX, uint32_t groupY, uint32_t groupZ)
 {
     dx_require_pass(GL_MODULE_COMPUTE);
     dx_flush_descriptors();
-    dx.cmd->Dispatch(std::max(1u, groupX), std::max(1u, groupY), std::max(1u, groupZ));
+    dx.cmd->Dispatch(max(1u, groupX), max(1u, groupY), max(1u, groupZ));
 }
 
 void dx_begin_render(rt_pass_render_t& pass)
@@ -1659,8 +1658,8 @@ void dx_begin_render(rt_pass_render_t& pass)
                 float clear[4] = {pass.colors[i].value.r, pass.colors[i].value.g, pass.colors[i].value.b, pass.colors[i].value.a};
                 dx.cmd->ClearRenderTargetView(rtv, clear, 0, nullptr);
             }
-            width = std::max(width, pass.colors[i].texture.width);
-            height = std::max(height, pass.colors[i].texture.height);
+            width = max(width, pass.colors[i].texture.width);
+            height = max(height, pass.colors[i].texture.height);
             colorCount = i + 1;
         }
     }
@@ -1682,14 +1681,14 @@ void dx_begin_render(rt_pass_render_t& pass)
             if (pass.stencil.clear) flags |= D3D12_CLEAR_FLAG_STENCIL;
             dx.cmd->ClearDepthStencilView(dsv, flags, pass.depth.value, (UINT8)pass.stencil.value, 0, nullptr);
         }
-        width = std::max(width, pass.depth.texture.width);
-        height = std::max(height, pass.depth.texture.height);
+        width = max(width, pass.depth.texture.width);
+        height = max(height, pass.depth.texture.height);
         hasDepth = true;
     }
 
     native.width = width;
     native.height = height;
-    dx.cmd->OMSetRenderTargets(std::max(colorCount, (uint32_t)GL_MAX_COLOR_TEXTURE_NUM), rtvs, FALSE, hasDepth ? &dsv : nullptr);
+    dx.cmd->OMSetRenderTargets(max(colorCount, (uint32_t)GL_MAX_COLOR_TEXTURE_NUM), rtvs, FALSE, hasDepth ? &dsv : nullptr);
     dx_set_viewport(0, 0, (int32_t)width, (int32_t)height);
     dx_set_scissor(0, 0, (int32_t)width, (int32_t)height);
 }
@@ -1732,7 +1731,7 @@ void dx_set_scissor(int32_t x, int32_t y, int32_t width, int32_t height)
         fprintf(stderr, "Pipeline not begin");
         abort();
     }
-    D3D12_RECT scissor = {x, y, x + std::max(0, width), y + std::max(0, height)};
+    D3D12_RECT scissor = {x, y, x + max(0, width), y + max(0, height)};
     dx.cmd->RSSetScissorRects(1, &scissor);
 }
 
@@ -1741,7 +1740,7 @@ void dx_draw_mesh_task(uint32_t groupX, uint32_t groupY, uint32_t groupZ)
     dx_require_pass(GL_MODULE_RENDER);
     dx_flush_descriptors();
     if (dx.cmdMesh)
-        dx.cmdMesh->DispatchMesh(std::max(1u, groupX), std::max(1u, groupY), std::max(1u, groupZ));
+        dx.cmdMesh->DispatchMesh(max(1u, groupX), max(1u, groupY), max(1u, groupZ));
 }
 
 void dx_begin_transfer(rt_pass_transfer_t& pass)
@@ -1839,9 +1838,9 @@ void dx_copy_buffer_texture(rt_texture_copy_t source, rt_buffer_texel_t destinat
     dstLoc.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
     dstLoc.PlacedFootprint.Offset = destination.offset;
     dx_fill_placed(dstLoc.PlacedFootprint, *src, destination.bytesPerRow, copySize);
-    D3D12_BOX box = {(LONG)source.origin.x, (LONG)source.origin.y, (LONG)source.origin.z,
-                     (LONG)(source.origin.x + copySize.x), (LONG)(source.origin.y + copySize.y),
-                     (LONG)(source.origin.z + (copySize.z ? copySize.z : 1))};
+    D3D12_BOX box = {source.origin.x, source.origin.y, source.origin.z,
+                     (source.origin.x + copySize.x), (source.origin.y + copySize.y),
+                     (source.origin.z + (copySize.z ? copySize.z : 1))};
     dx.cmd->CopyTextureRegion(&dstLoc, 0, 0, 0, &srcLoc, &box);
 }
 
@@ -1861,9 +1860,9 @@ void dx_copy_texture(rt_texture_copy_t source, rt_texture_copy_t destination, rt
     dstLoc.pResource = dst->handle.Get();
     dstLoc.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
     dstLoc.SubresourceIndex = destination.mipLevel;
-    D3D12_BOX box = {(LONG)source.origin.x, (LONG)source.origin.y, (LONG)source.origin.z,
-                     (LONG)(source.origin.x + copySize.x), (LONG)(source.origin.y + copySize.y),
-                     (LONG)(source.origin.z + (copySize.z ? copySize.z : 1))};
+    D3D12_BOX box = {source.origin.x, source.origin.y, source.origin.z,
+                     (source.origin.x + copySize.x), (source.origin.y + copySize.y),
+                     (source.origin.z + (copySize.z ? copySize.z : 1))};
     dx.cmd->CopyTextureRegion(&dstLoc, destination.origin.x, destination.origin.y, destination.origin.z, &srcLoc, &box);
 }
 
@@ -1873,11 +1872,11 @@ void dx_copy_texture_data(rt_texture_data_t source, rt_texture_copy_t destinatio
     auto* dst = dx_texture_native(destination.texture);
     if (!source.data || !dst || copySize.x == 0 || copySize.y == 0) return;
     uint32_t bpp = dx_format_bytes(dst->format);
-    size_t bytes = source.size ? source.size : (size_t)std::max(copySize.x * bpp, 1u) * copySize.y * std::max(1u, copySize.z);
+    size_t bytes = source.size ? source.size : (size_t)max(copySize.x * bpp, 1u) * copySize.y * max(1u, copySize.z);
     dx_staging_t staging = {};
     void* ptr = nullptr;
     if (!dx_create_staging(bytes, staging, &ptr)) return;
-    std::memcpy(ptr, source.data + source.offset, std::min(bytes, source.size ? source.size - source.offset : bytes));
+    std::memcpy(ptr, source.data + source.offset, min(bytes, source.size ? source.size - source.offset : bytes));
     staging.buffer->Unmap(0, nullptr);
     dx_transition_image(*dst, D3D12_RESOURCE_STATE_COPY_DEST);
     D3D12_TEXTURE_COPY_LOCATION dstLoc = {};
@@ -1996,7 +1995,7 @@ void dx_draw_mesh(rt_mesh_t& mesh)
 
 void dx_draw_mesh_multi(rt_mesh_t& mesh, uint32_t count)
 {
-    dx_draw_mesh_impl(mesh, std::max(1u, count));
+    dx_draw_mesh_impl(mesh, max(1u, count));
 }
 
 rt_meshlet_t dx_create_meshlet(const float* vertices, const float* normals, const float* uvs, size_t vertex_count, const unsigned int* indices, size_t index_count)
@@ -2056,7 +2055,7 @@ void dx_draw_meshlet(rt_meshlet_t& meshlet)
     auto* native = (rt_meshlet_native_t*)meshlet.native;
     uint32_t tasks = native && native->indexCount ? native->indexCount / 3 : 1;
     if (dx.cmdMesh)
-        dx.cmdMesh->DispatchMesh(std::max(1u, tasks), 1, 1);
+        dx.cmdMesh->DispatchMesh(max(1u, tasks), 1, 1);
 }
 
 rt_mesh_t dx_create_mesh_screen()
