@@ -1976,8 +1976,6 @@ static GLsizei gl_index_type_size(GLenum type)
 {
     switch (type)
     {
-    case GL_UNSIGNED_BYTE:
-        return 1;
     case GL_UNSIGNED_SHORT:
         return 2;
     default:

@@ -226,7 +226,7 @@ struct rt_module_render_info_t
         } back, front;
     } stencil;
 
-    GLenum index_type = GL_UNSIGNED_INT;
+    GLenum index_type = GL_UNSIGNED_INT;    // GL_UNSIGNED_SHORT / GL_UNSIGNED_INT
     rt_vertex_t vertex[GL_MAX_VERTEX_BUFFER_NUM];
     rt_binding_t binding[GL_MAX_BINDING_HANDLE_NUM];
 

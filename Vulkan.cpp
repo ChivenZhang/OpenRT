@@ -322,6 +322,28 @@ static uint32_t gl_to_vk_vertex_size(GLenum type, GLenum count)
     return count * 4;
 }
 
+static uint32_t gl_index_type_size(GLenum type)
+{
+    switch (type)
+    {
+        case GL_UNSIGNED_SHORT:
+            return 2;
+        default:
+            return 4;
+    }
+}
+
+static VkIndexType gl_to_vk_index_type(GLenum type)
+{
+    switch (type)
+    {
+        case GL_UNSIGNED_SHORT:
+            return VK_INDEX_TYPE_UINT16;
+        default:
+            return VK_INDEX_TYPE_UINT32;
+    }
+}
+
 static uint32_t vk_format_bytes(VkFormat format)
 {
     switch (format)
@@ -2313,14 +2335,9 @@ void vk_draw_mesh(rt_mesh_t& mesh)
     {
         auto* native = vk_buffer_native(mesh.index);
         if (!native) return;
-        VkIndexType indexType = VK_INDEX_TYPE_UINT32;
-        uint32_t indexStride = 4;
-        if (module.index_type == GL_UNSIGNED_SHORT) { indexType = VK_INDEX_TYPE_UINT16; indexStride = 2; }
-#ifdef VK_INDEX_TYPE_UINT8_EXT
-        else if (module.index_type == GL_UNSIGNED_BYTE) { indexType = VK_INDEX_TYPE_UINT8_EXT; indexStride = 1; }
-#endif
+        uint32_t indexStride = gl_index_type_size(module.index_type);
         vk_transition_buffer(*native, VK_PIPELINE_STAGE_VERTEX_INPUT_BIT, VK_ACCESS_INDEX_READ_BIT);
-        vkCmdBindIndexBuffer(vulkan.cmdBuffer, native->handle, 0, indexType);
+        vkCmdBindIndexBuffer(vulkan.cmdBuffer, native->handle, 0, gl_to_vk_index_type(module.index_type));
         vkCmdDrawIndexed(vulkan.cmdBuffer, (uint32_t)(mesh.index.size / indexStride), 1, 0, 0, 0);
     }
     else
