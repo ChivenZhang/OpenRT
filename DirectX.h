@@ -11,13 +11,9 @@
 * =================================================*/
 #ifdef DIRECTX_IMPLEMENTATION
 #include "OpenRT.h"
-#ifdef _WIN32
 #include <d3d12.h>
 
 void dx_load_library(ID3D12Device* device, ID3D12CommandQueue* queue);
-#else
-void dx_load_library(void* device, void* queue);
-#endif
 void dx_unload_library();
 
 rt_buffer_t dx_create_buffer(rt_buffer_info_t const& info);

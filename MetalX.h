@@ -11,12 +11,9 @@
 * =================================================*/
 #ifdef METAL_IMPLEMENTATION
 #include "OpenRT.h"
-#if defined(__APPLE__)
 #import "metal-cpp/Metal/Metal.h"
+
 void mtl_load_library(id<MTLDevice> device, id<MTLCommandQueue> queue);
-#else
-void mtl_load_library(void* device, void* queue);
-#endif
 void mtl_unload_library();
 
 rt_buffer_t mtl_create_buffer(rt_buffer_info_t const& info);
