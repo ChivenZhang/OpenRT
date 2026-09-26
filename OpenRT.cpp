@@ -21,6 +21,9 @@
 #ifdef METAL_IMPLEMENTATION
 #include "MetalX.h"
 #endif
+#ifdef WEBGPU_IMPLEMENTATION
+#include "WebGPU.h"
+#endif
 #include <string>
 
 void rt_load_library(const char* backend)
@@ -39,6 +42,10 @@ void rt_load_library(const char* backend)
     
 #ifdef METAL_IMPLEMENTATION
     // if (strcmp(backend, "metal") == 0) { mt_load_library(device, queue); return; }
+#endif
+
+#ifdef WEBGPU_IMPLEMENTATION
+    // if (strcmp(backend, "webgpu") == 0) { wg_load_library(device, queue); return; }
 #endif
 
 #ifdef OPENGL_IMPLEMENTATION

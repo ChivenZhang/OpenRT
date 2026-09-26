@@ -20,6 +20,7 @@ add_definitions(
         -DVULKAN_IMPLEMENTATION
         -DDIRECTX_IMPLEMENTATION
 #        -DMETAL_IMPLEMENTATION
+#        -DWEBGPU_IMPLEMENTATION
 )
 
 add_library(OpenRT STATIC
@@ -27,7 +28,8 @@ add_library(OpenRT STATIC
         OpenGL.cpp
         Vulkan.cpp
         DirectX.cpp
-        MetalX.cpp
+        Metal.cpp
+        WebGPU.cpp
 )
 target_compile_definitions(OpenRT PUBLIC OPENRT_EXPORTS)
 find_package(Stb REQUIRED)

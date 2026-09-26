@@ -13,7 +13,7 @@
 #define NS_PRIVATE_IMPLEMENTATION
 #define CA_PRIVATE_IMPLEMENTATION
 #define MTL_PRIVATE_IMPLEMENTATION
-#include "MetalX.h"
+#include "Metal.h"
 #include <dispatch/dispatch.h>
 #include <algorithm>
 #include <cstdio>
