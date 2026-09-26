@@ -277,11 +277,6 @@ static bool wg_is_depth(WGPUTextureFormat format)
            format == WGPUTextureFormat_Depth24PlusStencil8 || format == WGPUTextureFormat_Depth32FloatStencil8;
 }
 
-static const char* wg_entry(const char* entry)
-{
-    return (entry && entry[0]) ? entry : "main";
-}
-
 struct wg_buffer_native_t
 {
     WGPUBuffer handle = nullptr;
@@ -590,7 +585,7 @@ static bool wg_create_graphics_pipeline(wg_module_native_t& native, rt_module_re
 
     WGPUFragmentState fragment = {};
     fragment.module = native.fshader;
-    fragment.entryPoint = wg_entry(info.fentry);
+    fragment.entryPoint = (info.fentry && info.fentry[0]) ? info.fentry : "main";
     fragment.targetCount = GL_MAX_COLOR_TEXTURE_NUM;
     fragment.targets = targets;
 
@@ -612,7 +607,7 @@ static bool wg_create_graphics_pipeline(wg_module_native_t& native, rt_module_re
     WGPURenderPipelineDescriptor desc = {};
     desc.layout = native.pipelineLayout;
     desc.vertex.module = native.vshader;
-    desc.vertex.entryPoint = wg_entry(info.ventry);
+    desc.vertex.entryPoint = (info.ventry && info.ventry[0]) ? info.ventry : "main";
     desc.vertex.bufferCount = attrCount;
     desc.vertex.buffers = layouts;
     desc.primitive.topology = gl_to_wg_primitive(info.primitive);
@@ -1206,7 +1201,7 @@ rt_module_compute_t wg_create_module_compute(rt_module_compute_info_t const& inf
     WGPUComputePipelineDescriptor desc = {};
     desc.layout = native.pipelineLayout;
     desc.compute.module = native.cshader;
-    desc.compute.entryPoint = wg_entry(info.centry);
+    desc.compute.entryPoint = (info.centry && info.centry[0]) ? info.centry : "main";
     native.computePipeline = wgpuDeviceCreateComputePipeline(webgpu.device, &desc);
     if (!native.computePipeline)
     {
