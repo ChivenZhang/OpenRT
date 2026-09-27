@@ -427,8 +427,8 @@ struct rt_module_compute_info_t
 {
     struct
     {
-        const char* entry = "main";
         const char* code = nullptr;
+        const char* entry = "main";
         uint32_t size = 0;
     } cshader;
 };
@@ -459,9 +459,9 @@ struct rt_module_render_info_t
 {
     struct
     {
-        const char* entry = "main";
         const char* code = nullptr;
         uint32_t size = 0;
+        const char* entry = "main";
     } vshader, tshader, mshader, fshader;
 
     struct

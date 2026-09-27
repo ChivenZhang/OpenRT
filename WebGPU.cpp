@@ -2064,18 +2064,7 @@ rt_mesh_t wg_create_mesh_screen()
 
 void wg_draw_screen(int width, int height, rt_color_t clear, rt_texture_t& texture)
 {
-    static auto module = wg_create_module_render({
-        .vertex = {rt_vertex_vertex, {}, rt_vertex_uv},
-        .binding = {{.binding = 0, .type = RT_BINDING_TEXTURE}},
-    });
-    if (!module.handle) return;
-    rt_pass_render_t pass = {.module = module, .screen = {.color = {.clear = true, .value = clear}}};
-    wg_begin_render(pass);
-    wg_set_viewport(0, 0, width, height);
-    wg_bind_texture(texture, {.binding = 0});
-    static auto mesh = wg_create_mesh_screen();
-    wg_draw_mesh(mesh);
-    wg_end_render(pass);
+    // No Implement
 }
 
 void wg_submit()

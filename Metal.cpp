@@ -2151,18 +2151,7 @@ rt_mesh_t mt_create_mesh_screen()
 
 void mt_draw_screen(int width, int height, rt_color_t clear, rt_texture_t& texture)
 {
-    static auto module = mt_create_module_render({
-        .vertex = {rt_vertex_vertex, {}, rt_vertex_uv},
-        .binding = {{.binding = 0, .type = RT_BINDING_TEXTURE}},
-    });
-    if (!module.handle) return;
-    rt_pass_render_t pass = {.module = module, .screen = {.color = {.clear = true, .value = clear}}};
-    mt_begin_render(pass);
-    mt_set_viewport(0, 0, width, height);
-    mt_bind_texture(texture, {.binding = 0});
-    static auto mesh = mt_create_mesh_screen();
-    mt_draw_mesh(mesh);
-    mt_end_render(pass);
+    // No Implement
 }
 
 void mt_submit()

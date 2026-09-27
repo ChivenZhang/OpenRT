@@ -2341,18 +2341,7 @@ rt_mesh_t dx_create_mesh_screen()
 
 void dx_draw_screen(int width, int height, rt_color_t clear, rt_texture_t& texture)
 {
-    static auto module = dx_create_module_render({
-        .vertex = {rt_vertex_vertex, {}, rt_vertex_uv},
-        .binding = {{.binding = 0, .type = RT_BINDING_TEXTURE}},
-    });
-    if (!module.handle) return;
-    rt_pass_render_t pass = {.module = module, .screen = {.color = {.clear = true, .value = clear}}};
-    dx_begin_render(pass);
-    dx_set_viewport(0, 0, width, height);
-    dx_bind_texture(texture, {.binding = 0});
-    static auto mesh = dx_create_mesh_screen();
-    dx_draw_mesh(mesh);
-    dx_end_render(pass);
+    // No Implement
 }
 
 void dx_submit()
