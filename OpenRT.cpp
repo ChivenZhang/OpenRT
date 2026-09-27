@@ -29,6 +29,10 @@
 void rt_load_library(const char* backend)
 {
 #ifdef OPENGL_IMPLEMENTATION
+    if (backend == nullptr) { gl_load_library(); return; }
+#endif
+
+#ifdef OPENGL_IMPLEMENTATION
     if (strcmp(backend, "opengl") == 0) { gl_load_library(); return; }
 #endif
 
@@ -46,10 +50,6 @@ void rt_load_library(const char* backend)
 
 #ifdef WEBGPU_IMPLEMENTATION
     // if (strcmp(backend, "webgpu") == 0) { wg_load_library(device, queue); return; }
-#endif
-
-#ifdef OPENGL_IMPLEMENTATION
-    gl_load_library();
 #endif
 }
 
