@@ -32,235 +32,304 @@ enum rt_module_type_t : uint32_t
     GL_MODULE_TRANSFER = 4,
 };
 
-static D3D12_FILTER gl_to_dx_filter(GLenum minFilter, GLenum magFilter)
+static D3D12_FILTER rt_to_dx_filter(rt_filter_t minFilter, rt_filter_t magFilter)
 {
-    bool magLinear = (magFilter != GL_NEAREST);
-    bool minLinear = !(minFilter == GL_NEAREST || minFilter == GL_NEAREST_MIPMAP_NEAREST || minFilter == GL_NEAREST_MIPMAP_LINEAR);
-    bool mipLinear = (minFilter == GL_NEAREST_MIPMAP_LINEAR || minFilter == GL_LINEAR_MIPMAP_LINEAR);
-    bool hasMip = (minFilter == GL_NEAREST_MIPMAP_NEAREST || minFilter == GL_LINEAR_MIPMAP_NEAREST ||
-                   minFilter == GL_NEAREST_MIPMAP_LINEAR || minFilter == GL_LINEAR_MIPMAP_LINEAR);
-    if (!hasMip)
-        return magLinear && minLinear ? D3D12_FILTER_MIN_MAG_MIP_LINEAR : D3D12_FILTER_MIN_MAG_MIP_POINT;
-    if (minLinear && magLinear && mipLinear) return D3D12_FILTER_MIN_MAG_MIP_LINEAR;
-    if (!minLinear && !magLinear && !mipLinear) return D3D12_FILTER_MIN_MAG_MIP_POINT;
-    return D3D12_FILTER_MIN_MAG_MIP_LINEAR;
+    switch (minFilter)
+    {
+        case RT_NEAREST:
+            switch (magFilter)
+            {
+                case RT_NEAREST: return D3D12_FILTER_MIN_MAG_MIP_POINT;
+                default: return D3D12_FILTER_MIN_MAG_MIP_LINEAR;
+            }
+        case RT_LINEAR:
+            switch (magFilter)
+            {
+                case RT_NEAREST: return D3D12_FILTER_MIN_MAG_MIP_POINT;
+                default: return D3D12_FILTER_MIN_MAG_MIP_LINEAR;
+            }
+        case RT_NEAREST_MIPMAP_NEAREST:
+            switch (magFilter)
+            {
+                case RT_NEAREST: return D3D12_FILTER_MIN_MAG_MIP_POINT;
+                default: return D3D12_FILTER_MIN_MAG_MIP_LINEAR;
+            }
+        case RT_LINEAR_MIPMAP_NEAREST: return D3D12_FILTER_MIN_MAG_MIP_LINEAR;
+        case RT_NEAREST_MIPMAP_LINEAR: return D3D12_FILTER_MIN_MAG_MIP_LINEAR;
+        case RT_LINEAR_MIPMAP_LINEAR: return D3D12_FILTER_MIN_MAG_MIP_LINEAR;
+        default: return D3D12_FILTER_MIN_MAG_MIP_LINEAR;
+    }
 }
 
-static D3D12_TEXTURE_ADDRESS_MODE gl_to_dx_address(GLenum wrap)
+static D3D12_TEXTURE_ADDRESS_MODE rt_to_dx_address(rt_wrap_t wrap)
 {
     switch (wrap)
     {
-        case GL_REPEAT: return D3D12_TEXTURE_ADDRESS_MODE_WRAP;
-        case GL_MIRRORED_REPEAT: return D3D12_TEXTURE_ADDRESS_MODE_MIRROR;
-        case GL_CLAMP_TO_BORDER: return D3D12_TEXTURE_ADDRESS_MODE_BORDER;
-        case GL_MIRROR_CLAMP_TO_EDGE: return D3D12_TEXTURE_ADDRESS_MODE_MIRROR_ONCE;
-        case GL_CLAMP_TO_EDGE:
+        case RT_REPEAT: return D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+        case RT_CLAMP_TO_EDGE: return D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+        case RT_CLAMP_TO_BORDER: return D3D12_TEXTURE_ADDRESS_MODE_BORDER;
+        case RT_MIRRORED_REPEAT: return D3D12_TEXTURE_ADDRESS_MODE_MIRROR;
+        case RT_MIRROR_CLAMP_TO_EDGE: return D3D12_TEXTURE_ADDRESS_MODE_MIRROR_ONCE;
         default: return D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
     }
 }
 
-static bool gl_has_mipmap_filter(GLenum minFilter)
+static bool rt_has_mipmap_filter(rt_filter_t minFilter)
 {
-    return minFilter == GL_NEAREST_MIPMAP_NEAREST || minFilter == GL_LINEAR_MIPMAP_NEAREST ||
-           minFilter == GL_NEAREST_MIPMAP_LINEAR || minFilter == GL_LINEAR_MIPMAP_LINEAR;
+    switch (minFilter)
+    {
+        case RT_NEAREST: return false;
+        case RT_LINEAR: return false;
+        case RT_NEAREST_MIPMAP_NEAREST: return true;
+        case RT_LINEAR_MIPMAP_NEAREST: return true;
+        case RT_NEAREST_MIPMAP_LINEAR: return true;
+        case RT_LINEAR_MIPMAP_LINEAR: return true;
+        default: return false;
+    }
 }
 
-static DXGI_FORMAT gl_to_dx_format(GLenum glFormat, GLenum glType, GLenum internalFormat = 0)
+static DXGI_FORMAT rt_to_dx_format(rt_format_t glFormat, rt_type_t glType, rt_internal_format_t internalFormat)
 {
     switch (internalFormat)
     {
-        case GL_R8: return DXGI_FORMAT_R8_UNORM;
-        case GL_RG8: return DXGI_FORMAT_R8G8_UNORM;
-        case GL_RGB8:
-        case GL_RGBA8: return DXGI_FORMAT_R8G8B8A8_UNORM;
-        case GL_SRGB8_ALPHA8: return DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
-        case GL_R16F: return DXGI_FORMAT_R16_FLOAT;
-        case GL_RG16F: return DXGI_FORMAT_R16G16_FLOAT;
-        case GL_RGBA16F: return DXGI_FORMAT_R16G16B16A16_FLOAT;
-        case GL_R32F: return DXGI_FORMAT_R32_FLOAT;
-        case GL_RG32F: return DXGI_FORMAT_R32G32_FLOAT;
-        case GL_RGBA32F: return DXGI_FORMAT_R32G32B32A32_FLOAT;
-        case GL_DEPTH_COMPONENT16: return DXGI_FORMAT_D16_UNORM;
-        case GL_DEPTH_COMPONENT24: return DXGI_FORMAT_D32_FLOAT;
-        case GL_DEPTH_COMPONENT32F: return DXGI_FORMAT_D32_FLOAT;
-        case GL_DEPTH24_STENCIL8: return DXGI_FORMAT_D24_UNORM_S8_UINT;
-        case GL_DEPTH32F_STENCIL8: return DXGI_FORMAT_D32_FLOAT_S8X24_UINT;
+        case RT_R8: return DXGI_FORMAT_R8_UNORM;
+        case RT_RG8: return DXGI_FORMAT_R8G8_UNORM;
+        case RT_R16F: return DXGI_FORMAT_R16_FLOAT;
+        case RT_R32F: return DXGI_FORMAT_R32_FLOAT;
+        case RT_RG16F: return DXGI_FORMAT_R16G16_FLOAT;
+        case RT_RG32F: return DXGI_FORMAT_R32G32_FLOAT;
+        case RT_RGB8: return DXGI_FORMAT_R8G8B8A8_UNORM;
+        case RT_RGBA8: return DXGI_FORMAT_R8G8B8A8_UNORM;
+        case RT_SRGB8_ALPHA8: return DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
+        case RT_RGBA16F: return DXGI_FORMAT_R16G16B16A16_FLOAT;
+        case RT_RGBA32F: return DXGI_FORMAT_R32G32B32A32_FLOAT;
+        case RT_DEPTH_COMPONENT16: return DXGI_FORMAT_D16_UNORM;
+        case RT_DEPTH_COMPONENT24: return DXGI_FORMAT_D32_FLOAT;
+        case RT_DEPTH_COMPONENT32F: return DXGI_FORMAT_D32_FLOAT;
+        case RT_DEPTH24_STENCIL8: return DXGI_FORMAT_D24_UNORM_S8_UINT;
+        case RT_DEPTH32F_STENCIL8: return DXGI_FORMAT_D32_FLOAT_S8X24_UINT;
         default: break;
     }
     switch (glFormat)
     {
-        case GL_RED: return (glType == GL_FLOAT) ? DXGI_FORMAT_R32_FLOAT : DXGI_FORMAT_R8_UNORM;
-        case GL_RG: return (glType == GL_FLOAT) ? DXGI_FORMAT_R32G32_FLOAT : DXGI_FORMAT_R8G8_UNORM;
-        case GL_RGB:
-        case GL_RGBA: return (glType == GL_FLOAT) ? DXGI_FORMAT_R32G32B32A32_FLOAT : DXGI_FORMAT_R8G8B8A8_UNORM;
-        case GL_DEPTH_COMPONENT: return DXGI_FORMAT_D32_FLOAT;
-        case GL_DEPTH_STENCIL: return DXGI_FORMAT_D24_UNORM_S8_UINT;
+        case RT_STENCIL_INDEX: return DXGI_FORMAT_R8G8B8A8_UNORM;
+        case RT_DEPTH_COMPONENT: return DXGI_FORMAT_D32_FLOAT;
+        case RT_RED:
+            switch (glType)
+            {
+                case RT_FLOAT: return DXGI_FORMAT_R32_FLOAT;
+                default: return DXGI_FORMAT_R8_UNORM;
+            }
+        case RT_RGB:
+        case RT_RGBA:
+            switch (glType)
+            {
+                case RT_FLOAT: return DXGI_FORMAT_R32G32B32A32_FLOAT;
+                default: return DXGI_FORMAT_R8G8B8A8_UNORM;
+            }
+        case RT_RG:
+            switch (glType)
+            {
+                case RT_FLOAT: return DXGI_FORMAT_R32G32_FLOAT;
+                default: return DXGI_FORMAT_R8G8_UNORM;
+            }
+        case RT_DEPTH_STENCIL: return DXGI_FORMAT_D24_UNORM_S8_UINT;
         default: return DXGI_FORMAT_R8G8B8A8_UNORM;
     }
 }
 
-static DXGI_FORMAT gl_to_dx_vertex_format(GLenum type, GLenum count)
+static DXGI_FORMAT rt_to_dx_vertex_format(rt_type_t type, uint32_t count)
 {
-    if (type == GL_FLOAT)
+    switch (type)
     {
-        switch (count)
-        {
-            case 1: return DXGI_FORMAT_R32_FLOAT;
-            case 2: return DXGI_FORMAT_R32G32_FLOAT;
-            case 3: return DXGI_FORMAT_R32G32B32_FLOAT;
-            case 4: return DXGI_FORMAT_R32G32B32A32_FLOAT;
-            default: return DXGI_FORMAT_R32_FLOAT;
-        }
+        case RT_INT:
+            switch (count)
+            {
+                case 1: return DXGI_FORMAT_R32_SINT;
+                case 2: return DXGI_FORMAT_R32G32_SINT;
+                case 3: return DXGI_FORMAT_R32G32B32_SINT;
+                case 4: return DXGI_FORMAT_R32G32B32A32_SINT;
+                default: return DXGI_FORMAT_R32_SINT;
+            }
+        case RT_UNSIGNED_INT:
+            switch (count)
+            {
+                case 1: return DXGI_FORMAT_R32_UINT;
+                case 2: return DXGI_FORMAT_R32G32_UINT;
+                case 3: return DXGI_FORMAT_R32G32B32_UINT;
+                case 4: return DXGI_FORMAT_R32G32B32A32_UINT;
+                default: return DXGI_FORMAT_R32_UINT;
+            }
+        case RT_FLOAT:
+            switch (count)
+            {
+                case 1: return DXGI_FORMAT_R32_FLOAT;
+                case 2: return DXGI_FORMAT_R32G32_FLOAT;
+                case 3: return DXGI_FORMAT_R32G32B32_FLOAT;
+                case 4: return DXGI_FORMAT_R32G32B32A32_FLOAT;
+                default: return DXGI_FORMAT_R32_FLOAT;
+            }
+        default:
+            return DXGI_FORMAT_R32_FLOAT;
     }
-    if (type == GL_INT)
-    {
-        switch (count)
-        {
-            case 1: return DXGI_FORMAT_R32_SINT;
-            case 2: return DXGI_FORMAT_R32G32_SINT;
-            case 3: return DXGI_FORMAT_R32G32B32_SINT;
-            case 4: return DXGI_FORMAT_R32G32B32A32_SINT;
-            default: return DXGI_FORMAT_R32_SINT;
-        }
-    }
-    if (type == GL_UNSIGNED_INT)
-    {
-        switch (count)
-        {
-            case 1: return DXGI_FORMAT_R32_UINT;
-            case 2: return DXGI_FORMAT_R32G32_UINT;
-            case 3: return DXGI_FORMAT_R32G32B32_UINT;
-            case 4: return DXGI_FORMAT_R32G32B32A32_UINT;
-            default: return DXGI_FORMAT_R32_UINT;
-        }
-    }
-    return DXGI_FORMAT_R32_FLOAT;
 }
 
-static D3D12_COMPARISON_FUNC gl_to_dx_compare(GLenum func)
+static D3D12_COMPARISON_FUNC rt_to_dx_compare(rt_compare_op_t func)
 {
     switch (func)
     {
-        case GL_NEVER: return D3D12_COMPARISON_FUNC_NEVER;
-        case GL_LESS: return D3D12_COMPARISON_FUNC_LESS;
-        case GL_EQUAL: return D3D12_COMPARISON_FUNC_EQUAL;
-        case GL_LEQUAL: return D3D12_COMPARISON_FUNC_LESS_EQUAL;
-        case GL_GREATER: return D3D12_COMPARISON_FUNC_GREATER;
-        case GL_NOTEQUAL: return D3D12_COMPARISON_FUNC_NOT_EQUAL;
-        case GL_GEQUAL: return D3D12_COMPARISON_FUNC_GREATER_EQUAL;
-        case GL_ALWAYS:
+        case RT_NEVER: return D3D12_COMPARISON_FUNC_NEVER;
+        case RT_LESS: return D3D12_COMPARISON_FUNC_LESS;
+        case RT_EQUAL: return D3D12_COMPARISON_FUNC_EQUAL;
+        case RT_LEQUAL: return D3D12_COMPARISON_FUNC_LESS_EQUAL;
+        case RT_GREATER: return D3D12_COMPARISON_FUNC_GREATER;
+        case RT_NOTEQUAL: return D3D12_COMPARISON_FUNC_NOT_EQUAL;
+        case RT_GEQUAL: return D3D12_COMPARISON_FUNC_GREATER_EQUAL;
+        case RT_ALWAYS: return D3D12_COMPARISON_FUNC_ALWAYS;
         default: return D3D12_COMPARISON_FUNC_ALWAYS;
     }
 }
 
-static D3D12_BLEND gl_to_dx_blend(GLenum factor)
+static D3D12_BLEND rt_to_dx_blend(rt_blend_factor_t factor)
 {
     switch (factor)
     {
-        case GL_ZERO: return D3D12_BLEND_ZERO;
-        case GL_ONE: return D3D12_BLEND_ONE;
-        case GL_SRC_COLOR: return D3D12_BLEND_SRC_COLOR;
-        case GL_ONE_MINUS_SRC_COLOR: return D3D12_BLEND_INV_SRC_COLOR;
-        case GL_DST_COLOR: return D3D12_BLEND_DEST_COLOR;
-        case GL_ONE_MINUS_DST_COLOR: return D3D12_BLEND_INV_DEST_COLOR;
-        case GL_SRC_ALPHA: return D3D12_BLEND_SRC_ALPHA;
-        case GL_ONE_MINUS_SRC_ALPHA: return D3D12_BLEND_INV_SRC_ALPHA;
-        case GL_DST_ALPHA: return D3D12_BLEND_DEST_ALPHA;
-        case GL_ONE_MINUS_DST_ALPHA: return D3D12_BLEND_INV_DEST_ALPHA;
-        case GL_CONSTANT_COLOR: return D3D12_BLEND_BLEND_FACTOR;
-        case GL_ONE_MINUS_CONSTANT_COLOR: return D3D12_BLEND_INV_BLEND_FACTOR;
-        case GL_SRC_ALPHA_SATURATE: return D3D12_BLEND_SRC_ALPHA_SAT;
+        case RT_BLEND_ZERO: return D3D12_BLEND_ZERO;
+        case RT_BLEND_ONE: return D3D12_BLEND_ONE;
+        case RT_BLEND_SRC_COLOR: return D3D12_BLEND_SRC_COLOR;
+        case RT_BLEND_ONE_MINUS_SRC_COLOR: return D3D12_BLEND_INV_SRC_COLOR;
+        case RT_BLEND_SRC_ALPHA: return D3D12_BLEND_SRC_ALPHA;
+        case RT_BLEND_ONE_MINUS_SRC_ALPHA: return D3D12_BLEND_INV_SRC_ALPHA;
+        case RT_BLEND_DST_ALPHA: return D3D12_BLEND_DEST_ALPHA;
+        case RT_BLEND_ONE_MINUS_DST_ALPHA: return D3D12_BLEND_INV_DEST_ALPHA;
+        case RT_BLEND_DST_COLOR: return D3D12_BLEND_DEST_COLOR;
+        case RT_BLEND_ONE_MINUS_DST_COLOR: return D3D12_BLEND_INV_DEST_COLOR;
+        case RT_BLEND_SRC_ALPHA_SATURATE: return D3D12_BLEND_SRC_ALPHA_SAT;
+        case RT_BLEND_CONSTANT_COLOR: return D3D12_BLEND_BLEND_FACTOR;
+        case RT_BLEND_ONE_MINUS_CONSTANT_COLOR: return D3D12_BLEND_INV_BLEND_FACTOR;
+        case RT_BLEND_CONSTANT_ALPHA: return D3D12_BLEND_ONE;
+        case RT_BLEND_ONE_MINUS_CONSTANT_ALPHA: return D3D12_BLEND_ONE;
         default: return D3D12_BLEND_ONE;
     }
 }
 
-static D3D12_BLEND_OP gl_to_dx_blend_op(GLenum func)
+static D3D12_BLEND_OP rt_to_dx_blend_op(rt_blend_op_t func)
 {
     switch (func)
     {
-        case GL_FUNC_SUBTRACT: return D3D12_BLEND_OP_SUBTRACT;
-        case GL_FUNC_REVERSE_SUBTRACT: return D3D12_BLEND_OP_REV_SUBTRACT;
-        case GL_MIN: return D3D12_BLEND_OP_MIN;
-        case GL_MAX: return D3D12_BLEND_OP_MAX;
-        case GL_FUNC_ADD:
+        case RT_FUNC_ADD: return D3D12_BLEND_OP_ADD;
+        case RT_MIN: return D3D12_BLEND_OP_MIN;
+        case RT_MAX: return D3D12_BLEND_OP_MAX;
+        case RT_FUNC_SUBTRACT: return D3D12_BLEND_OP_SUBTRACT;
+        case RT_FUNC_REVERSE_SUBTRACT: return D3D12_BLEND_OP_REV_SUBTRACT;
         default: return D3D12_BLEND_OP_ADD;
     }
 }
 
-static D3D12_CULL_MODE gl_to_dx_cull(GLenum mode)
+static D3D12_CULL_MODE rt_to_dx_cull(rt_cull_mode_t mode)
 {
     switch (mode)
     {
-        case GL_FRONT: return D3D12_CULL_MODE_FRONT;
-        case GL_BACK: return D3D12_CULL_MODE_BACK;
+        case RT_CULL_NONE: return D3D12_CULL_MODE_NONE;
+        case RT_CULL_FRONT: return D3D12_CULL_MODE_FRONT;
+        case RT_CULL_BACK: return D3D12_CULL_MODE_BACK;
+        case RT_CULL_FRONT_AND_BACK: return D3D12_CULL_MODE_NONE;
         default: return D3D12_CULL_MODE_NONE;
     }
 }
 
-static D3D12_FILL_MODE gl_to_dx_fill(GLenum fill)
+static D3D12_FILL_MODE rt_to_dx_fill(rt_fill_mode_t fill)
 {
-    return (fill == GL_LINE || fill == GL_POINT) ? D3D12_FILL_MODE_WIREFRAME : D3D12_FILL_MODE_SOLID;
+    switch (fill)
+    {
+        case RT_POINT: return D3D12_FILL_MODE_WIREFRAME;
+        case RT_LINE: return D3D12_FILL_MODE_WIREFRAME;
+        case RT_FILL: return D3D12_FILL_MODE_SOLID;
+        default: return D3D12_FILL_MODE_SOLID;
+    }
 }
 
-static D3D12_PRIMITIVE_TOPOLOGY gl_to_dx_topology(GLenum primitive)
+static D3D12_PRIMITIVE_TOPOLOGY rt_to_dx_topology(rt_primitive_t primitive)
 {
     switch (primitive)
     {
-        case GL_POINTS: return D3D_PRIMITIVE_TOPOLOGY_POINTLIST;
-        case GL_LINES: return D3D_PRIMITIVE_TOPOLOGY_LINELIST;
-        case GL_LINE_STRIP:
-        case GL_LINE_LOOP: return D3D_PRIMITIVE_TOPOLOGY_LINESTRIP;
-        case GL_TRIANGLE_STRIP: return D3D_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP;
-        case GL_TRIANGLES:
+        case RT_POINTS: return D3D_PRIMITIVE_TOPOLOGY_POINTLIST;
+        case RT_LINES: return D3D_PRIMITIVE_TOPOLOGY_LINELIST;
+        case RT_LINE_LOOP: return D3D_PRIMITIVE_TOPOLOGY_LINESTRIP;
+        case RT_LINE_STRIP: return D3D_PRIMITIVE_TOPOLOGY_LINESTRIP;
+        case RT_TRIANGLES: return D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
+        case RT_TRIANGLE_STRIP: return D3D_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP;
+        case RT_TRIANGLE_FAN: return D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
         default: return D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
     }
 }
 
-static D3D12_PRIMITIVE_TOPOLOGY_TYPE gl_to_dx_topology_type(GLenum primitive)
+static D3D12_PRIMITIVE_TOPOLOGY_TYPE rt_to_dx_topology_type(rt_primitive_t primitive)
 {
     switch (primitive)
     {
-        case GL_POINTS: return D3D12_PRIMITIVE_TOPOLOGY_TYPE_POINT;
-        case GL_LINES:
-        case GL_LINE_STRIP:
-        case GL_LINE_LOOP: return D3D12_PRIMITIVE_TOPOLOGY_TYPE_LINE;
+        case RT_POINTS: return D3D12_PRIMITIVE_TOPOLOGY_TYPE_POINT;
+        case RT_LINES: return D3D12_PRIMITIVE_TOPOLOGY_TYPE_LINE;
+        case RT_LINE_LOOP: return D3D12_PRIMITIVE_TOPOLOGY_TYPE_LINE;
+        case RT_LINE_STRIP: return D3D12_PRIMITIVE_TOPOLOGY_TYPE_LINE;
+        case RT_TRIANGLES: return D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+        case RT_TRIANGLE_STRIP: return D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+        case RT_TRIANGLE_FAN: return D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
         default: return D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
     }
 }
 
-static D3D12_STENCIL_OP gl_to_dx_stencil_op(GLenum op)
+static D3D12_STENCIL_OP rt_to_dx_stencil_op(rt_stencil_op_t op)
 {
     switch (op)
     {
-        case GL_ZERO: return D3D12_STENCIL_OP_ZERO;
-        case GL_REPLACE: return D3D12_STENCIL_OP_REPLACE;
-        case GL_INCR: return D3D12_STENCIL_OP_INCR_SAT;
-        case GL_INCR_WRAP: return D3D12_STENCIL_OP_INCR;
-        case GL_DECR: return D3D12_STENCIL_OP_DECR_SAT;
-        case GL_DECR_WRAP: return D3D12_STENCIL_OP_DECR;
-        case GL_INVERT: return D3D12_STENCIL_OP_INVERT;
-        case GL_KEEP:
+        case RT_STENCIL_ZERO: return D3D12_STENCIL_OP_ZERO;
+        case RT_STENCIL_INVERT: return D3D12_STENCIL_OP_INVERT;
+        case RT_STENCIL_KEEP: return D3D12_STENCIL_OP_KEEP;
+        case RT_STENCIL_REPLACE: return D3D12_STENCIL_OP_REPLACE;
+        case RT_STENCIL_INCR: return D3D12_STENCIL_OP_INCR_SAT;
+        case RT_STENCIL_DECR: return D3D12_STENCIL_OP_DECR_SAT;
+        case RT_STENCIL_INCR_WRAP: return D3D12_STENCIL_OP_INCR;
+        case RT_STENCIL_DECR_WRAP: return D3D12_STENCIL_OP_DECR;
         default: return D3D12_STENCIL_OP_KEEP;
     }
 }
 
-static uint32_t gl_vertex_size(GLenum type, GLenum count)
+static uint32_t rt_to_dx_vertex_size(rt_type_t type, uint32_t count)
 {
-    if (type == GL_FLOAT || type == GL_INT || type == GL_UNSIGNED_INT) return count * 4;
-    if (type == GL_SHORT || type == GL_UNSIGNED_SHORT || type == GL_HALF_FLOAT) return count * 2;
-    if (type == GL_BYTE || type == GL_UNSIGNED_BYTE) return count;
-    if (type == GL_DOUBLE) return count * 8;
-    return count * 4;
+    switch (type)
+    {
+        case RT_TYPE_NONE: return count * 4;
+        case RT_BYTE: return count;
+        case RT_UNSIGNED_BYTE: return count;
+        case RT_SHORT: return count * 2;
+        case RT_UNSIGNED_SHORT: return count * 2;
+        case RT_INT: return count * 4;
+        case RT_UNSIGNED_INT: return count * 4;
+        case RT_FLOAT: return count * 4;
+        case RT_DOUBLE: return count * 8;
+        case RT_HALF_FLOAT: return count * 2;
+        case RT_UNSIGNED_INT_24_8: return count * 4;
+        default: return count * 4;
+    }
 }
 
-static uint32_t gl_index_type_size(GLenum type)
+static uint32_t rt_to_dx_index_size(rt_type_t type)
 {
-    return (type == GL_UNSIGNED_SHORT) ? 2 : 4;
+    switch (type)
+    {
+        case RT_UNSIGNED_SHORT: return 2;
+        default: return 4;
+    }
 }
 
-static DXGI_FORMAT gl_to_dx_index_type(GLenum type)
+static DXGI_FORMAT rt_to_dx_index_type(rt_type_t type)
 {
-    return (type == GL_UNSIGNED_SHORT) ? DXGI_FORMAT_R16_UINT : DXGI_FORMAT_R32_UINT;
+    switch (type)
+    {
+        case RT_UNSIGNED_SHORT: return DXGI_FORMAT_R16_UINT;
+        default: return DXGI_FORMAT_R32_UINT;
+    }
 }
 
 static uint32_t dx_format_bytes(DXGI_FORMAT format)
@@ -345,7 +414,7 @@ struct dx_texture_native_t
     uint32_t mipLevels = 1;
     uint32_t layers = 1;
     uint32_t width = 1, height = 1, depth = 1;
-    GLenum target = GL_TEXTURE_2D;
+    rt_texture_target_t target = RT_TEXTURE_2D;
     uint32_t samples = 1;
 };
 
@@ -422,7 +491,7 @@ struct dx_native_t
 
     struct
     {
-        GLenum type = GL_NONE;
+        rt_binding_type_t type = RT_BINDING_NONE;
         rt_buffer_t buffer = {};
         rt_buffer_bind_t buffer_bind = {};
         rt_texture_t texture = {};
@@ -564,22 +633,22 @@ static bool dx_setup_root(dx_module_native_t& native, rt_binding_t const* bindin
         {
             dx_binding_kind_t kind = DX_KIND_NONE;
             D3D12_DESCRIPTOR_RANGE_TYPE rangeType = D3D12_DESCRIPTOR_RANGE_TYPE_CBV;
-            if (bindings[i].type == GL_BINDING_BUFFER)
+            if (bindings[i].type == RT_BINDING_BUFFER)
             {
                 kind = DX_KIND_CBV;
                 rangeType = D3D12_DESCRIPTOR_RANGE_TYPE_CBV;
             }
-            else if (bindings[i].type == GL_BINDING_TEXTURE)
+            else if (bindings[i].type == RT_BINDING_TEXTURE)
             {
                 kind = DX_KIND_SRV;
                 rangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
             }
-            else if (bindings[i].type == GL_BINDING_STORAGE_TEXTURE)
+            else if (bindings[i].type == RT_BINDING_STORAGE_TEXTURE)
             {
                 kind = DX_KIND_UAV;
                 rangeType = D3D12_DESCRIPTOR_RANGE_TYPE_UAV;
             }
-            else if (bindings[i].type == GL_BINDING_SAMPLER)
+            else if (bindings[i].type == RT_BINDING_SAMPLER)
             {
                 kind = DX_KIND_SAMPLER;
                 rangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SAMPLER;
@@ -622,10 +691,10 @@ static bool dx_create_graphics_pipeline(dx_module_native_t& native, rt_module_re
     {
         for (uint32_t i = 0; i < GL_MAX_VERTEX_BUFFER_NUM; ++i)
         {
-            if (info.vertex[i].type == GL_NONE || info.vertex[i].count == 0) continue;
+            if (info.vertex[i].type == RT_TYPE_NONE || info.vertex[i].count == 0) continue;
             elements[attrCount].SemanticName = "TEXCOORD";
             elements[attrCount].SemanticIndex = info.vertex[i].location;
-            elements[attrCount].Format = gl_to_dx_vertex_format(info.vertex[i].type, info.vertex[i].count);
+            elements[attrCount].Format = rt_to_dx_vertex_format(info.vertex[i].type, info.vertex[i].count);
             elements[attrCount].InputSlot = info.vertex[i].location;
             elements[attrCount].AlignedByteOffset = 0;
             elements[attrCount].InputSlotClass = info.vertex[i].instance ?
@@ -635,22 +704,22 @@ static bool dx_create_graphics_pipeline(dx_module_native_t& native, rt_module_re
         }
     }
 
-    const bool depthEnabled = (info.depth.func != GL_ALWAYS || info.depth.write);
+    const bool depthEnabled = (info.depth.func != RT_ALWAYS || info.depth.write);
     const bool stencilEnabled =
-        (info.stencil.back.func != GL_ALWAYS || info.stencil.back.sfail != GL_KEEP ||
-         info.stencil.back.zfail != GL_KEEP || info.stencil.back.zpass != GL_KEEP ||
-         info.stencil.front.func != GL_ALWAYS || info.stencil.front.sfail != GL_KEEP ||
-         info.stencil.front.zfail != GL_KEEP || info.stencil.front.zpass != GL_KEEP);
+        (info.stencil.back.func != RT_ALWAYS || info.stencil.back.sfail != RT_STENCIL_KEEP ||
+         info.stencil.back.zfail != RT_STENCIL_KEEP || info.stencil.back.zpass != RT_STENCIL_KEEP ||
+         info.stencil.front.func != RT_ALWAYS || info.stencil.front.sfail != RT_STENCIL_KEEP ||
+         info.stencil.front.zfail != RT_STENCIL_KEEP || info.stencil.front.zpass != RT_STENCIL_KEEP);
 
     D3D12_GRAPHICS_PIPELINE_STATE_DESC pso = {};
     pso.pRootSignature = native.rootSignature.Get();
     pso.VS = native.vshader;
     pso.PS = native.fshader;
     pso.InputLayout = {meshlet ? nullptr : elements, meshlet ? 0u : attrCount};
-    pso.PrimitiveTopologyType = gl_to_dx_topology_type(info.primitive);
-    pso.RasterizerState.FillMode = gl_to_dx_fill(info.fill_mode);
-    pso.RasterizerState.CullMode = gl_to_dx_cull(info.cull_mode);
-    pso.RasterizerState.FrontCounterClockwise = (info.front_face != GL_CW);
+    pso.PrimitiveTopologyType = rt_to_dx_topology_type(info.primitive);
+    pso.RasterizerState.FillMode = rt_to_dx_fill(info.fill_mode);
+    pso.RasterizerState.CullMode = rt_to_dx_cull(info.cull_mode);
+    pso.RasterizerState.FrontCounterClockwise = (info.front_face != RT_CW);
     pso.RasterizerState.DepthBias = (INT)info.depth.bias;
     pso.RasterizerState.DepthBiasClamp = info.depth.biasClamp;
     pso.RasterizerState.SlopeScaledDepthBias = info.depth.biasSlope;
@@ -661,16 +730,16 @@ static bool dx_create_graphics_pipeline(dx_module_native_t& native, rt_module_re
     {
         auto& rt = pso.BlendState.RenderTarget[i];
         bool blend =
-            (info.colors[i].color.func != GL_FUNC_ADD || info.colors[i].color.src != GL_ONE ||
-             info.colors[i].color.dst != GL_ZERO || info.colors[i].alpha.func != GL_FUNC_ADD ||
-             info.colors[i].alpha.src != GL_ONE || info.colors[i].alpha.dst != GL_ZERO);
+            (info.colors[i].color.func != RT_FUNC_ADD || info.colors[i].color.src != RT_BLEND_ONE ||
+             info.colors[i].color.dst != GL_ZERO || info.colors[i].alpha.func != RT_FUNC_ADD ||
+             info.colors[i].alpha.src != RT_BLEND_ONE || info.colors[i].alpha.dst != GL_ZERO);
         rt.BlendEnable = blend;
-        rt.SrcBlend = gl_to_dx_blend(info.colors[i].color.src);
-        rt.DestBlend = gl_to_dx_blend(info.colors[i].color.dst);
-        rt.BlendOp = gl_to_dx_blend_op(info.colors[i].color.func);
-        rt.SrcBlendAlpha = gl_to_dx_blend(info.colors[i].alpha.src);
-        rt.DestBlendAlpha = gl_to_dx_blend(info.colors[i].alpha.dst);
-        rt.BlendOpAlpha = gl_to_dx_blend_op(info.colors[i].alpha.func);
+        rt.SrcBlend = rt_to_dx_blend(info.colors[i].color.src);
+        rt.DestBlend = rt_to_dx_blend(info.colors[i].color.dst);
+        rt.BlendOp = rt_to_dx_blend_op(info.colors[i].color.func);
+        rt.SrcBlendAlpha = rt_to_dx_blend(info.colors[i].alpha.src);
+        rt.DestBlendAlpha = rt_to_dx_blend(info.colors[i].alpha.dst);
+        rt.BlendOpAlpha = rt_to_dx_blend_op(info.colors[i].alpha.func);
         rt.RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
         pso.RTVFormats[i] = DXGI_FORMAT_R8G8B8A8_UNORM;
     }
@@ -679,21 +748,21 @@ static bool dx_create_graphics_pipeline(dx_module_native_t& native, rt_module_re
     pso.SampleDesc.Count = 1;
     pso.DepthStencilState.DepthEnable = depthEnabled;
     pso.DepthStencilState.DepthWriteMask = info.depth.write ? D3D12_DEPTH_WRITE_MASK_ALL : D3D12_DEPTH_WRITE_MASK_ZERO;
-    pso.DepthStencilState.DepthFunc = gl_to_dx_compare(info.depth.func);
+    pso.DepthStencilState.DepthFunc = rt_to_dx_compare(info.depth.func);
     pso.DepthStencilState.StencilEnable = stencilEnabled;
     pso.DepthStencilState.StencilReadMask = (UINT8)info.stencil.read;
     pso.DepthStencilState.StencilWriteMask = (UINT8)info.stencil.write;
-    pso.DepthStencilState.FrontFace.StencilFailOp = gl_to_dx_stencil_op(info.stencil.front.sfail);
-    pso.DepthStencilState.FrontFace.StencilDepthFailOp = gl_to_dx_stencil_op(info.stencil.front.zfail);
-    pso.DepthStencilState.FrontFace.StencilPassOp = gl_to_dx_stencil_op(info.stencil.front.zpass);
-    pso.DepthStencilState.FrontFace.StencilFunc = gl_to_dx_compare(info.stencil.front.func);
-    pso.DepthStencilState.BackFace.StencilFailOp = gl_to_dx_stencil_op(info.stencil.back.sfail);
-    pso.DepthStencilState.BackFace.StencilDepthFailOp = gl_to_dx_stencil_op(info.stencil.back.zfail);
-    pso.DepthStencilState.BackFace.StencilPassOp = gl_to_dx_stencil_op(info.stencil.back.zpass);
-    pso.DepthStencilState.BackFace.StencilFunc = gl_to_dx_compare(info.stencil.back.func);
+    pso.DepthStencilState.FrontFace.StencilFailOp = rt_to_dx_stencil_op(info.stencil.front.sfail);
+    pso.DepthStencilState.FrontFace.StencilDepthFailOp = rt_to_dx_stencil_op(info.stencil.front.zfail);
+    pso.DepthStencilState.FrontFace.StencilPassOp = rt_to_dx_stencil_op(info.stencil.front.zpass);
+    pso.DepthStencilState.FrontFace.StencilFunc = rt_to_dx_compare(info.stencil.front.func);
+    pso.DepthStencilState.BackFace.StencilFailOp = rt_to_dx_stencil_op(info.stencil.back.sfail);
+    pso.DepthStencilState.BackFace.StencilDepthFailOp = rt_to_dx_stencil_op(info.stencil.back.zfail);
+    pso.DepthStencilState.BackFace.StencilPassOp = rt_to_dx_stencil_op(info.stencil.back.zpass);
+    pso.DepthStencilState.BackFace.StencilFunc = rt_to_dx_compare(info.stencil.back.func);
     if (stencilEnabled) pso.DSVFormat = DXGI_FORMAT_D24_UNORM_S8_UINT;
     else if (depthEnabled) pso.DSVFormat = DXGI_FORMAT_D32_FLOAT;
-    native.topology = gl_to_dx_topology(info.primitive);
+    native.topology = rt_to_dx_topology(info.primitive);
     return SUCCEEDED(direct.device->CreateGraphicsPipelineState(&pso, IID_PPV_ARGS(&native.pipeline)));
 }
 
@@ -754,12 +823,12 @@ static void dx_flush_descriptors()
         uint32_t binding = mod->descriptorBindings[i];
         auto& slot = direct.currentBinding[binding];
         uint32_t root = i + 1;
-        if (mod->kinds[i] == DX_KIND_CBV || (mod->kinds[i] == DX_KIND_SRV && slot.type == GL_BINDING_BUFFER) ||
-            (slot.buffer_bind.target == GL_SHADER_STORAGE_BUFFER && slot.buffer.handle))
+        if (mod->kinds[i] == DX_KIND_CBV || (mod->kinds[i] == DX_KIND_SRV && slot.type == RT_BINDING_BUFFER) ||
+            (slot.buffer_bind.target == RT_SHADER_STORAGE_BUFFER && slot.buffer.handle))
         {
             auto* buf = dx_buffer_native(slot.buffer);
             if (!buf) continue;
-            bool storage = (slot.buffer_bind.target == GL_SHADER_STORAGE_BUFFER) || (mod->kinds[i] == DX_KIND_UAV);
+            bool storage = (slot.buffer_bind.target == RT_SHADER_STORAGE_BUFFER) || (mod->kinds[i] == DX_KIND_UAV);
             dx_transition_buffer(*buf, storage ? D3D12_RESOURCE_STATE_UNORDERED_ACCESS : D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
             auto gpu = dx_alloc_srv();
             if (storage)
@@ -813,18 +882,18 @@ static void dx_flush_descriptors()
             D3D12_SHADER_RESOURCE_VIEW_DESC srv = {};
             srv.Format = dx_srv_format(tex->format);
             srv.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-            if (tex->target == GL_TEXTURE_3D)
+            if (tex->target == RT_TEXTURE_3D)
             {
                 srv.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE3D;
                 srv.Texture3D.MipLevels = tex->mipLevels;
             }
-            else if (tex->target == GL_TEXTURE_2D_ARRAY)
+            else if (tex->target == RT_TEXTURE_2D_ARRAY)
             {
                 srv.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2DARRAY;
                 srv.Texture2DArray.MipLevels = tex->mipLevels;
                 srv.Texture2DArray.ArraySize = tex->layers;
             }
-            else if (tex->target == GL_TEXTURE_1D)
+            else if (tex->target == RT_TEXTURE_1D)
             {
                 srv.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE1D;
                 srv.Texture1D.MipLevels = tex->mipLevels;
@@ -1069,7 +1138,7 @@ rt_buffer_t dx_create_buffer(rt_buffer_info_t const& info)
 
     uint32_t handle = direct.bufferID + 1;
     auto& native = direct.buffers[handle];
-    bool hostVisible = (info.usage & (GL_BUFFER_USAGE_MAP_READ | GL_BUFFER_USAGE_MAP_WRITE)) || info.data;
+    bool hostVisible = (info.usage & (RT_BUFFER_USAGE_MAP_READ | RT_BUFFER_USAGE_MAP_WRITE)) || info.data;
     native.heap = hostVisible ? D3D12_HEAP_TYPE_UPLOAD : D3D12_HEAP_TYPE_DEFAULT;
 
     D3D12_HEAP_PROPERTIES heap = {};
@@ -1146,12 +1215,12 @@ void dx_bind_buffer(rt_buffer_t& buffer, rt_buffer_bind_t bind)
         fprintf(stderr, "Pipeline not begin");
         abort();
     }
-    direct.currentBinding[bind.binding].type = GL_BINDING_BUFFER;
+    direct.currentBinding[bind.binding].type = RT_BINDING_BUFFER;
     direct.currentBinding[bind.binding].buffer = buffer;
     direct.currentBinding[bind.binding].buffer_bind = bind;
 }
 
-void* dx_map_buffer(rt_buffer_t& buffer, GLenum mode, size_t offset, size_t size)
+void* dx_map_buffer(rt_buffer_t& buffer, rt_access_t mode, size_t offset, size_t size)
 {
     (void)mode;
     auto* native = dx_buffer_native(buffer);
@@ -1187,19 +1256,19 @@ rt_texture_t dx_create_texture(rt_texture_info_t const& info)
 {
     rt_texture_t result = {};
     if (!direct.device || info.width == 0) return result;
-    if (info.target != GL_TEXTURE_1D && info.height == 0) return result;
+    if (info.target != RT_TEXTURE_1D && info.height == 0) return result;
 
     uint32_t handle = direct.textureID + 1;
     auto& native = direct.textures[handle];
-    native.format = gl_to_dx_format(info.format, info.type, info.internal_format);
+    native.format = rt_to_dx_format(info.format, info.type, info.internal_format);
     native.width = info.width;
-    native.height = info.target == GL_TEXTURE_1D ? 1 : info.height;
+    native.height = info.target == RT_TEXTURE_1D ? 1 : info.height;
     native.depth = info.depth ? info.depth : 1;
     native.target = info.target;
-    native.layers = (info.target == GL_TEXTURE_2D_ARRAY) ? native.depth : 1;
+    native.layers = (info.target == RT_TEXTURE_2D_ARRAY) ? native.depth : 1;
     native.samples = info.samples ? info.samples : 1;
     native.mipLevels = 1;
-    if (info.mipmaps == 0 && gl_has_mipmap_filter(info.min_filter))
+    if (info.mipmaps == 0 && rt_has_mipmap_filter(info.min_filter))
     {
         uint32_t maxDim = max(native.width, native.height);
         while (maxDim >>= 1) native.mipLevels++;
@@ -1210,12 +1279,12 @@ rt_texture_t dx_create_texture(rt_texture_info_t const& info)
     D3D12_HEAP_PROPERTIES heap = {};
     heap.Type = D3D12_HEAP_TYPE_DEFAULT;
     D3D12_RESOURCE_DESC desc = {};
-    desc.Dimension = (info.target == GL_TEXTURE_3D) ? D3D12_RESOURCE_DIMENSION_TEXTURE3D :
-                     (info.target == GL_TEXTURE_1D) ? D3D12_RESOURCE_DIMENSION_TEXTURE1D :
+    desc.Dimension = (info.target == RT_TEXTURE_3D) ? D3D12_RESOURCE_DIMENSION_TEXTURE3D :
+                     (info.target == RT_TEXTURE_1D) ? D3D12_RESOURCE_DIMENSION_TEXTURE1D :
                      D3D12_RESOURCE_DIMENSION_TEXTURE2D;
     desc.Width = native.width;
     desc.Height = native.height;
-    desc.DepthOrArraySize = (UINT16)((info.target == GL_TEXTURE_3D) ? native.depth : native.layers);
+    desc.DepthOrArraySize = (UINT16)((info.target == RT_TEXTURE_3D) ? native.depth : native.layers);
     desc.MipLevels = (UINT16)native.mipLevels;
     desc.Format = dx_typeless(native.format);
     desc.SampleDesc.Count = native.samples;
@@ -1240,7 +1309,7 @@ rt_texture_t dx_create_texture(rt_texture_info_t const& info)
 
     if (info.data)
     {
-        size_t bytes = (size_t)native.width * native.height * ((info.target == GL_TEXTURE_3D) ? native.depth : 1) * dx_format_bytes(native.format);
+        size_t bytes = (size_t)native.width * native.height * ((info.target == RT_TEXTURE_3D) ? native.depth : 1) * dx_format_bytes(native.format);
         dx_staging_t staging = {};
         void* ptr = nullptr;
         if (dx_create_staging(bytes, staging, &ptr))
@@ -1257,7 +1326,7 @@ rt_texture_t dx_create_texture(rt_texture_info_t const& info)
             src.PlacedFootprint.Footprint.Format = native.format;
             src.PlacedFootprint.Footprint.Width = native.width;
             src.PlacedFootprint.Footprint.Height = native.height;
-            src.PlacedFootprint.Footprint.Depth = (info.target == GL_TEXTURE_3D) ? native.depth : 1;
+            src.PlacedFootprint.Footprint.Depth = (info.target == RT_TEXTURE_3D) ? native.depth : 1;
             src.PlacedFootprint.Footprint.RowPitch = native.width * dx_format_bytes(native.format);
             direct.cmd->CopyTextureRegion(&dst, 0, 0, 0, &src, nullptr);
             direct.pendingStaging.push_back(std::move(staging));
@@ -1287,10 +1356,10 @@ rt_texture_t dx_create_texture(rt_texture_info_t const& info)
 rt_texture_t dx_create_texture_color(uint32_t width, uint32_t height, const void* data)
 {
     return dx_create_texture({
-        .width = width, .height = height, .target = GL_TEXTURE_2D,
-        .format = GL_RGBA, .internal_format = GL_RGBA8, .type = GL_UNSIGNED_BYTE,
-        .min_filter = GL_LINEAR, .mag_filter = GL_LINEAR,
-        .wrap_s = GL_CLAMP_TO_EDGE, .wrap_t = GL_CLAMP_TO_EDGE, .wrap_r = GL_CLAMP_TO_EDGE,
+        .width = width, .height = height, .target = RT_TEXTURE_2D,
+        .format = RT_RGBA, .internal_format = RT_RGBA8, .type = RT_UNSIGNED_BYTE,
+        .min_filter = RT_LINEAR, .mag_filter = RT_LINEAR,
+        .wrap_s = RT_CLAMP_TO_EDGE, .wrap_t = RT_CLAMP_TO_EDGE, .wrap_r = RT_CLAMP_TO_EDGE,
         .data = data
     });
 }
@@ -1298,10 +1367,10 @@ rt_texture_t dx_create_texture_color(uint32_t width, uint32_t height, const void
 rt_texture_t dx_create_texture_color_float(uint32_t width, uint32_t height, const void* data)
 {
     return dx_create_texture({
-        .width = width, .height = height, .target = GL_TEXTURE_2D,
-        .format = GL_RGBA, .internal_format = GL_RGBA32F, .type = GL_FLOAT,
-        .min_filter = GL_LINEAR, .mag_filter = GL_LINEAR,
-        .wrap_s = GL_CLAMP_TO_EDGE, .wrap_t = GL_CLAMP_TO_EDGE, .wrap_r = GL_CLAMP_TO_EDGE,
+        .width = width, .height = height, .target = RT_TEXTURE_2D,
+        .format = RT_RGBA, .internal_format = RT_RGBA32F, .type = RT_FLOAT,
+        .min_filter = RT_LINEAR, .mag_filter = RT_LINEAR,
+        .wrap_s = RT_CLAMP_TO_EDGE, .wrap_t = RT_CLAMP_TO_EDGE, .wrap_r = RT_CLAMP_TO_EDGE,
         .data = data
     });
 }
@@ -1309,10 +1378,10 @@ rt_texture_t dx_create_texture_color_float(uint32_t width, uint32_t height, cons
 rt_texture_t dx_create_texture_depth(uint32_t width, uint32_t height, const void* data)
 {
     return dx_create_texture({
-        .width = width, .height = height, .target = GL_TEXTURE_2D,
-        .format = GL_DEPTH_COMPONENT, .internal_format = GL_DEPTH_COMPONENT32F, .type = GL_FLOAT,
-        .min_filter = GL_LINEAR, .mag_filter = GL_LINEAR,
-        .wrap_s = GL_CLAMP_TO_EDGE, .wrap_t = GL_CLAMP_TO_EDGE, .wrap_r = GL_CLAMP_TO_EDGE,
+        .width = width, .height = height, .target = RT_TEXTURE_2D,
+        .format = RT_DEPTH_COMPONENT, .internal_format = RT_DEPTH_COMPONENT32F, .type = RT_FLOAT,
+        .min_filter = RT_LINEAR, .mag_filter = RT_LINEAR,
+        .wrap_s = RT_CLAMP_TO_EDGE, .wrap_t = RT_CLAMP_TO_EDGE, .wrap_r = RT_CLAMP_TO_EDGE,
         .data = data
     });
 }
@@ -1320,10 +1389,10 @@ rt_texture_t dx_create_texture_depth(uint32_t width, uint32_t height, const void
 rt_texture_t dx_create_texture_depth_stencil(uint32_t width, uint32_t height, const void* data)
 {
     return dx_create_texture({
-        .width = width, .height = height, .target = GL_TEXTURE_2D,
-        .format = GL_DEPTH_STENCIL, .internal_format = GL_DEPTH24_STENCIL8, .type = GL_UNSIGNED_INT_24_8,
-        .min_filter = GL_LINEAR, .mag_filter = GL_LINEAR,
-        .wrap_s = GL_CLAMP_TO_EDGE, .wrap_t = GL_CLAMP_TO_EDGE, .wrap_r = GL_CLAMP_TO_EDGE,
+        .width = width, .height = height, .target = RT_TEXTURE_2D,
+        .format = RT_DEPTH_STENCIL, .internal_format = RT_DEPTH24_STENCIL8, .type = RT_UNSIGNED_INT_24_8,
+        .min_filter = RT_LINEAR, .mag_filter = RT_LINEAR,
+        .wrap_s = RT_CLAMP_TO_EDGE, .wrap_t = RT_CLAMP_TO_EDGE, .wrap_r = RT_CLAMP_TO_EDGE,
         .data = data
     });
 }
@@ -1342,7 +1411,7 @@ void dx_bind_texture(rt_texture_t& texture, rt_texture_bind_t bind)
         fprintf(stderr, "Pipeline not begin");
         abort();
     }
-    direct.currentBinding[bind.binding].type = GL_BINDING_TEXTURE;
+    direct.currentBinding[bind.binding].type = RT_BINDING_TEXTURE;
     direct.currentBinding[bind.binding].texture = texture;
     direct.currentBinding[bind.binding].texture_bind = bind;
 }
@@ -1354,7 +1423,7 @@ void dx_bind_texture_storage(rt_texture_t& texture, rt_texture_storage_bind_t bi
         fprintf(stderr, "Pipeline not begin");
         abort();
     }
-    direct.currentBinding[bind.binding].type = GL_BINDING_STORAGE_TEXTURE;
+    direct.currentBinding[bind.binding].type = RT_BINDING_STORAGE_TEXTURE;
     direct.currentBinding[bind.binding].storage_texture = texture;
     direct.currentBinding[bind.binding].storage_texture_bind = bind;
 }
@@ -1364,11 +1433,11 @@ rt_sampler_t dx_create_sampler(rt_sampler_info_t const& info)
     rt_sampler_t result = {};
     uint32_t handle = direct.samplerID + 1;
     auto& native = direct.samplers[handle];
-    native.desc.Filter = gl_to_dx_filter(info.min_filter, info.mag_filter);
-    native.desc.AddressU = gl_to_dx_address(info.wrap_s);
-    native.desc.AddressV = gl_to_dx_address(info.wrap_t);
-    native.desc.AddressW = gl_to_dx_address(info.wrap_r);
-    native.desc.MaxLOD = gl_has_mipmap_filter(info.min_filter) ? D3D12_FLOAT32_MAX : 0.0f;
+    native.desc.Filter = rt_to_dx_filter(info.min_filter, info.mag_filter);
+    native.desc.AddressU = rt_to_dx_address(info.wrap_s);
+    native.desc.AddressV = rt_to_dx_address(info.wrap_t);
+    native.desc.AddressW = rt_to_dx_address(info.wrap_r);
+    native.desc.MaxLOD = rt_has_mipmap_filter(info.min_filter) ? D3D12_FLOAT32_MAX : 0.0f;
     native.desc.MinLOD = 0.0f;
     direct.samplerID = handle;
     result.handle = handle;
@@ -1390,7 +1459,7 @@ void dx_bind_sampler(rt_sampler_t& sampler, rt_sampler_bind_t bind)
         fprintf(stderr, "Pipeline not begin");
         abort();
     }
-    direct.currentBinding[bind.binding].type = GL_BINDING_SAMPLER;
+    direct.currentBinding[bind.binding].type = RT_BINDING_SAMPLER;
     direct.currentBinding[bind.binding].sampler = sampler;
     direct.currentBinding[bind.binding].sampler_bind = bind;
 }
@@ -2024,13 +2093,13 @@ rt_mesh_t dx_create_mesh(const float* vertices, const float* normals, const floa
     native.vertexCount = (uint32_t)vertex_count;
     native.indexCount = (uint32_t)index_count;
     if (vertices)
-        result.vertex[0] = dx_create_buffer({.size = vertex_count * 3 * sizeof(float), .usage = GL_BUFFER_USAGE_VERTEX | GL_BUFFER_USAGE_COPY_DST, .data = vertices});
+        result.vertex[0] = dx_create_buffer({.size = vertex_count * 3 * sizeof(float), .usage = RT_BUFFER_USAGE_VERTEX | RT_BUFFER_USAGE_COPY_DST, .data = vertices});
     if (normals)
-        result.vertex[1] = dx_create_buffer({.size = vertex_count * 3 * sizeof(float), .usage = GL_BUFFER_USAGE_VERTEX | GL_BUFFER_USAGE_COPY_DST, .data = normals});
+        result.vertex[1] = dx_create_buffer({.size = vertex_count * 3 * sizeof(float), .usage = RT_BUFFER_USAGE_VERTEX | RT_BUFFER_USAGE_COPY_DST, .data = normals});
     if (uvs)
-        result.vertex[2] = dx_create_buffer({.size = vertex_count * 2 * sizeof(float), .usage = GL_BUFFER_USAGE_VERTEX | GL_BUFFER_USAGE_COPY_DST, .data = uvs});
+        result.vertex[2] = dx_create_buffer({.size = vertex_count * 2 * sizeof(float), .usage = RT_BUFFER_USAGE_VERTEX | RT_BUFFER_USAGE_COPY_DST, .data = uvs});
     if (indices)
-        result.index = dx_create_buffer({.size = index_count * sizeof(uint32_t), .usage = GL_BUFFER_USAGE_INDEX | GL_BUFFER_USAGE_COPY_DST, .data = indices});
+        result.index = dx_create_buffer({.size = index_count * sizeof(uint32_t), .usage = RT_BUFFER_USAGE_INDEX | RT_BUFFER_USAGE_COPY_DST, .data = indices});
     std::iota(result.location, result.location + std::size(result.location), 0);
     direct.meshID = handle;
     result.handle = handle;
@@ -2066,14 +2135,14 @@ static void dx_draw_mesh_impl(rt_mesh_t& mesh, uint32_t instanceCount)
     for (uint32_t i = 0; i < std::size(module.vertex); ++i)
     {
         rt_vertex_t const& layout = module.vertex[i];
-        if (layout.type == GL_NONE || layout.count == 0) continue;
+        if (layout.type == RT_TYPE_NONE || layout.count == 0) continue;
         for (uint32_t k = 0; k < std::size(mesh.vertex); ++k)
         {
             if (mesh.vertex[k].handle == 0 || mesh.location[k] != layout.location) continue;
             auto* native = dx_buffer_native(mesh.vertex[k]);
             if (!native) break;
             dx_transition_buffer(*native, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
-            uint32_t stride = gl_vertex_size(layout.type, layout.count);
+            uint32_t stride = rt_to_dx_vertex_size(layout.type, layout.count);
             D3D12_VERTEX_BUFFER_VIEW view = {};
             view.BufferLocation = native->handle->GetGPUVirtualAddress();
             view.SizeInBytes = (UINT)mesh.vertex[k].size;
@@ -2088,12 +2157,12 @@ static void dx_draw_mesh_impl(rt_mesh_t& mesh, uint32_t instanceCount)
     {
         auto* native = dx_buffer_native(mesh.index);
         if (!native) return;
-        uint32_t indexStride = gl_index_type_size(module.index_type);
+        uint32_t indexStride = rt_to_dx_index_size(module.index_type);
         dx_transition_buffer(*native, D3D12_RESOURCE_STATE_INDEX_BUFFER);
         D3D12_INDEX_BUFFER_VIEW view = {};
         view.BufferLocation = native->handle->GetGPUVirtualAddress();
         view.SizeInBytes = (UINT)mesh.index.size;
-        view.Format = gl_to_dx_index_type(module.index_type);
+        view.Format = rt_to_dx_index_type(module.index_type);
         direct.cmd->IASetIndexBuffer(&view);
         direct.cmd->DrawIndexedInstanced((UINT)(mesh.index.size / indexStride), instanceCount, 0, 0, 0);
     }
@@ -2120,13 +2189,13 @@ rt_meshlet_t dx_create_meshlet(const float* vertices, const float* normals, cons
     native.vertexCount = (uint32_t)vertex_count;
     native.indexCount = (uint32_t)index_count;
     if (vertices)
-        result.vertex[0] = dx_create_buffer({.size = vertex_count * 4 * sizeof(float), .usage = GL_BUFFER_USAGE_STORAGE | GL_BUFFER_USAGE_COPY_DST, .data = vertices});
+        result.vertex[0] = dx_create_buffer({.size = vertex_count * 4 * sizeof(float), .usage = RT_BUFFER_USAGE_STORAGE | RT_BUFFER_USAGE_COPY_DST, .data = vertices});
     if (normals)
-        result.vertex[1] = dx_create_buffer({.size = vertex_count * 4 * sizeof(float), .usage = GL_BUFFER_USAGE_STORAGE | GL_BUFFER_USAGE_COPY_DST, .data = normals});
+        result.vertex[1] = dx_create_buffer({.size = vertex_count * 4 * sizeof(float), .usage = RT_BUFFER_USAGE_STORAGE | RT_BUFFER_USAGE_COPY_DST, .data = normals});
     if (uvs)
-        result.vertex[2] = dx_create_buffer({.size = vertex_count * 2 * sizeof(float), .usage = GL_BUFFER_USAGE_STORAGE | GL_BUFFER_USAGE_COPY_DST, .data = uvs});
+        result.vertex[2] = dx_create_buffer({.size = vertex_count * 2 * sizeof(float), .usage = RT_BUFFER_USAGE_STORAGE | RT_BUFFER_USAGE_COPY_DST, .data = uvs});
     if (indices)
-        result.index = dx_create_buffer({.size = index_count * sizeof(uint32_t), .usage = GL_BUFFER_USAGE_STORAGE | GL_BUFFER_USAGE_COPY_DST, .data = indices});
+        result.index = dx_create_buffer({.size = index_count * sizeof(uint32_t), .usage = RT_BUFFER_USAGE_STORAGE | RT_BUFFER_USAGE_COPY_DST, .data = indices});
     std::iota(result.location, result.location + std::size(result.location), 0);
     direct.meshletID = handle;
     result.handle = handle;
@@ -2161,18 +2230,18 @@ void dx_draw_meshlet(rt_meshlet_t& meshlet)
     for (uint32_t i = 0; i < std::size(module.vertex); ++i)
     {
         rt_vertex_t const& layout = module.vertex[i];
-        if (layout.type == GL_NONE || layout.count == 0) continue;
+        if (layout.type == RT_TYPE_NONE || layout.count == 0) continue;
         for (uint32_t k = 0; k < std::size(meshlet.vertex); ++k)
         {
             if (meshlet.vertex[k].handle == 0 || meshlet.location[k] != layout.location) continue;
-            dx_bind_buffer(meshlet.vertex[k], {.binding = layout.location, .target = GL_SHADER_STORAGE_BUFFER});
+            dx_bind_buffer(meshlet.vertex[k], {.binding = layout.location, .target = RT_SHADER_STORAGE_BUFFER});
             break;
         }
         if (layout.location + 1 > index_binding)
             index_binding = layout.location + 1;
     }
     if (meshlet.index.handle)
-        dx_bind_buffer(meshlet.index, {.binding = index_binding, .target = GL_SHADER_STORAGE_BUFFER});
+        dx_bind_buffer(meshlet.index, {.binding = index_binding, .target = RT_SHADER_STORAGE_BUFFER});
     dx_flush_descriptors();
     auto* native = (dx_meshlet_native_t*)meshlet.native;
     uint32_t tasks = native && native->indexCount ? native->indexCount / 3 : 1;
@@ -2191,7 +2260,7 @@ void dx_draw_screen(int width, int height, rt_color_t clear, rt_texture_t& textu
 {
     static auto module = dx_create_module_render({
         .vertex = {rt_vertex_vertex, {}, rt_vertex_uv},
-        .binding = {{.binding = 0, .type = GL_BINDING_TEXTURE}},
+        .binding = {{.binding = 0, .type = RT_BINDING_TEXTURE}},
     });
     if (!module.handle) return;
     rt_pass_render_t pass = {.module = module, .screen = {.color = {.clear = true, .value = clear}}};

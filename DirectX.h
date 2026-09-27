@@ -19,7 +19,7 @@ void dx_unload_library();
 rt_buffer_t dx_create_buffer(rt_buffer_info_t const& info);
 void dx_destroy_buffer(rt_buffer_t& buffer);
 void dx_bind_buffer(rt_buffer_t& buffer, rt_buffer_bind_t bind = {});
-void* dx_map_buffer(rt_buffer_t& buffer, GLenum mode, size_t offset, size_t size);
+void* dx_map_buffer(rt_buffer_t& buffer, rt_access_t mode, size_t offset, size_t size);
 void dx_unmap_buffer(rt_buffer_t& buffer);
 
 rt_texture_t dx_create_texture(rt_texture_info_t const& info);

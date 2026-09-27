@@ -13,13 +13,13 @@
 #include "OpenRT.h"
 #include <vulkan/vulkan.h>
 
-void vk_load_library(VkInstance instance, VkDevice device, uint32_t family);
+void vk_load_library(VkInstance instance, VkPhysicalDevice physical, VkDevice device, VkQueue queue, VkCommandBuffer cmdbuf, uint32_t family);
 void vk_unload_library();
 
 rt_buffer_t vk_create_buffer(rt_buffer_info_t const& info);
 void vk_destroy_buffer(rt_buffer_t& buffer);
 void vk_bind_buffer(rt_buffer_t& buffer, rt_buffer_bind_t bind = {});
-void* vk_map_buffer(rt_buffer_t& buffer, GLenum mode, size_t offset, size_t size);
+void* vk_map_buffer(rt_buffer_t& buffer, rt_access_t mode, size_t offset, size_t size);
 void vk_unmap_buffer(rt_buffer_t& buffer);
 
 rt_texture_t vk_create_texture(rt_texture_info_t const& info);

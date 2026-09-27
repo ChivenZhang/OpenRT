@@ -13,7 +13,8 @@
     "version>=" : "2024-07-29#1"
   }, {
     "name" : "sdl3",
-    "version>=" : "3.4.4"
+    "version>=" : "3.4.4",
+    "features": ["vulkan"]
   }, {
     "name" : "glm",
     "version>=" : "1.0.3"

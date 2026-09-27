@@ -38,7 +38,7 @@ void frame(int width, int height)
         }
     )";
 
-    static auto module = rt_create_module_render({.vshader = VS, .fshader = FS, .depth = {.write = true, .func = GL_LEQUAL,}, .vertex = {rt_vertex_vertex, rt_vertex_normal, rt_vertex_uv,}, });
+    static auto module = rt_create_module_render({.vshader = VS, .fshader = FS, .depth = {.write = true, .func = RT_LEQUAL,}, .vertex = {rt_vertex_vertex, rt_vertex_normal, rt_vertex_uv,}, });
 
     static auto texture0 = []()
     {
@@ -60,7 +60,7 @@ void frame(int width, int height)
 
         // Copy Buffer To Texture
 
-        texture = rt_create_texture({.width = texture.width, .height = texture.height, .format = GL_RGB, .internal_format = GL_RGB8, });
+        texture = rt_create_texture({.width = texture.width, .height = texture.height, .format = RT_RGB, .internal_format = RT_RGB8, });
         {
             rt_pass_transfer_t pass = {};
             rt_begin_transfer(pass);

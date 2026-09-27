@@ -29,6 +29,10 @@
 void rt_load_library(const char* backend)
 {
 #ifdef OPENGL_IMPLEMENTATION
+    if (backend == nullptr) { gl_load_library(); return; }
+#endif
+
+#ifdef OPENGL_IMPLEMENTATION
     if (strcmp(backend, "opengl") == 0) { gl_load_library(); return; }
 #endif
 
@@ -47,10 +51,6 @@ void rt_load_library(const char* backend)
 #ifdef WEBGPU_IMPLEMENTATION
     // if (strcmp(backend, "webgpu") == 0) { wg_load_library(device, queue); return; }
 #endif
-
-#ifdef OPENGL_IMPLEMENTATION
-    gl_load_library();
-#endif
 }
 
 void (*rt_unload_library)() = nullptr;
@@ -60,7 +60,7 @@ void (*rt_destroy_buffer)(rt_buffer_t& buffer) = nullptr;
 void (*rt_bind_buffer)(rt_buffer_t& buffer, rt_buffer_bind_t bind) = nullptr;
 void (*rt_read_buffer)(rt_buffer_t buffer, size_t offset, size_t size, void* data) = nullptr;
 void (*rt_write_buffer)(rt_buffer_t buffer, size_t offset, size_t size, const void* data) = nullptr;
-void* (*rt_map_buffer)(rt_buffer_t& buffer, GLenum mode, size_t offset, size_t size) = nullptr; // mode: GL_READ_ONLY / GL_WRITE_ONLY / GL_READ_WRITE
+void* (*rt_map_buffer)(rt_buffer_t& buffer, rt_access_t mode, size_t offset, size_t size) = nullptr; // mode: RT_READ_ONLY / RT_WRITE_ONLY / RT_READ_WRITE
 void (*rt_unmap_buffer)(rt_buffer_t& buffer) = nullptr;
 
 rt_texture_t (*rt_create_texture)(rt_texture_info_t const& info) = nullptr;

@@ -55,219 +55,277 @@ static void mt_release(T*& object)
     }
 }
 
-static MTL::SamplerMinMagFilter gl_to_mt_filter(GLenum filter)
+static MTL::SamplerMinMagFilter rt_to_mt_filter(rt_filter_t filter)
 {
-    return (filter == GL_NEAREST || filter == GL_NEAREST_MIPMAP_NEAREST || filter == GL_NEAREST_MIPMAP_LINEAR) ?
-           MTL::SamplerMinMagFilterNearest : MTL::SamplerMinMagFilterLinear;
+    switch (filter)
+    {
+        case RT_NEAREST: return MTL::SamplerMinMagFilterNearest;
+        case RT_LINEAR: return MTL::SamplerMinMagFilterLinear;
+        case RT_NEAREST_MIPMAP_NEAREST: return MTL::SamplerMinMagFilterNearest;
+        case RT_LINEAR_MIPMAP_NEAREST: return MTL::SamplerMinMagFilterLinear;
+        case RT_NEAREST_MIPMAP_LINEAR: return MTL::SamplerMinMagFilterNearest;
+        case RT_LINEAR_MIPMAP_LINEAR: return MTL::SamplerMinMagFilterLinear;
+        default: return MTL::SamplerMinMagFilterLinear;
+    }
 }
 
-static MTL::SamplerMipFilter gl_to_mt_mip(GLenum minFilter)
+static MTL::SamplerMipFilter rt_to_mt_mip(rt_filter_t minFilter)
 {
-    if (minFilter == GL_NEAREST_MIPMAP_NEAREST || minFilter == GL_LINEAR_MIPMAP_NEAREST)
-        return MTL::SamplerMipFilterNearest;
-    if (minFilter == GL_NEAREST_MIPMAP_LINEAR || minFilter == GL_LINEAR_MIPMAP_LINEAR)
-        return MTL::SamplerMipFilterLinear;
-    return MTL::SamplerMipFilterNotMipmapped;
+    switch (minFilter)
+    {
+        case RT_NEAREST: return MTL::SamplerMipFilterNotMipmapped;
+        case RT_LINEAR: return MTL::SamplerMipFilterNotMipmapped;
+        case RT_NEAREST_MIPMAP_NEAREST: return MTL::SamplerMipFilterNearest;
+        case RT_LINEAR_MIPMAP_NEAREST: return MTL::SamplerMipFilterNearest;
+        case RT_NEAREST_MIPMAP_LINEAR: return MTL::SamplerMipFilterLinear;
+        case RT_LINEAR_MIPMAP_LINEAR: return MTL::SamplerMipFilterLinear;
+        default: return MTL::SamplerMipFilterNotMipmapped;
+    }
 }
 
-static MTL::SamplerAddressMode gl_to_mt_address(GLenum wrap)
+static MTL::SamplerAddressMode rt_to_mt_address(rt_wrap_t wrap)
 {
     switch (wrap)
     {
-        case GL_REPEAT: return MTL::SamplerAddressModeRepeat;
-        case GL_MIRRORED_REPEAT: return MTL::SamplerAddressModeMirrorRepeat;
-        case GL_CLAMP_TO_BORDER: return MTL::SamplerAddressModeClampToBorderColor;
-        case GL_MIRROR_CLAMP_TO_EDGE: return MTL::SamplerAddressModeMirrorClampToEdge;
-        case GL_CLAMP_TO_EDGE:
+        case RT_REPEAT: return MTL::SamplerAddressModeRepeat;
+        case RT_CLAMP_TO_EDGE: return MTL::SamplerAddressModeClampToEdge;
+        case RT_CLAMP_TO_BORDER: return MTL::SamplerAddressModeClampToBorderColor;
+        case RT_MIRRORED_REPEAT: return MTL::SamplerAddressModeMirrorRepeat;
+        case RT_MIRROR_CLAMP_TO_EDGE: return MTL::SamplerAddressModeMirrorClampToEdge;
         default: return MTL::SamplerAddressModeClampToEdge;
     }
 }
 
-static bool gl_has_mipmap_filter(GLenum minFilter)
+static bool rt_has_mipmap_filter(rt_filter_t minFilter)
 {
-    return minFilter == GL_NEAREST_MIPMAP_NEAREST || minFilter == GL_LINEAR_MIPMAP_NEAREST ||
-           minFilter == GL_NEAREST_MIPMAP_LINEAR || minFilter == GL_LINEAR_MIPMAP_LINEAR;
+    switch (minFilter)
+    {
+        case RT_NEAREST: return false;
+        case RT_LINEAR: return false;
+        case RT_NEAREST_MIPMAP_NEAREST: return true;
+        case RT_LINEAR_MIPMAP_NEAREST: return true;
+        case RT_NEAREST_MIPMAP_LINEAR: return true;
+        case RT_LINEAR_MIPMAP_LINEAR: return true;
+        default: return false;
+    }
 }
 
-static MTL::PixelFormat gl_to_mt_format(GLenum glFormat, GLenum glType, GLenum internalFormat = 0)
+static MTL::PixelFormat rt_to_mt_format(rt_format_t glFormat, rt_type_t glType, rt_internal_format_t internalFormat)
 {
     switch (internalFormat)
     {
-        case GL_R8: return MTL::PixelFormatR8Unorm;
-        case GL_RG8: return MTL::PixelFormatRG8Unorm;
-        case GL_RGB8:
-        case GL_RGBA8: return MTL::PixelFormatRGBA8Unorm;
-        case GL_SRGB8_ALPHA8: return MTL::PixelFormatRGBA8Unorm_sRGB;
-        case GL_R16F: return MTL::PixelFormatR16Float;
-        case GL_RG16F: return MTL::PixelFormatRG16Float;
-        case GL_RGBA16F: return MTL::PixelFormatRGBA16Float;
-        case GL_R32F: return MTL::PixelFormatR32Float;
-        case GL_RG32F: return MTL::PixelFormatRG32Float;
-        case GL_RGBA32F: return MTL::PixelFormatRGBA32Float;
-        case GL_DEPTH_COMPONENT16: return MTL::PixelFormatDepth16Unorm;
-        case GL_DEPTH_COMPONENT24:
-        case GL_DEPTH_COMPONENT32F: return MTL::PixelFormatDepth32Float;
-        case GL_DEPTH24_STENCIL8: return MTL::PixelFormatDepth24Unorm_Stencil8;
-        case GL_DEPTH32F_STENCIL8: return MTL::PixelFormatDepth32Float_Stencil8;
+        case RT_R8: return MTL::PixelFormatR8Unorm;
+        case RT_RG8: return MTL::PixelFormatRG8Unorm;
+        case RT_R16F: return MTL::PixelFormatR16Float;
+        case RT_R32F: return MTL::PixelFormatR32Float;
+        case RT_RG16F: return MTL::PixelFormatRG16Float;
+        case RT_RG32F: return MTL::PixelFormatRG32Float;
+        case RT_RGB8: return MTL::PixelFormatRGBA8Unorm;
+        case RT_RGBA8: return MTL::PixelFormatRGBA8Unorm;
+        case RT_SRGB8_ALPHA8: return MTL::PixelFormatRGBA8Unorm_sRGB;
+        case RT_RGBA16F: return MTL::PixelFormatRGBA16Float;
+        case RT_RGBA32F: return MTL::PixelFormatRGBA32Float;
+        case RT_DEPTH_COMPONENT16: return MTL::PixelFormatDepth16Unorm;
+        case RT_DEPTH_COMPONENT24: return MTL::PixelFormatDepth32Float;
+        case RT_DEPTH_COMPONENT32F: return MTL::PixelFormatDepth32Float;
+        case RT_DEPTH24_STENCIL8: return MTL::PixelFormatDepth24Unorm_Stencil8;
+        case RT_DEPTH32F_STENCIL8: return MTL::PixelFormatDepth32Float_Stencil8;
         default: break;
     }
     switch (glFormat)
     {
-        case GL_RED: return (glType == GL_FLOAT) ? MTL::PixelFormatR32Float : MTL::PixelFormatR8Unorm;
-        case GL_RG: return (glType == GL_FLOAT) ? MTL::PixelFormatRG32Float : MTL::PixelFormatRG8Unorm;
-        case GL_RGB:
-        case GL_RGBA: return (glType == GL_FLOAT) ? MTL::PixelFormatRGBA32Float : MTL::PixelFormatRGBA8Unorm;
-        case GL_DEPTH_COMPONENT: return MTL::PixelFormatDepth32Float;
-        case GL_DEPTH_STENCIL: return MTL::PixelFormatDepth32Float_Stencil8;
+        case RT_STENCIL_INDEX: return MTL::PixelFormatRGBA8Unorm;
+        case RT_DEPTH_COMPONENT: return MTL::PixelFormatDepth32Float;
+        case RT_RED:
+            switch (glType)
+            {
+                case RT_FLOAT: return MTL::PixelFormatR32Float;
+                default: return MTL::PixelFormatR8Unorm;
+            }
+        case RT_RGB:
+        case RT_RGBA:
+            switch (glType)
+            {
+                case RT_FLOAT: return MTL::PixelFormatRGBA32Float;
+                default: return MTL::PixelFormatRGBA8Unorm;
+            }
+        case RT_RG:
+            switch (glType)
+            {
+                case RT_FLOAT: return MTL::PixelFormatRG32Float;
+                default: return MTL::PixelFormatRG8Unorm;
+            }
+        case RT_DEPTH_STENCIL: return MTL::PixelFormatDepth32Float_Stencil8;
         default: return MTL::PixelFormatRGBA8Unorm;
     }
 }
 
-static MTL::VertexFormat gl_to_mt_vertex_format(GLenum type, GLenum count)
+static MTL::VertexFormat rt_to_mt_vertex_format(rt_type_t type, uint32_t count)
 {
-    if (type == GL_FLOAT)
+    switch (type)
     {
-        switch (count)
-        {
-            case 1: return MTL::VertexFormatFloat;
-            case 2: return MTL::VertexFormatFloat2;
-            case 3: return MTL::VertexFormatFloat3;
-            case 4: return MTL::VertexFormatFloat4;
-            default: return MTL::VertexFormatFloat;
-        }
+        case RT_INT:
+            switch (count)
+            {
+                case 1: return MTL::VertexFormatInt;
+                case 2: return MTL::VertexFormatInt2;
+                case 3: return MTL::VertexFormatInt3;
+                case 4: return MTL::VertexFormatInt4;
+                default: return MTL::VertexFormatInt;
+            }
+        case RT_UNSIGNED_INT:
+            switch (count)
+            {
+                case 1: return MTL::VertexFormatUInt;
+                case 2: return MTL::VertexFormatUInt2;
+                case 3: return MTL::VertexFormatUInt3;
+                case 4: return MTL::VertexFormatUInt4;
+                default: return MTL::VertexFormatUInt;
+            }
+        case RT_FLOAT:
+            switch (count)
+            {
+                case 1: return MTL::VertexFormatFloat;
+                case 2: return MTL::VertexFormatFloat2;
+                case 3: return MTL::VertexFormatFloat3;
+                case 4: return MTL::VertexFormatFloat4;
+                default: return MTL::VertexFormatFloat;
+            }
+        default:
+            return MTL::VertexFormatFloat;
     }
-    if (type == GL_INT)
-    {
-        switch (count)
-        {
-            case 1: return MTL::VertexFormatInt;
-            case 2: return MTL::VertexFormatInt2;
-            case 3: return MTL::VertexFormatInt3;
-            case 4: return MTL::VertexFormatInt4;
-            default: return MTL::VertexFormatInt;
-        }
-    }
-    if (type == GL_UNSIGNED_INT)
-    {
-        switch (count)
-        {
-            case 1: return MTL::VertexFormatUInt;
-            case 2: return MTL::VertexFormatUInt2;
-            case 3: return MTL::VertexFormatUInt3;
-            case 4: return MTL::VertexFormatUInt4;
-            default: return MTL::VertexFormatUInt;
-        }
-    }
-    return MTL::VertexFormatFloat;
 }
 
-static MTL::CompareFunction gl_to_mt_compare(GLenum func)
+static MTL::CompareFunction rt_to_mt_compare(rt_compare_op_t func)
 {
     switch (func)
     {
-        case GL_NEVER: return MTL::CompareFunctionNever;
-        case GL_LESS: return MTL::CompareFunctionLess;
-        case GL_EQUAL: return MTL::CompareFunctionEqual;
-        case GL_LEQUAL: return MTL::CompareFunctionLessEqual;
-        case GL_GREATER: return MTL::CompareFunctionGreater;
-        case GL_NOTEQUAL: return MTL::CompareFunctionNotEqual;
-        case GL_GEQUAL: return MTL::CompareFunctionGreaterEqual;
-        case GL_ALWAYS:
+        case RT_NEVER: return MTL::CompareFunctionNever;
+        case RT_LESS: return MTL::CompareFunctionLess;
+        case RT_EQUAL: return MTL::CompareFunctionEqual;
+        case RT_LEQUAL: return MTL::CompareFunctionLessEqual;
+        case RT_GREATER: return MTL::CompareFunctionGreater;
+        case RT_NOTEQUAL: return MTL::CompareFunctionNotEqual;
+        case RT_GEQUAL: return MTL::CompareFunctionGreaterEqual;
+        case RT_ALWAYS: return MTL::CompareFunctionAlways;
         default: return MTL::CompareFunctionAlways;
     }
 }
 
-static MTL::BlendFactor gl_to_mt_blend(GLenum factor)
+static MTL::BlendFactor rt_to_mt_blend(rt_blend_factor_t factor)
 {
     switch (factor)
     {
-        case GL_ZERO: return MTL::BlendFactorZero;
-        case GL_ONE: return MTL::BlendFactorOne;
-        case GL_SRC_COLOR: return MTL::BlendFactorSourceColor;
-        case GL_ONE_MINUS_SRC_COLOR: return MTL::BlendFactorOneMinusSourceColor;
-        case GL_DST_COLOR: return MTL::BlendFactorDestinationColor;
-        case GL_ONE_MINUS_DST_COLOR: return MTL::BlendFactorOneMinusDestinationColor;
-        case GL_SRC_ALPHA: return MTL::BlendFactorSourceAlpha;
-        case GL_ONE_MINUS_SRC_ALPHA: return MTL::BlendFactorOneMinusSourceAlpha;
-        case GL_DST_ALPHA: return MTL::BlendFactorDestinationAlpha;
-        case GL_ONE_MINUS_DST_ALPHA: return MTL::BlendFactorOneMinusDestinationAlpha;
-        case GL_CONSTANT_COLOR: return MTL::BlendFactorBlendColor;
-        case GL_ONE_MINUS_CONSTANT_COLOR: return MTL::BlendFactorOneMinusBlendColor;
-        case GL_SRC_ALPHA_SATURATE: return MTL::BlendFactorSourceAlphaSaturated;
+        case RT_BLEND_ZERO: return MTL::BlendFactorZero;
+        case RT_BLEND_ONE: return MTL::BlendFactorOne;
+        case RT_BLEND_SRC_COLOR: return MTL::BlendFactorSourceColor;
+        case RT_BLEND_ONE_MINUS_SRC_COLOR: return MTL::BlendFactorOneMinusSourceColor;
+        case RT_BLEND_SRC_ALPHA: return MTL::BlendFactorSourceAlpha;
+        case RT_BLEND_ONE_MINUS_SRC_ALPHA: return MTL::BlendFactorOneMinusSourceAlpha;
+        case RT_BLEND_DST_ALPHA: return MTL::BlendFactorDestinationAlpha;
+        case RT_BLEND_ONE_MINUS_DST_ALPHA: return MTL::BlendFactorOneMinusDestinationAlpha;
+        case RT_BLEND_DST_COLOR: return MTL::BlendFactorDestinationColor;
+        case RT_BLEND_ONE_MINUS_DST_COLOR: return MTL::BlendFactorOneMinusDestinationColor;
+        case RT_BLEND_SRC_ALPHA_SATURATE: return MTL::BlendFactorSourceAlphaSaturated;
+        case RT_BLEND_CONSTANT_COLOR: return MTL::BlendFactorBlendColor;
+        case RT_BLEND_ONE_MINUS_CONSTANT_COLOR: return MTL::BlendFactorOneMinusBlendColor;
+        case RT_BLEND_CONSTANT_ALPHA: return MTL::BlendFactorOne;
+        case RT_BLEND_ONE_MINUS_CONSTANT_ALPHA: return MTL::BlendFactorOne;
         default: return MTL::BlendFactorOne;
     }
 }
 
-static MTL::BlendOperation gl_to_mt_blend_op(GLenum func)
+static MTL::BlendOperation rt_to_mt_blend_op(rt_blend_op_t func)
 {
     switch (func)
     {
-        case GL_FUNC_SUBTRACT: return MTL::BlendOperationSubtract;
-        case GL_FUNC_REVERSE_SUBTRACT: return MTL::BlendOperationReverseSubtract;
-        case GL_MIN: return MTL::BlendOperationMin;
-        case GL_MAX: return MTL::BlendOperationMax;
-        case GL_FUNC_ADD:
+        case RT_FUNC_ADD: return MTL::BlendOperationAdd;
+        case RT_MIN: return MTL::BlendOperationMin;
+        case RT_MAX: return MTL::BlendOperationMax;
+        case RT_FUNC_SUBTRACT: return MTL::BlendOperationSubtract;
+        case RT_FUNC_REVERSE_SUBTRACT: return MTL::BlendOperationReverseSubtract;
         default: return MTL::BlendOperationAdd;
     }
 }
 
-static MTL::CullMode gl_to_mt_cull(GLenum mode)
+static MTL::CullMode rt_to_mt_cull(rt_cull_mode_t mode)
 {
     switch (mode)
     {
-        case GL_FRONT: return MTL::CullModeFront;
-        case GL_BACK: return MTL::CullModeBack;
+        case RT_CULL_NONE: return MTL::CullModeNone;
+        case RT_CULL_FRONT: return MTL::CullModeFront;
+        case RT_CULL_BACK: return MTL::CullModeBack;
+        case RT_CULL_FRONT_AND_BACK: return MTL::CullModeNone;
         default: return MTL::CullModeNone;
     }
 }
 
-static MTL::PrimitiveType gl_to_mt_primitive(GLenum primitive)
+static MTL::PrimitiveType rt_to_mt_primitive(rt_primitive_t primitive)
 {
     switch (primitive)
     {
-        case GL_POINTS: return MTL::PrimitiveTypePoint;
-        case GL_LINES: return MTL::PrimitiveTypeLine;
-        case GL_LINE_STRIP:
-        case GL_LINE_LOOP: return MTL::PrimitiveTypeLineStrip;
-        case GL_TRIANGLE_STRIP: return MTL::PrimitiveTypeTriangleStrip;
-        case GL_TRIANGLES:
+        case RT_POINTS: return MTL::PrimitiveTypePoint;
+        case RT_LINES: return MTL::PrimitiveTypeLine;
+        case RT_LINE_LOOP: return MTL::PrimitiveTypeLineStrip;
+        case RT_LINE_STRIP: return MTL::PrimitiveTypeLineStrip;
+        case RT_TRIANGLES: return MTL::PrimitiveTypeTriangle;
+        case RT_TRIANGLE_STRIP: return MTL::PrimitiveTypeTriangleStrip;
+        case RT_TRIANGLE_FAN: return MTL::PrimitiveTypeTriangle;
         default: return MTL::PrimitiveTypeTriangle;
     }
 }
 
-static MTL::StencilOperation gl_to_mt_stencil_op(GLenum op)
+static MTL::StencilOperation rt_to_mt_stencil_op(rt_stencil_op_t op)
 {
     switch (op)
     {
-        case GL_ZERO: return MTL::StencilOperationZero;
-        case GL_REPLACE: return MTL::StencilOperationReplace;
-        case GL_INCR: return MTL::StencilOperationIncrementClamp;
-        case GL_INCR_WRAP: return MTL::StencilOperationIncrementWrap;
-        case GL_DECR: return MTL::StencilOperationDecrementClamp;
-        case GL_DECR_WRAP: return MTL::StencilOperationDecrementWrap;
-        case GL_INVERT: return MTL::StencilOperationInvert;
-        case GL_KEEP:
+        case RT_STENCIL_ZERO: return MTL::StencilOperationZero;
+        case RT_STENCIL_INVERT: return MTL::StencilOperationInvert;
+        case RT_STENCIL_KEEP: return MTL::StencilOperationKeep;
+        case RT_STENCIL_REPLACE: return MTL::StencilOperationReplace;
+        case RT_STENCIL_INCR: return MTL::StencilOperationIncrementClamp;
+        case RT_STENCIL_DECR: return MTL::StencilOperationDecrementClamp;
+        case RT_STENCIL_INCR_WRAP: return MTL::StencilOperationIncrementWrap;
+        case RT_STENCIL_DECR_WRAP: return MTL::StencilOperationDecrementWrap;
         default: return MTL::StencilOperationKeep;
     }
 }
 
-static uint32_t gl_vertex_size(GLenum type, GLenum count)
+static uint32_t rt_to_mt_vertex_size(rt_type_t type, uint32_t count)
 {
-    if (type == GL_FLOAT || type == GL_INT || type == GL_UNSIGNED_INT) return count * 4;
-    if (type == GL_SHORT || type == GL_UNSIGNED_SHORT || type == GL_HALF_FLOAT) return count * 2;
-    if (type == GL_BYTE || type == GL_UNSIGNED_BYTE) return count;
-    if (type == GL_DOUBLE) return count * 8;
-    return count * 4;
+    switch (type)
+    {
+        case RT_TYPE_NONE: return count * 4;
+        case RT_BYTE: return count;
+        case RT_UNSIGNED_BYTE: return count;
+        case RT_SHORT: return count * 2;
+        case RT_UNSIGNED_SHORT: return count * 2;
+        case RT_INT: return count * 4;
+        case RT_UNSIGNED_INT: return count * 4;
+        case RT_FLOAT: return count * 4;
+        case RT_DOUBLE: return count * 8;
+        case RT_HALF_FLOAT: return count * 2;
+        case RT_UNSIGNED_INT_24_8: return count * 4;
+        default: return count * 4;
+    }
 }
 
-static uint32_t gl_index_type_size(GLenum type)
+static uint32_t rt_to_mt_index_size(rt_type_t type)
 {
-    return (type == GL_UNSIGNED_SHORT) ? 2 : 4;
+    switch (type)
+    {
+        case RT_UNSIGNED_SHORT: return 2;
+        default: return 4;
+    }
 }
 
-static MTL::IndexType gl_to_mt_index_type(GLenum type)
+static MTL::IndexType rt_to_mt_index_type(rt_type_t type)
 {
-    return (type == GL_UNSIGNED_SHORT) ? MTL::IndexTypeUInt16 : MTL::IndexTypeUInt32;
+    switch (type)
+    {
+        case RT_UNSIGNED_SHORT: return MTL::IndexTypeUInt16;
+        default: return MTL::IndexTypeUInt32;
+    }
 }
 
 static uint32_t mt_format_bytes(MTL::PixelFormat format)
@@ -342,7 +400,7 @@ struct mt_texture_native_t
     uint32_t mipLevels = 1;
     uint32_t layers = 1;
     uint32_t width = 1, height = 1, depth = 1;
-    GLenum target = GL_TEXTURE_2D;
+    rt_texture_target_t target = RT_TEXTURE_2D;
 
     mt_texture_native_t() = default;
     mt_texture_native_t(const mt_texture_native_t&) = delete;
@@ -502,7 +560,7 @@ struct mt_native_t
 
     struct
     {
-        GLenum type = GL_NONE;
+        rt_binding_type_t type = RT_BINDING_NONE;
         rt_buffer_t buffer = {};
         rt_buffer_bind_t buffer_bind = {};
         rt_texture_t texture = {};
@@ -680,38 +738,38 @@ static void mt_fill_color_attachments(MTL::RenderPipelineColorAttachmentDescript
         auto* attachment = colors->object(i);
         attachment->setPixelFormat(MTL::PixelFormatRGBA8Unorm);
         bool blend =
-            (info.colors[i].color.func != GL_FUNC_ADD || info.colors[i].color.src != GL_ONE ||
-             info.colors[i].color.dst != GL_ZERO || info.colors[i].alpha.func != GL_FUNC_ADD ||
-             info.colors[i].alpha.src != GL_ONE || info.colors[i].alpha.dst != GL_ZERO);
+            (info.colors[i].color.func != RT_FUNC_ADD || info.colors[i].color.src != RT_BLEND_ONE ||
+             info.colors[i].color.dst != GL_ZERO || info.colors[i].alpha.func != RT_FUNC_ADD ||
+             info.colors[i].alpha.src != RT_BLEND_ONE || info.colors[i].alpha.dst != GL_ZERO);
         attachment->setBlendingEnabled(blend);
-        attachment->setSourceRGBBlendFactor(gl_to_mt_blend(info.colors[i].color.src));
-        attachment->setDestinationRGBBlendFactor(gl_to_mt_blend(info.colors[i].color.dst));
-        attachment->setRgbBlendOperation(gl_to_mt_blend_op(info.colors[i].color.func));
-        attachment->setSourceAlphaBlendFactor(gl_to_mt_blend(info.colors[i].alpha.src));
-        attachment->setDestinationAlphaBlendFactor(gl_to_mt_blend(info.colors[i].alpha.dst));
-        attachment->setAlphaBlendOperation(gl_to_mt_blend_op(info.colors[i].alpha.func));
+        attachment->setSourceRGBBlendFactor(rt_to_mt_blend(info.colors[i].color.src));
+        attachment->setDestinationRGBBlendFactor(rt_to_mt_blend(info.colors[i].color.dst));
+        attachment->setRgbBlendOperation(rt_to_mt_blend_op(info.colors[i].color.func));
+        attachment->setSourceAlphaBlendFactor(rt_to_mt_blend(info.colors[i].alpha.src));
+        attachment->setDestinationAlphaBlendFactor(rt_to_mt_blend(info.colors[i].alpha.dst));
+        attachment->setAlphaBlendOperation(rt_to_mt_blend_op(info.colors[i].alpha.func));
     }
 }
 
 static bool mt_create_depth_stencil(mt_module_native_t& native, rt_module_render_info_t const& info, bool stencilEnabled)
 {
     MTL::DepthStencilDescriptor* ds = MTL::DepthStencilDescriptor::alloc()->init();
-    ds->setDepthCompareFunction(gl_to_mt_compare(info.depth.func));
+    ds->setDepthCompareFunction(rt_to_mt_compare(info.depth.func));
     ds->setDepthWriteEnabled(info.depth.write);
     if (stencilEnabled)
     {
         MTL::StencilDescriptor* front = MTL::StencilDescriptor::alloc()->init();
-        front->setStencilCompareFunction(gl_to_mt_compare(info.stencil.front.func));
-        front->setStencilFailureOperation(gl_to_mt_stencil_op(info.stencil.front.sfail));
-        front->setDepthFailureOperation(gl_to_mt_stencil_op(info.stencil.front.zfail));
-        front->setDepthStencilPassOperation(gl_to_mt_stencil_op(info.stencil.front.zpass));
+        front->setStencilCompareFunction(rt_to_mt_compare(info.stencil.front.func));
+        front->setStencilFailureOperation(rt_to_mt_stencil_op(info.stencil.front.sfail));
+        front->setDepthFailureOperation(rt_to_mt_stencil_op(info.stencil.front.zfail));
+        front->setDepthStencilPassOperation(rt_to_mt_stencil_op(info.stencil.front.zpass));
         front->setReadMask(info.stencil.read);
         front->setWriteMask(info.stencil.write);
         MTL::StencilDescriptor* back = MTL::StencilDescriptor::alloc()->init();
-        back->setStencilCompareFunction(gl_to_mt_compare(info.stencil.back.func));
-        back->setStencilFailureOperation(gl_to_mt_stencil_op(info.stencil.back.sfail));
-        back->setDepthFailureOperation(gl_to_mt_stencil_op(info.stencil.back.zfail));
-        back->setDepthStencilPassOperation(gl_to_mt_stencil_op(info.stencil.back.zpass));
+        back->setStencilCompareFunction(rt_to_mt_compare(info.stencil.back.func));
+        back->setStencilFailureOperation(rt_to_mt_stencil_op(info.stencil.back.sfail));
+        back->setDepthFailureOperation(rt_to_mt_stencil_op(info.stencil.back.zfail));
+        back->setDepthStencilPassOperation(rt_to_mt_stencil_op(info.stencil.back.zpass));
         back->setReadMask(info.stencil.read);
         back->setWriteMask(info.stencil.write);
         ds->setFrontFaceStencil(front);
@@ -721,9 +779,9 @@ static bool mt_create_depth_stencil(mt_module_native_t& native, rt_module_render
     }
     native.depthStencil = metal.device->newDepthStencilState(ds);
     mt_release(ds);
-    native.primitive = gl_to_mt_primitive(info.primitive);
-    native.cull = gl_to_mt_cull(info.cull_mode);
-    native.winding = (info.front_face == GL_CW) ? MTL::WindingClockwise : MTL::WindingCounterClockwise;
+    native.primitive = rt_to_mt_primitive(info.primitive);
+    native.cull = rt_to_mt_cull(info.cull_mode);
+    native.winding = (info.front_face == RT_CW) ? MTL::WindingClockwise : MTL::WindingCounterClockwise;
     for (uint32_t i = 0; i < GL_MAX_BINDING_HANDLE_NUM; ++i)
         native.bindings[i] = info.binding[i];
     return native.depthStencil != nullptr;
@@ -731,12 +789,12 @@ static bool mt_create_depth_stencil(mt_module_native_t& native, rt_module_render
 
 static bool mt_create_graphics_pipeline(mt_module_native_t& native, rt_module_render_info_t const& info, bool meshlet)
 {
-    const bool depthEnabled = (info.depth.func != GL_ALWAYS || info.depth.write);
+    const bool depthEnabled = (info.depth.func != RT_ALWAYS || info.depth.write);
     const bool stencilEnabled =
-        (info.stencil.back.func != GL_ALWAYS || info.stencil.back.sfail != GL_KEEP ||
-         info.stencil.back.zfail != GL_KEEP || info.stencil.back.zpass != GL_KEEP ||
-         info.stencil.front.func != GL_ALWAYS || info.stencil.front.sfail != GL_KEEP ||
-         info.stencil.front.zfail != GL_KEEP || info.stencil.front.zpass != GL_KEEP);
+        (info.stencil.back.func != RT_ALWAYS || info.stencil.back.sfail != RT_STENCIL_KEEP ||
+         info.stencil.back.zfail != RT_STENCIL_KEEP || info.stencil.back.zpass != RT_STENCIL_KEEP ||
+         info.stencil.front.func != RT_ALWAYS || info.stencil.front.sfail != RT_STENCIL_KEEP ||
+         info.stencil.front.zfail != RT_STENCIL_KEEP || info.stencil.front.zpass != RT_STENCIL_KEEP);
 
     NS::Error* error = nullptr;
     if (meshlet)
@@ -759,12 +817,12 @@ static bool mt_create_graphics_pipeline(mt_module_native_t& native, rt_module_re
         MTL::VertexDescriptor* vd = MTL::VertexDescriptor::alloc()->init();
         for (uint32_t i = 0; i < GL_MAX_VERTEX_BUFFER_NUM; ++i)
         {
-            if (info.vertex[i].type == GL_NONE || info.vertex[i].count == 0) continue;
+            if (info.vertex[i].type == RT_TYPE_NONE || info.vertex[i].count == 0) continue;
             uint32_t loc = info.vertex[i].location;
-            vd->attributes()->object(loc)->setFormat(gl_to_mt_vertex_format(info.vertex[i].type, info.vertex[i].count));
+            vd->attributes()->object(loc)->setFormat(rt_to_mt_vertex_format(info.vertex[i].type, info.vertex[i].count));
             vd->attributes()->object(loc)->setOffset(0);
             vd->attributes()->object(loc)->setBufferIndex(loc);
-            vd->layouts()->object(loc)->setStride(gl_vertex_size(info.vertex[i].type, info.vertex[i].count));
+            vd->layouts()->object(loc)->setStride(rt_to_mt_vertex_size(info.vertex[i].type, info.vertex[i].count));
             vd->layouts()->object(loc)->setStepFunction(info.vertex[i].instance ? MTL::VertexStepFunctionPerInstance : MTL::VertexStepFunctionPerVertex);
             vd->layouts()->object(loc)->setStepRate(1);
         }
@@ -806,12 +864,12 @@ static void mt_flush_descriptors()
     for (uint32_t i = 0; i < GL_MAX_BINDING_HANDLE_NUM; ++i)
     {
         auto& slot = metal.currentBinding[i];
-        if (slot.type == GL_NONE) continue;
-        if (slot.type == GL_BINDING_BUFFER)
+        if (slot.type == RT_BINDING_NONE) continue;
+        if (slot.type == RT_BINDING_BUFFER)
         {
             auto* buf = mt_buffer_native(slot.buffer);
             if (!buf) continue;
-            bool storage = (slot.buffer_bind.target == GL_SHADER_STORAGE_BUFFER);
+            bool storage = (slot.buffer_bind.target == RT_SHADER_STORAGE_BUFFER);
             mt_transition_buffer(*buf, storage ? MTL_STATE_SHADER_WRITE : MTL_STATE_SHADER_READ);
             if (metal.renderEncoder)
             {
@@ -821,7 +879,7 @@ static void mt_flush_descriptors()
             if (metal.computeEncoder)
                 metal.computeEncoder->setBuffer(buf->handle, 0, slot.buffer_bind.binding);
         }
-        else if (slot.type == GL_BINDING_TEXTURE)
+        else if (slot.type == RT_BINDING_TEXTURE)
         {
             auto* tex = mt_texture_native(slot.texture);
             if (!tex) continue;
@@ -840,7 +898,7 @@ static void mt_flush_descriptors()
                 metal.computeEncoder->setSamplerState(samp, slot.texture_bind.binding);
             }
         }
-        else if (slot.type == GL_BINDING_STORAGE_TEXTURE)
+        else if (slot.type == RT_BINDING_STORAGE_TEXTURE)
         {
             auto* tex = mt_texture_native(slot.storage_texture);
             if (!tex) continue;
@@ -850,7 +908,7 @@ static void mt_flush_descriptors()
             if (metal.computeEncoder)
                 metal.computeEncoder->setTexture(tex->handle, slot.storage_texture_bind.binding);
         }
-        else if (slot.type == GL_BINDING_SAMPLER)
+        else if (slot.type == RT_BINDING_SAMPLER)
         {
             auto* samp = mt_sampler_native(slot.sampler);
             if (!samp) continue;
@@ -1040,7 +1098,7 @@ rt_buffer_t mt_create_buffer(rt_buffer_info_t const& info)
     if (!metal.device || info.size == 0) return result;
     uint32_t handle = metal.bufferID + 1;
     auto& native = metal.buffers[handle];
-    bool hostVisible = (info.usage & (GL_BUFFER_USAGE_MAP_READ | GL_BUFFER_USAGE_MAP_WRITE)) || info.data;
+    bool hostVisible = (info.usage & (RT_BUFFER_USAGE_MAP_READ | RT_BUFFER_USAGE_MAP_WRITE)) || info.data;
     MTL::ResourceOptions options = hostVisible ? MTL::ResourceStorageModeShared : MTL::ResourceStorageModePrivate;
     if (info.data && hostVisible)
         native.handle = metal.device->newBuffer(info.data, info.size, options);
@@ -1089,12 +1147,12 @@ void mt_bind_buffer(rt_buffer_t& buffer, rt_buffer_bind_t bind)
         fprintf(stderr, "Pipeline not begin");
         abort();
     }
-    metal.currentBinding[bind.binding].type = GL_BINDING_BUFFER;
+    metal.currentBinding[bind.binding].type = RT_BINDING_BUFFER;
     metal.currentBinding[bind.binding].buffer = buffer;
     metal.currentBinding[bind.binding].buffer_bind = bind;
 }
 
-void* mt_map_buffer(rt_buffer_t& buffer, GLenum mode, size_t offset, size_t size)
+void* mt_map_buffer(rt_buffer_t& buffer, rt_access_t mode, size_t offset, size_t size)
 {
     (void)mode;
     auto* native = mt_buffer_native(buffer);
@@ -1124,18 +1182,18 @@ rt_texture_t mt_create_texture(rt_texture_info_t const& info)
 {
     rt_texture_t result = {};
     if (!metal.device || info.width == 0) return result;
-    if (info.target != GL_TEXTURE_1D && info.height == 0) return result;
+    if (info.target != RT_TEXTURE_1D && info.height == 0) return result;
 
     uint32_t handle = metal.textureID + 1;
     auto& native = metal.textures[handle];
-    native.format = gl_to_mt_format(info.format, info.type, info.internal_format);
+    native.format = rt_to_mt_format(info.format, info.type, info.internal_format);
     native.width = info.width;
-    native.height = info.target == GL_TEXTURE_1D ? 1 : info.height;
+    native.height = info.target == RT_TEXTURE_1D ? 1 : info.height;
     native.depth = info.depth ? info.depth : 1;
     native.target = info.target;
-    native.layers = (info.target == GL_TEXTURE_2D_ARRAY) ? native.depth : 1;
+    native.layers = (info.target == RT_TEXTURE_2D_ARRAY) ? native.depth : 1;
     native.mipLevels = 1;
-    if (info.mipmaps == 0 && gl_has_mipmap_filter(info.min_filter))
+    if (info.mipmaps == 0 && rt_has_mipmap_filter(info.min_filter))
     {
         uint32_t maxDim = std::max(native.width, native.height);
         while (maxDim >>= 1) native.mipLevels++;
@@ -1150,10 +1208,10 @@ rt_texture_t mt_create_texture(rt_texture_info_t const& info)
     desc->setMipmapLevelCount(native.mipLevels);
     desc->setUsage(MTL::TextureUsageShaderRead | MTL::TextureUsageShaderWrite | MTL::TextureUsageRenderTarget);
     desc->setStorageMode(MTL::StorageModePrivate);
-    if (info.target == GL_TEXTURE_1D) desc->setTextureType(MTL::TextureType1D);
-    else if (info.target == GL_TEXTURE_3D) { desc->setTextureType(MTL::TextureType3D); desc->setDepth(native.depth); }
-    else if (info.target == GL_TEXTURE_2D_ARRAY) { desc->setTextureType(MTL::TextureType2DArray); desc->setArrayLength(native.layers); }
-    else if (info.target == GL_TEXTURE_2D_MULTISAMPLE) { desc->setTextureType(MTL::TextureType2DMultisample); desc->setSampleCount(info.samples ? info.samples : 1); }
+    if (info.target == RT_TEXTURE_1D) desc->setTextureType(MTL::TextureType1D);
+    else if (info.target == RT_TEXTURE_3D) { desc->setTextureType(MTL::TextureType3D); desc->setDepth(native.depth); }
+    else if (info.target == RT_TEXTURE_2D_ARRAY) { desc->setTextureType(MTL::TextureType2DArray); desc->setArrayLength(native.layers); }
+    else if (info.target == RT_TEXTURE_2D_MULTISAMPLE) { desc->setTextureType(MTL::TextureType2DMultisample); desc->setSampleCount(info.samples ? info.samples : 1); }
     else desc->setTextureType(MTL::TextureType2D);
     native.handle = metal.device->newTexture(desc);
     mt_release(desc);
@@ -1166,7 +1224,7 @@ rt_texture_t mt_create_texture(rt_texture_info_t const& info)
     if (info.data)
     {
         size_t bpp = mt_format_bytes(native.format);
-        size_t bytes = (size_t)native.width * native.height * ((info.target == GL_TEXTURE_3D) ? native.depth : 1) * bpp;
+        size_t bytes = (size_t)native.width * native.height * ((info.target == RT_TEXTURE_3D) ? native.depth : 1) * bpp;
         mt_staging_t staging = {};
         void* ptr = nullptr;
         if (mt_create_staging(bytes, staging, &ptr))
@@ -1174,7 +1232,7 @@ rt_texture_t mt_create_texture(rt_texture_info_t const& info)
             std::memcpy(ptr, info.data, bytes);
             mt_ensure_blit();
             mt_transition_image(native, MTL_STATE_COPY_DST);
-            MTL::Size size = MTL::Size::Make(native.width, native.height, (info.target == GL_TEXTURE_3D) ? native.depth : 1);
+            MTL::Size size = MTL::Size::Make(native.width, native.height, (info.target == RT_TEXTURE_3D) ? native.depth : 1);
             metal.blitEncoder->copyFromBuffer(staging.buffer, 0, native.width * bpp, (NS::UInteger)bytes, size,
                 native.handle, 0, 0, MTL::Origin::Make(0, 0, 0));
             metal.pendingStaging.push_back(std::move(staging));
@@ -1202,10 +1260,10 @@ rt_texture_t mt_create_texture(rt_texture_info_t const& info)
 rt_texture_t mt_create_texture_color(uint32_t width, uint32_t height, const void* data)
 {
     return mt_create_texture({
-        .width = width, .height = height, .target = GL_TEXTURE_2D,
-        .format = GL_RGBA, .internal_format = GL_RGBA8, .type = GL_UNSIGNED_BYTE,
-        .min_filter = GL_LINEAR, .mag_filter = GL_LINEAR,
-        .wrap_s = GL_CLAMP_TO_EDGE, .wrap_t = GL_CLAMP_TO_EDGE, .wrap_r = GL_CLAMP_TO_EDGE,
+        .width = width, .height = height, .target = RT_TEXTURE_2D,
+        .format = RT_RGBA, .internal_format = RT_RGBA8, .type = RT_UNSIGNED_BYTE,
+        .min_filter = RT_LINEAR, .mag_filter = RT_LINEAR,
+        .wrap_s = RT_CLAMP_TO_EDGE, .wrap_t = RT_CLAMP_TO_EDGE, .wrap_r = RT_CLAMP_TO_EDGE,
         .data = data
     });
 }
@@ -1213,10 +1271,10 @@ rt_texture_t mt_create_texture_color(uint32_t width, uint32_t height, const void
 rt_texture_t mt_create_texture_color_float(uint32_t width, uint32_t height, const void* data)
 {
     return mt_create_texture({
-        .width = width, .height = height, .target = GL_TEXTURE_2D,
-        .format = GL_RGBA, .internal_format = GL_RGBA32F, .type = GL_FLOAT,
-        .min_filter = GL_LINEAR, .mag_filter = GL_LINEAR,
-        .wrap_s = GL_CLAMP_TO_EDGE, .wrap_t = GL_CLAMP_TO_EDGE, .wrap_r = GL_CLAMP_TO_EDGE,
+        .width = width, .height = height, .target = RT_TEXTURE_2D,
+        .format = RT_RGBA, .internal_format = RT_RGBA32F, .type = RT_FLOAT,
+        .min_filter = RT_LINEAR, .mag_filter = RT_LINEAR,
+        .wrap_s = RT_CLAMP_TO_EDGE, .wrap_t = RT_CLAMP_TO_EDGE, .wrap_r = RT_CLAMP_TO_EDGE,
         .data = data
     });
 }
@@ -1224,10 +1282,10 @@ rt_texture_t mt_create_texture_color_float(uint32_t width, uint32_t height, cons
 rt_texture_t mt_create_texture_depth(uint32_t width, uint32_t height, const void* data)
 {
     return mt_create_texture({
-        .width = width, .height = height, .target = GL_TEXTURE_2D,
-        .format = GL_DEPTH_COMPONENT, .internal_format = GL_DEPTH_COMPONENT32F, .type = GL_FLOAT,
-        .min_filter = GL_LINEAR, .mag_filter = GL_LINEAR,
-        .wrap_s = GL_CLAMP_TO_EDGE, .wrap_t = GL_CLAMP_TO_EDGE, .wrap_r = GL_CLAMP_TO_EDGE,
+        .width = width, .height = height, .target = RT_TEXTURE_2D,
+        .format = RT_DEPTH_COMPONENT, .internal_format = RT_DEPTH_COMPONENT32F, .type = RT_FLOAT,
+        .min_filter = RT_LINEAR, .mag_filter = RT_LINEAR,
+        .wrap_s = RT_CLAMP_TO_EDGE, .wrap_t = RT_CLAMP_TO_EDGE, .wrap_r = RT_CLAMP_TO_EDGE,
         .data = data
     });
 }
@@ -1235,10 +1293,10 @@ rt_texture_t mt_create_texture_depth(uint32_t width, uint32_t height, const void
 rt_texture_t mt_create_texture_depth_stencil(uint32_t width, uint32_t height, const void* data)
 {
     return mt_create_texture({
-        .width = width, .height = height, .target = GL_TEXTURE_2D,
-        .format = GL_DEPTH_STENCIL, .internal_format = GL_DEPTH32F_STENCIL8, .type = GL_FLOAT,
-        .min_filter = GL_LINEAR, .mag_filter = GL_LINEAR,
-        .wrap_s = GL_CLAMP_TO_EDGE, .wrap_t = GL_CLAMP_TO_EDGE, .wrap_r = GL_CLAMP_TO_EDGE,
+        .width = width, .height = height, .target = RT_TEXTURE_2D,
+        .format = RT_DEPTH_STENCIL, .internal_format = RT_DEPTH32F_STENCIL8, .type = RT_FLOAT,
+        .min_filter = RT_LINEAR, .mag_filter = RT_LINEAR,
+        .wrap_s = RT_CLAMP_TO_EDGE, .wrap_t = RT_CLAMP_TO_EDGE, .wrap_r = RT_CLAMP_TO_EDGE,
         .data = data
     });
 }
@@ -1257,7 +1315,7 @@ void mt_bind_texture(rt_texture_t& texture, rt_texture_bind_t bind)
         fprintf(stderr, "Pipeline not begin");
         abort();
     }
-    metal.currentBinding[bind.binding].type = GL_BINDING_TEXTURE;
+    metal.currentBinding[bind.binding].type = RT_BINDING_TEXTURE;
     metal.currentBinding[bind.binding].texture = texture;
     metal.currentBinding[bind.binding].texture_bind = bind;
 }
@@ -1269,7 +1327,7 @@ void mt_bind_texture_storage(rt_texture_t& texture, rt_texture_storage_bind_t bi
         fprintf(stderr, "Pipeline not begin");
         abort();
     }
-    metal.currentBinding[bind.binding].type = GL_BINDING_STORAGE_TEXTURE;
+    metal.currentBinding[bind.binding].type = RT_BINDING_STORAGE_TEXTURE;
     metal.currentBinding[bind.binding].storage_texture = texture;
     metal.currentBinding[bind.binding].storage_texture_bind = bind;
 }
@@ -1280,12 +1338,12 @@ rt_sampler_t mt_create_sampler(rt_sampler_info_t const& info)
     uint32_t handle = metal.samplerID + 1;
     auto& native = metal.samplers[handle];
     MTL::SamplerDescriptor* desc = MTL::SamplerDescriptor::alloc()->init();
-    desc->setMinFilter(gl_to_mt_filter(info.min_filter));
-    desc->setMagFilter(gl_to_mt_filter(info.mag_filter));
-    desc->setMipFilter(gl_to_mt_mip(info.min_filter));
-    desc->setSAddressMode(gl_to_mt_address(info.wrap_s));
-    desc->setTAddressMode(gl_to_mt_address(info.wrap_t));
-    desc->setRAddressMode(gl_to_mt_address(info.wrap_r));
+    desc->setMinFilter(rt_to_mt_filter(info.min_filter));
+    desc->setMagFilter(rt_to_mt_filter(info.mag_filter));
+    desc->setMipFilter(rt_to_mt_mip(info.min_filter));
+    desc->setSAddressMode(rt_to_mt_address(info.wrap_s));
+    desc->setTAddressMode(rt_to_mt_address(info.wrap_t));
+    desc->setRAddressMode(rt_to_mt_address(info.wrap_r));
     native.handle = metal.device->newSamplerState(desc);
     mt_release(desc);
     metal.samplerID = handle;
@@ -1308,7 +1366,7 @@ void mt_bind_sampler(rt_sampler_t& sampler, rt_sampler_bind_t bind)
         fprintf(stderr, "Pipeline not begin");
         abort();
     }
-    metal.currentBinding[bind.binding].type = GL_BINDING_SAMPLER;
+    metal.currentBinding[bind.binding].type = RT_BINDING_SAMPLER;
     metal.currentBinding[bind.binding].sampler = sampler;
     metal.currentBinding[bind.binding].sampler_bind = bind;
 }
@@ -1548,7 +1606,7 @@ void mt_begin_render(rt_pass_render_t& pass)
         desc->depthAttachment()->setLoadAction(pass.depth.clear ? MTL::LoadActionClear : MTL::LoadActionLoad);
         desc->depthAttachment()->setStoreAction(MTL::StoreActionStore);
         desc->depthAttachment()->setClearDepth(pass.depth.value);
-        if (pass.depth.texture.format == GL_DEPTH_STENCIL)
+        if (pass.depth.texture.format == RT_DEPTH_STENCIL)
         {
             desc->stencilAttachment()->setTexture(tex->handle);
             desc->stencilAttachment()->setLoadAction(pass.stencil.clear ? MTL::LoadActionClear : MTL::LoadActionLoad);
@@ -1845,13 +1903,13 @@ rt_mesh_t mt_create_mesh(const float* vertices, const float* normals, const floa
     native.vertexCount = (uint32_t)vertex_count;
     native.indexCount = (uint32_t)index_count;
     if (vertices)
-        result.vertex[0] = mt_create_buffer({.size = vertex_count * 3 * sizeof(float), .usage = GL_BUFFER_USAGE_VERTEX | GL_BUFFER_USAGE_COPY_DST, .data = vertices});
+        result.vertex[0] = mt_create_buffer({.size = vertex_count * 3 * sizeof(float), .usage = RT_BUFFER_USAGE_VERTEX | RT_BUFFER_USAGE_COPY_DST, .data = vertices});
     if (normals)
-        result.vertex[1] = mt_create_buffer({.size = vertex_count * 3 * sizeof(float), .usage = GL_BUFFER_USAGE_VERTEX | GL_BUFFER_USAGE_COPY_DST, .data = normals});
+        result.vertex[1] = mt_create_buffer({.size = vertex_count * 3 * sizeof(float), .usage = RT_BUFFER_USAGE_VERTEX | RT_BUFFER_USAGE_COPY_DST, .data = normals});
     if (uvs)
-        result.vertex[2] = mt_create_buffer({.size = vertex_count * 2 * sizeof(float), .usage = GL_BUFFER_USAGE_VERTEX | GL_BUFFER_USAGE_COPY_DST, .data = uvs});
+        result.vertex[2] = mt_create_buffer({.size = vertex_count * 2 * sizeof(float), .usage = RT_BUFFER_USAGE_VERTEX | RT_BUFFER_USAGE_COPY_DST, .data = uvs});
     if (indices)
-        result.index = mt_create_buffer({.size = index_count * sizeof(uint32_t), .usage = GL_BUFFER_USAGE_INDEX | GL_BUFFER_USAGE_COPY_DST, .data = indices});
+        result.index = mt_create_buffer({.size = index_count * sizeof(uint32_t), .usage = RT_BUFFER_USAGE_INDEX | RT_BUFFER_USAGE_COPY_DST, .data = indices});
     std::iota(result.location, result.location + std::size(result.location), 0);
     metal.meshID = handle;
     result.handle = handle;
@@ -1888,7 +1946,7 @@ static void mt_draw_mesh_impl(rt_mesh_t& mesh, uint32_t instanceCount)
     for (uint32_t i = 0; i < std::size(module.vertex); ++i)
     {
         rt_vertex_t const& layout = module.vertex[i];
-        if (layout.type == GL_NONE || layout.count == 0) continue;
+        if (layout.type == RT_TYPE_NONE || layout.count == 0) continue;
         for (uint32_t k = 0; k < std::size(mesh.vertex); ++k)
         {
             if (mesh.vertex[k].handle == 0 || mesh.location[k] != layout.location) continue;
@@ -1896,7 +1954,7 @@ static void mt_draw_mesh_impl(rt_mesh_t& mesh, uint32_t instanceCount)
             if (!native) break;
             mt_transition_buffer(*native, MTL_STATE_VERTEX);
             metal.renderEncoder->setVertexBuffer(native->handle, 0, layout.location);
-            uint32_t stride = gl_vertex_size(layout.type, layout.count);
+            uint32_t stride = rt_to_mt_vertex_size(layout.type, layout.count);
             if (vertex_count == 0 && stride)
                 vertex_count = (uint32_t)(mesh.vertex[k].size / stride);
             break;
@@ -1907,10 +1965,10 @@ static void mt_draw_mesh_impl(rt_mesh_t& mesh, uint32_t instanceCount)
     {
         auto* native = mt_buffer_native(mesh.index);
         if (!native) return;
-        uint32_t indexStride = gl_index_type_size(module.index_type);
+        uint32_t indexStride = rt_to_mt_index_size(module.index_type);
         mt_transition_buffer(*native, MTL_STATE_INDEX);
         metal.renderEncoder->drawIndexedPrimitives(primitive, (NS::UInteger)(mesh.index.size / indexStride),
-            gl_to_mt_index_type(module.index_type), native->handle, 0, instanceCount);
+            rt_to_mt_index_type(module.index_type), native->handle, 0, instanceCount);
     }
     else
         metal.renderEncoder->drawPrimitives(primitive, 0, vertex_count, instanceCount);
@@ -1935,13 +1993,13 @@ rt_meshlet_t mt_create_meshlet(const float* vertices, const float* normals, cons
     native.vertexCount = (uint32_t)vertex_count;
     native.indexCount = (uint32_t)index_count;
     if (vertices)
-        result.vertex[0] = mt_create_buffer({.size = vertex_count * 4 * sizeof(float), .usage = GL_BUFFER_USAGE_STORAGE | GL_BUFFER_USAGE_COPY_DST, .data = vertices});
+        result.vertex[0] = mt_create_buffer({.size = vertex_count * 4 * sizeof(float), .usage = RT_BUFFER_USAGE_STORAGE | RT_BUFFER_USAGE_COPY_DST, .data = vertices});
     if (normals)
-        result.vertex[1] = mt_create_buffer({.size = vertex_count * 4 * sizeof(float), .usage = GL_BUFFER_USAGE_STORAGE | GL_BUFFER_USAGE_COPY_DST, .data = normals});
+        result.vertex[1] = mt_create_buffer({.size = vertex_count * 4 * sizeof(float), .usage = RT_BUFFER_USAGE_STORAGE | RT_BUFFER_USAGE_COPY_DST, .data = normals});
     if (uvs)
-        result.vertex[2] = mt_create_buffer({.size = vertex_count * 2 * sizeof(float), .usage = GL_BUFFER_USAGE_STORAGE | GL_BUFFER_USAGE_COPY_DST, .data = uvs});
+        result.vertex[2] = mt_create_buffer({.size = vertex_count * 2 * sizeof(float), .usage = RT_BUFFER_USAGE_STORAGE | RT_BUFFER_USAGE_COPY_DST, .data = uvs});
     if (indices)
-        result.index = mt_create_buffer({.size = index_count * sizeof(uint32_t), .usage = GL_BUFFER_USAGE_STORAGE | GL_BUFFER_USAGE_COPY_DST, .data = indices});
+        result.index = mt_create_buffer({.size = index_count * sizeof(uint32_t), .usage = RT_BUFFER_USAGE_STORAGE | RT_BUFFER_USAGE_COPY_DST, .data = indices});
     std::iota(result.location, result.location + std::size(result.location), 0);
     metal.meshletID = handle;
     result.handle = handle;
@@ -1976,18 +2034,18 @@ void mt_draw_meshlet(rt_meshlet_t& meshlet)
     for (uint32_t i = 0; i < std::size(module.vertex); ++i)
     {
         rt_vertex_t const& layout = module.vertex[i];
-        if (layout.type == GL_NONE || layout.count == 0) continue;
+        if (layout.type == RT_TYPE_NONE || layout.count == 0) continue;
         for (uint32_t k = 0; k < std::size(meshlet.vertex); ++k)
         {
             if (meshlet.vertex[k].handle == 0 || meshlet.location[k] != layout.location) continue;
-            mt_bind_buffer(meshlet.vertex[k], {.binding = layout.location, .target = GL_SHADER_STORAGE_BUFFER});
+            mt_bind_buffer(meshlet.vertex[k], {.binding = layout.location, .target = RT_SHADER_STORAGE_BUFFER});
             break;
         }
         if (layout.location + 1 > index_binding)
             index_binding = layout.location + 1;
     }
     if (meshlet.index.handle)
-        mt_bind_buffer(meshlet.index, {.binding = index_binding, .target = GL_SHADER_STORAGE_BUFFER});
+        mt_bind_buffer(meshlet.index, {.binding = index_binding, .target = RT_SHADER_STORAGE_BUFFER});
     mt_flush_descriptors();
     auto* native = (mt_meshlet_native_t*)meshlet.native;
     uint32_t tasks = native && native->indexCount ? native->indexCount / 3 : 1;
@@ -2005,7 +2063,7 @@ void mt_draw_screen(int width, int height, rt_color_t clear, rt_texture_t& textu
 {
     static auto module = mt_create_module_render({
         .vertex = {rt_vertex_vertex, {}, rt_vertex_uv},
-        .binding = {{.binding = 0, .type = GL_BINDING_TEXTURE}},
+        .binding = {{.binding = 0, .type = RT_BINDING_TEXTURE}},
     });
     if (!module.handle) return;
     rt_pass_render_t pass = {.module = module, .screen = {.color = {.clear = true, .value = clear}}};

@@ -54,6 +54,13 @@ target_link_libraries(Default PRIVATE SDL3::SDL3)
 find_package(glm CONFIG REQUIRED)
 target_link_libraries(Default PRIVATE glm::glm)
 
+add_executable(Vulkan Example/Vulkan.cpp)
+add_dependencies(Vulkan OpenRT)
+target_link_libraries(Vulkan PRIVATE OpenRT)
+find_package(SDL3 CONFIG REQUIRED)
+target_link_libraries(Vulkan PRIVATE SDL3::SDL3)
+target_link_libraries(Vulkan PRIVATE Vulkan::Vulkan)
+
 add_executable(Meshlet Example/Meshlet.cpp)
 add_dependencies(Meshlet OpenRT)
 target_link_libraries(Meshlet PRIVATE OpenRT)

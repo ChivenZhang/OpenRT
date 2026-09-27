@@ -50,203 +50,261 @@ enum wg_binding_kind_t : uint32_t
     WG_KIND_SAMPLER,
 };
 
-static bool gl_has_mipmap_filter(GLenum minFilter)
+static bool rt_has_mipmap_filter(rt_filter_t minFilter)
 {
-    return minFilter == GL_NEAREST_MIPMAP_NEAREST || minFilter == GL_LINEAR_MIPMAP_NEAREST ||
-           minFilter == GL_NEAREST_MIPMAP_LINEAR || minFilter == GL_LINEAR_MIPMAP_LINEAR;
+    switch (minFilter)
+    {
+        case RT_NEAREST: return false;
+        case RT_LINEAR: return false;
+        case RT_NEAREST_MIPMAP_NEAREST: return true;
+        case RT_LINEAR_MIPMAP_NEAREST: return true;
+        case RT_NEAREST_MIPMAP_LINEAR: return true;
+        case RT_LINEAR_MIPMAP_LINEAR: return true;
+        default: return false;
+    }
 }
 
-static WGPUFilterMode gl_to_wg_filter(GLenum filter)
+static WGPUFilterMode rt_to_wg_filter(rt_filter_t filter)
 {
-    return (filter == GL_NEAREST || filter == GL_NEAREST_MIPMAP_NEAREST || filter == GL_NEAREST_MIPMAP_LINEAR) ?
-           WGPUFilterMode_Nearest : WGPUFilterMode_Linear;
+    switch (filter)
+    {
+        case RT_NEAREST: return WGPUFilterMode_Nearest;
+        case RT_LINEAR: return WGPUFilterMode_Linear;
+        case RT_NEAREST_MIPMAP_NEAREST: return WGPUFilterMode_Nearest;
+        case RT_LINEAR_MIPMAP_NEAREST: return WGPUFilterMode_Linear;
+        case RT_NEAREST_MIPMAP_LINEAR: return WGPUFilterMode_Nearest;
+        case RT_LINEAR_MIPMAP_LINEAR: return WGPUFilterMode_Linear;
+        default: return WGPUFilterMode_Linear;
+    }
 }
 
-static WGPUMipmapFilterMode gl_to_wg_mip(GLenum minFilter)
+static WGPUMipmapFilterMode rt_to_wg_mip(rt_filter_t minFilter)
 {
-    if (minFilter == GL_NEAREST_MIPMAP_NEAREST || minFilter == GL_LINEAR_MIPMAP_NEAREST)
-        return WGPUMipmapFilterMode_Nearest;
-    if (minFilter == GL_NEAREST_MIPMAP_LINEAR || minFilter == GL_LINEAR_MIPMAP_LINEAR)
-        return WGPUMipmapFilterMode_Linear;
-    return WGPUMipmapFilterMode_Nearest;
+    switch (minFilter)
+    {
+        case RT_NEAREST: return WGPUMipmapFilterMode_Nearest;
+        case RT_LINEAR: return WGPUMipmapFilterMode_Nearest;
+        case RT_NEAREST_MIPMAP_NEAREST: return WGPUMipmapFilterMode_Nearest;
+        case RT_LINEAR_MIPMAP_NEAREST: return WGPUMipmapFilterMode_Nearest;
+        case RT_NEAREST_MIPMAP_LINEAR: return WGPUMipmapFilterMode_Linear;
+        case RT_LINEAR_MIPMAP_LINEAR: return WGPUMipmapFilterMode_Linear;
+        default: return WGPUMipmapFilterMode_Nearest;
+    }
 }
 
-static WGPUAddressMode gl_to_wg_address(GLenum wrap)
+static WGPUAddressMode rt_to_wg_address(rt_wrap_t wrap)
 {
     switch (wrap)
     {
-        case GL_REPEAT: return WGPUAddressMode_Repeat;
-        case GL_MIRRORED_REPEAT: return WGPUAddressMode_MirrorRepeat;
-        case GL_CLAMP_TO_EDGE:
-        case GL_CLAMP_TO_BORDER:
-        case GL_MIRROR_CLAMP_TO_EDGE:
+        case RT_REPEAT: return WGPUAddressMode_Repeat;
+        case RT_CLAMP_TO_EDGE: return WGPUAddressMode_ClampToEdge;
+        case RT_CLAMP_TO_BORDER: return WGPUAddressMode_ClampToEdge;
+        case RT_MIRRORED_REPEAT: return WGPUAddressMode_MirrorRepeat;
+        case RT_MIRROR_CLAMP_TO_EDGE: return WGPUAddressMode_ClampToEdge;
         default: return WGPUAddressMode_ClampToEdge;
     }
 }
 
-static WGPUTextureFormat gl_to_wg_format(GLenum glFormat, GLenum glType, GLenum internalFormat = 0)
+static WGPUTextureFormat rt_to_wg_format(rt_format_t glFormat, rt_type_t glType, rt_internal_format_t internalFormat)
 {
     switch (internalFormat)
     {
-        case GL_R8: return WGPUTextureFormat_R8Unorm;
-        case GL_RG8: return WGPUTextureFormat_RG8Unorm;
-        case GL_RGB8:
-        case GL_RGBA8: return WGPUTextureFormat_RGBA8Unorm;
-        case GL_SRGB8_ALPHA8: return WGPUTextureFormat_RGBA8UnormSrgb;
-        case GL_R16F: return WGPUTextureFormat_R16Float;
-        case GL_RG16F: return WGPUTextureFormat_RG16Float;
-        case GL_RGBA16F: return WGPUTextureFormat_RGBA16Float;
-        case GL_R32F: return WGPUTextureFormat_R32Float;
-        case GL_RG32F: return WGPUTextureFormat_RG32Float;
-        case GL_RGBA32F: return WGPUTextureFormat_RGBA32Float;
-        case GL_DEPTH_COMPONENT16: return WGPUTextureFormat_Depth16Unorm;
-        case GL_DEPTH_COMPONENT24:
-        case GL_DEPTH_COMPONENT32F: return WGPUTextureFormat_Depth32Float;
-        case GL_DEPTH24_STENCIL8: return WGPUTextureFormat_Depth24PlusStencil8;
-        case GL_DEPTH32F_STENCIL8: return WGPUTextureFormat_Depth32FloatStencil8;
+        case RT_R8: return WGPUTextureFormat_R8Unorm;
+        case RT_RG8: return WGPUTextureFormat_RG8Unorm;
+        case RT_R16F: return WGPUTextureFormat_R16Float;
+        case RT_R32F: return WGPUTextureFormat_R32Float;
+        case RT_RG16F: return WGPUTextureFormat_RG16Float;
+        case RT_RG32F: return WGPUTextureFormat_RG32Float;
+        case RT_RGB8: return WGPUTextureFormat_RGBA8Unorm;
+        case RT_RGBA8: return WGPUTextureFormat_RGBA8Unorm;
+        case RT_SRGB8_ALPHA8: return WGPUTextureFormat_RGBA8UnormSrgb;
+        case RT_RGBA16F: return WGPUTextureFormat_RGBA16Float;
+        case RT_RGBA32F: return WGPUTextureFormat_RGBA32Float;
+        case RT_DEPTH_COMPONENT16: return WGPUTextureFormat_Depth16Unorm;
+        case RT_DEPTH_COMPONENT24: return WGPUTextureFormat_Depth32Float;
+        case RT_DEPTH_COMPONENT32F: return WGPUTextureFormat_Depth32Float;
+        case RT_DEPTH24_STENCIL8: return WGPUTextureFormat_Depth24PlusStencil8;
+        case RT_DEPTH32F_STENCIL8: return WGPUTextureFormat_Depth32FloatStencil8;
         default: break;
     }
     switch (glFormat)
     {
-        case GL_RED: return (glType == GL_FLOAT) ? WGPUTextureFormat_R32Float : WGPUTextureFormat_R8Unorm;
-        case GL_RG: return (glType == GL_FLOAT) ? WGPUTextureFormat_RG32Float : WGPUTextureFormat_RG8Unorm;
-        case GL_RGB:
-        case GL_RGBA: return (glType == GL_FLOAT) ? WGPUTextureFormat_RGBA32Float : WGPUTextureFormat_RGBA8Unorm;
-        case GL_DEPTH_COMPONENT: return WGPUTextureFormat_Depth32Float;
-        case GL_DEPTH_STENCIL: return WGPUTextureFormat_Depth32FloatStencil8;
+        case RT_STENCIL_INDEX: return WGPUTextureFormat_RGBA8Unorm;
+        case RT_DEPTH_COMPONENT: return WGPUTextureFormat_Depth32Float;
+        case RT_RED:
+            switch (glType)
+            {
+                case RT_FLOAT: return WGPUTextureFormat_R32Float;
+                default: return WGPUTextureFormat_R8Unorm;
+            }
+        case RT_RGB:
+        case RT_RGBA:
+            switch (glType)
+            {
+                case RT_FLOAT: return WGPUTextureFormat_RGBA32Float;
+                default: return WGPUTextureFormat_RGBA8Unorm;
+            }
+        case RT_RG:
+            switch (glType)
+            {
+                case RT_FLOAT: return WGPUTextureFormat_RG32Float;
+                default: return WGPUTextureFormat_RG8Unorm;
+            }
+        case RT_DEPTH_STENCIL: return WGPUTextureFormat_Depth32FloatStencil8;
         default: return WGPUTextureFormat_RGBA8Unorm;
     }
 }
 
-static WGPUVertexFormat gl_to_wg_vertex_format(GLenum type, GLenum count)
+static WGPUVertexFormat rt_to_wg_vertex_format(rt_type_t type, uint32_t count)
 {
-    if (type == GL_FLOAT)
+    switch (type)
     {
-        switch (count)
-        {
-            case 1: return WGPUVertexFormat_Float32;
-            case 2: return WGPUVertexFormat_Float32x2;
-            case 3: return WGPUVertexFormat_Float32x3;
-            case 4: return WGPUVertexFormat_Float32x4;
-            default: return WGPUVertexFormat_Float32;
-        }
+        case RT_INT:
+            switch (count)
+            {
+                case 1: return WGPUVertexFormat_Sint32;
+                case 2: return WGPUVertexFormat_Sint32x2;
+                case 3: return WGPUVertexFormat_Sint32x3;
+                case 4: return WGPUVertexFormat_Sint32x4;
+                default: return WGPUVertexFormat_Sint32;
+            }
+        case RT_UNSIGNED_INT:
+            switch (count)
+            {
+                case 1: return WGPUVertexFormat_Uint32;
+                case 2: return WGPUVertexFormat_Uint32x2;
+                case 3: return WGPUVertexFormat_Uint32x3;
+                case 4: return WGPUVertexFormat_Uint32x4;
+                default: return WGPUVertexFormat_Uint32;
+            }
+        case RT_FLOAT:
+            switch (count)
+            {
+                case 1: return WGPUVertexFormat_Float32;
+                case 2: return WGPUVertexFormat_Float32x2;
+                case 3: return WGPUVertexFormat_Float32x3;
+                case 4: return WGPUVertexFormat_Float32x4;
+                default: return WGPUVertexFormat_Float32;
+            }
+        default:
+            return WGPUVertexFormat_Float32;
     }
-    if (type == GL_INT)
-    {
-        switch (count)
-        {
-            case 1: return WGPUVertexFormat_Sint32;
-            case 2: return WGPUVertexFormat_Sint32x2;
-            case 3: return WGPUVertexFormat_Sint32x3;
-            case 4: return WGPUVertexFormat_Sint32x4;
-            default: return WGPUVertexFormat_Sint32;
-        }
-    }
-    if (type == GL_UNSIGNED_INT)
-    {
-        switch (count)
-        {
-            case 1: return WGPUVertexFormat_Uint32;
-            case 2: return WGPUVertexFormat_Uint32x2;
-            case 3: return WGPUVertexFormat_Uint32x3;
-            case 4: return WGPUVertexFormat_Uint32x4;
-            default: return WGPUVertexFormat_Uint32;
-        }
-    }
-    return WGPUVertexFormat_Float32;
 }
 
-static WGPUCompareFunction gl_to_wg_compare(GLenum func)
+static WGPUCompareFunction rt_to_wg_compare(rt_compare_op_t func)
 {
     switch (func)
     {
-        case GL_NEVER: return WGPUCompareFunction_Never;
-        case GL_LESS: return WGPUCompareFunction_Less;
-        case GL_EQUAL: return WGPUCompareFunction_Equal;
-        case GL_LEQUAL: return WGPUCompareFunction_LessEqual;
-        case GL_GREATER: return WGPUCompareFunction_Greater;
-        case GL_NOTEQUAL: return WGPUCompareFunction_NotEqual;
-        case GL_GEQUAL: return WGPUCompareFunction_GreaterEqual;
-        case GL_ALWAYS:
+        case RT_NEVER: return WGPUCompareFunction_Never;
+        case RT_LESS: return WGPUCompareFunction_Less;
+        case RT_EQUAL: return WGPUCompareFunction_Equal;
+        case RT_LEQUAL: return WGPUCompareFunction_LessEqual;
+        case RT_GREATER: return WGPUCompareFunction_Greater;
+        case RT_NOTEQUAL: return WGPUCompareFunction_NotEqual;
+        case RT_GEQUAL: return WGPUCompareFunction_GreaterEqual;
+        case RT_ALWAYS: return WGPUCompareFunction_Always;
         default: return WGPUCompareFunction_Always;
     }
 }
 
-static WGPUBlendFactor gl_to_wg_blend(GLenum factor)
+static WGPUBlendFactor rt_to_wg_blend(rt_blend_factor_t factor)
 {
     switch (factor)
     {
-        case GL_ZERO: return WGPUBlendFactor_Zero;
-        case GL_ONE: return WGPUBlendFactor_One;
-        case GL_SRC_COLOR: return WGPUBlendFactor_Src;
-        case GL_ONE_MINUS_SRC_COLOR: return WGPUBlendFactor_OneMinusSrc;
-        case GL_DST_COLOR: return WGPUBlendFactor_Dst;
-        case GL_ONE_MINUS_DST_COLOR: return WGPUBlendFactor_OneMinusDst;
-        case GL_SRC_ALPHA: return WGPUBlendFactor_SrcAlpha;
-        case GL_ONE_MINUS_SRC_ALPHA: return WGPUBlendFactor_OneMinusSrcAlpha;
-        case GL_DST_ALPHA: return WGPUBlendFactor_DstAlpha;
-        case GL_ONE_MINUS_DST_ALPHA: return WGPUBlendFactor_OneMinusDstAlpha;
-        case GL_CONSTANT_COLOR: return WGPUBlendFactor_Constant;
-        case GL_ONE_MINUS_CONSTANT_COLOR: return WGPUBlendFactor_OneMinusConstant;
-        case GL_SRC_ALPHA_SATURATE: return WGPUBlendFactor_SrcAlphaSaturated;
+        case RT_BLEND_ZERO: return WGPUBlendFactor_Zero;
+        case RT_BLEND_ONE: return WGPUBlendFactor_One;
+        case RT_BLEND_SRC_COLOR: return WGPUBlendFactor_Src;
+        case RT_BLEND_ONE_MINUS_SRC_COLOR: return WGPUBlendFactor_OneMinusSrc;
+        case RT_BLEND_SRC_ALPHA: return WGPUBlendFactor_SrcAlpha;
+        case RT_BLEND_ONE_MINUS_SRC_ALPHA: return WGPUBlendFactor_OneMinusSrcAlpha;
+        case RT_BLEND_DST_ALPHA: return WGPUBlendFactor_DstAlpha;
+        case RT_BLEND_ONE_MINUS_DST_ALPHA: return WGPUBlendFactor_OneMinusDstAlpha;
+        case RT_BLEND_DST_COLOR: return WGPUBlendFactor_Dst;
+        case RT_BLEND_ONE_MINUS_DST_COLOR: return WGPUBlendFactor_OneMinusDst;
+        case RT_BLEND_SRC_ALPHA_SATURATE: return WGPUBlendFactor_SrcAlphaSaturated;
+        case RT_BLEND_CONSTANT_COLOR: return WGPUBlendFactor_Constant;
+        case RT_BLEND_ONE_MINUS_CONSTANT_COLOR: return WGPUBlendFactor_OneMinusConstant;
+        case RT_BLEND_CONSTANT_ALPHA: return WGPUBlendFactor_One;
+        case RT_BLEND_ONE_MINUS_CONSTANT_ALPHA: return WGPUBlendFactor_One;
         default: return WGPUBlendFactor_One;
     }
 }
 
-static WGPUBlendOperation gl_to_wg_blend_op(GLenum func)
+static WGPUBlendOperation rt_to_wg_blend_op(rt_blend_op_t func)
 {
     switch (func)
     {
-        case GL_FUNC_SUBTRACT: return WGPUBlendOperation_Subtract;
-        case GL_FUNC_REVERSE_SUBTRACT: return WGPUBlendOperation_ReverseSubtract;
-        case GL_MIN: return WGPUBlendOperation_Min;
-        case GL_MAX: return WGPUBlendOperation_Max;
-        case GL_FUNC_ADD:
+        case RT_FUNC_ADD: return WGPUBlendOperation_Add;
+        case RT_MIN: return WGPUBlendOperation_Min;
+        case RT_MAX: return WGPUBlendOperation_Max;
+        case RT_FUNC_SUBTRACT: return WGPUBlendOperation_Subtract;
+        case RT_FUNC_REVERSE_SUBTRACT: return WGPUBlendOperation_ReverseSubtract;
         default: return WGPUBlendOperation_Add;
     }
 }
 
-static WGPUCullMode gl_to_wg_cull(GLenum mode)
+static WGPUCullMode rt_to_wg_cull(rt_cull_mode_t mode)
 {
     switch (mode)
     {
-        case GL_FRONT: return WGPUCullMode_Front;
-        case GL_BACK: return WGPUCullMode_Back;
+        case RT_CULL_NONE: return WGPUCullMode_None;
+        case RT_CULL_FRONT: return WGPUCullMode_Front;
+        case RT_CULL_BACK: return WGPUCullMode_Back;
+        case RT_CULL_FRONT_AND_BACK: return WGPUCullMode_None;
         default: return WGPUCullMode_None;
     }
 }
 
-static WGPUPrimitiveTopology gl_to_wg_primitive(GLenum primitive)
+static WGPUPrimitiveTopology rt_to_wg_primitive(rt_primitive_t primitive)
 {
     switch (primitive)
     {
-        case GL_POINTS: return WGPUPrimitiveTopology_PointList;
-        case GL_LINES: return WGPUPrimitiveTopology_LineList;
-        case GL_LINE_STRIP:
-        case GL_LINE_LOOP: return WGPUPrimitiveTopology_LineStrip;
-        case GL_TRIANGLE_STRIP: return WGPUPrimitiveTopology_TriangleStrip;
-        case GL_TRIANGLES:
+        case RT_POINTS: return WGPUPrimitiveTopology_PointList;
+        case RT_LINES: return WGPUPrimitiveTopology_LineList;
+        case RT_LINE_LOOP: return WGPUPrimitiveTopology_LineStrip;
+        case RT_LINE_STRIP: return WGPUPrimitiveTopology_LineStrip;
+        case RT_TRIANGLES: return WGPUPrimitiveTopology_TriangleList;
+        case RT_TRIANGLE_STRIP: return WGPUPrimitiveTopology_TriangleStrip;
+        case RT_TRIANGLE_FAN: return WGPUPrimitiveTopology_TriangleList;
         default: return WGPUPrimitiveTopology_TriangleList;
     }
 }
 
-static uint32_t gl_vertex_size(GLenum type, GLenum count)
+static uint32_t rt_to_wg_vertex_size(rt_type_t type, uint32_t count)
 {
-    if (type == GL_FLOAT || type == GL_INT || type == GL_UNSIGNED_INT) return count * 4;
-    if (type == GL_SHORT || type == GL_UNSIGNED_SHORT || type == GL_HALF_FLOAT) return count * 2;
-    if (type == GL_BYTE || type == GL_UNSIGNED_BYTE) return count;
-    if (type == GL_DOUBLE) return count * 8;
-    return count * 4;
+    switch (type)
+    {
+        case RT_TYPE_NONE: return count * 4;
+        case RT_BYTE: return count;
+        case RT_UNSIGNED_BYTE: return count;
+        case RT_SHORT: return count * 2;
+        case RT_UNSIGNED_SHORT: return count * 2;
+        case RT_INT: return count * 4;
+        case RT_UNSIGNED_INT: return count * 4;
+        case RT_FLOAT: return count * 4;
+        case RT_DOUBLE: return count * 8;
+        case RT_HALF_FLOAT: return count * 2;
+        case RT_UNSIGNED_INT_24_8: return count * 4;
+        default: return count * 4;
+    }
 }
 
-static uint32_t gl_index_type_size(GLenum type)
+static uint32_t rt_to_wg_index_size(rt_type_t type)
 {
-    return (type == GL_UNSIGNED_SHORT) ? 2 : 4;
+    switch (type)
+    {
+        case RT_UNSIGNED_SHORT: return 2;
+        default: return 4;
+    }
 }
 
-static WGPUIndexFormat gl_to_wg_index_type(GLenum type)
+static WGPUIndexFormat rt_to_wg_index_type(rt_type_t type)
 {
-    return (type == GL_UNSIGNED_SHORT) ? WGPUIndexFormat_Uint16 : WGPUIndexFormat_Uint32;
+    switch (type)
+    {
+        case RT_UNSIGNED_SHORT: return WGPUIndexFormat_Uint16;
+        default: return WGPUIndexFormat_Uint32;
+    }
 }
 
 static uint32_t wg_format_bytes(WGPUTextureFormat format)
@@ -297,7 +355,7 @@ struct wg_texture_native_t
     uint32_t mipLevels = 1;
     uint32_t layers = 1;
     uint32_t width = 1, height = 1, depth = 1;
-    GLenum target = GL_TEXTURE_2D;
+    rt_texture_target_t target = RT_TEXTURE_2D;
     ~wg_texture_native_t()
     {
         if (view) wgpuTextureViewRelease(view);
@@ -362,7 +420,7 @@ struct wg_native_t
 
     struct
     {
-        GLenum type = GL_NONE;
+        rt_binding_type_t type = RT_BINDING_NONE;
         rt_buffer_t buffer = {};
         rt_buffer_bind_t buffer_bind = {};
         rt_texture_t texture = {};
@@ -398,15 +456,15 @@ static WGPUShaderModule wg_create_shader(const char* data, uint32_t length)
 static WGPUBufferUsage wg_buffer_usage(rt_buffer_usages_t usage)
 {
     WGPUBufferUsage flags = WGPUBufferUsage_None;
-    if (usage & GL_BUFFER_USAGE_MAP_READ) flags = (WGPUBufferUsage)(flags | WGPUBufferUsage_MapRead | WGPUBufferUsage_CopyDst);
-    if (usage & GL_BUFFER_USAGE_MAP_WRITE) flags = (WGPUBufferUsage)(flags | WGPUBufferUsage_CopyDst | WGPUBufferUsage_CopySrc);
-    if (usage & GL_BUFFER_USAGE_COPY_SRC) flags = (WGPUBufferUsage)(flags | WGPUBufferUsage_CopySrc);
-    if (usage & GL_BUFFER_USAGE_COPY_DST) flags = (WGPUBufferUsage)(flags | WGPUBufferUsage_CopyDst);
-    if (usage & GL_BUFFER_USAGE_INDEX) flags = (WGPUBufferUsage)(flags | WGPUBufferUsage_Index);
-    if (usage & GL_BUFFER_USAGE_VERTEX) flags = (WGPUBufferUsage)(flags | WGPUBufferUsage_Vertex);
-    if (usage & GL_BUFFER_USAGE_UNIFORM) flags = (WGPUBufferUsage)(flags | WGPUBufferUsage_Uniform);
-    if (usage & GL_BUFFER_USAGE_STORAGE) flags = (WGPUBufferUsage)(flags | WGPUBufferUsage_Storage);
-    if (usage & GL_BUFFER_USAGE_INDIRECT) flags = (WGPUBufferUsage)(flags | WGPUBufferUsage_Indirect);
+    if (usage & RT_BUFFER_USAGE_MAP_READ) flags = (WGPUBufferUsage)(flags | WGPUBufferUsage_MapRead | WGPUBufferUsage_CopyDst);
+    if (usage & RT_BUFFER_USAGE_MAP_WRITE) flags = (WGPUBufferUsage)(flags | WGPUBufferUsage_CopyDst | WGPUBufferUsage_CopySrc);
+    if (usage & RT_BUFFER_USAGE_COPY_SRC) flags = (WGPUBufferUsage)(flags | WGPUBufferUsage_CopySrc);
+    if (usage & RT_BUFFER_USAGE_COPY_DST) flags = (WGPUBufferUsage)(flags | WGPUBufferUsage_CopyDst);
+    if (usage & RT_BUFFER_USAGE_INDEX) flags = (WGPUBufferUsage)(flags | WGPUBufferUsage_Index);
+    if (usage & RT_BUFFER_USAGE_VERTEX) flags = (WGPUBufferUsage)(flags | WGPUBufferUsage_Vertex);
+    if (usage & RT_BUFFER_USAGE_UNIFORM) flags = (WGPUBufferUsage)(flags | WGPUBufferUsage_Uniform);
+    if (usage & RT_BUFFER_USAGE_STORAGE) flags = (WGPUBufferUsage)(flags | WGPUBufferUsage_Storage);
+    if (usage & RT_BUFFER_USAGE_INDIRECT) flags = (WGPUBufferUsage)(flags | WGPUBufferUsage_Indirect);
     return flags;
 }
 
@@ -489,29 +547,29 @@ static bool wg_create_pipeline_layout(wg_module_native_t& native, rt_binding_t c
     {
         for (uint32_t i = 0; i < GL_MAX_BINDING_HANDLE_NUM; ++i)
         {
-            if (bindings[i].type == GL_NONE) continue;
+            if (bindings[i].type == RT_BINDING_NONE) continue;
             auto& entry = entries[native.descriptorCount];
             entry.binding = bindings[i].binding;
             entry.visibility = visibility;
-            if (bindings[i].type == GL_BINDING_BUFFER)
+            if (bindings[i].type == RT_BINDING_BUFFER)
             {
                 native.kinds[native.descriptorCount] = WG_KIND_UNIFORM;
                 entry.buffer.type = WGPUBufferBindingType_Uniform;
             }
-            else if (bindings[i].type == GL_BINDING_TEXTURE)
+            else if (bindings[i].type == RT_BINDING_TEXTURE)
             {
                 native.kinds[native.descriptorCount] = WG_KIND_TEXTURE;
                 entry.texture.sampleType = WGPUTextureSampleType_Float;
                 entry.texture.viewDimension = WGPUTextureViewDimension_2D;
             }
-            else if (bindings[i].type == GL_BINDING_STORAGE_TEXTURE)
+            else if (bindings[i].type == RT_BINDING_STORAGE_TEXTURE)
             {
                 native.kinds[native.descriptorCount] = WG_KIND_STORAGE_TEXTURE;
                 entry.storageTexture.access = WGPUStorageTextureAccess_WriteOnly;
                 entry.storageTexture.format = WGPUTextureFormat_RGBA8Unorm;
                 entry.storageTexture.viewDimension = WGPUTextureViewDimension_2D;
             }
-            else if (bindings[i].type == GL_BINDING_SAMPLER)
+            else if (bindings[i].type == RT_BINDING_SAMPLER)
             {
                 native.kinds[native.descriptorCount] = WG_KIND_SAMPLER;
                 entry.sampler.type = WGPUSamplerBindingType_Filtering;
@@ -550,11 +608,11 @@ static bool wg_create_graphics_pipeline(wg_module_native_t& native, rt_module_re
     uint32_t attrCount = 0;
     for (uint32_t i = 0; i < GL_MAX_VERTEX_BUFFER_NUM; ++i)
     {
-        if (info.vertex[i].type == GL_NONE || info.vertex[i].count == 0) continue;
-        attributes[attrCount].format = gl_to_wg_vertex_format(info.vertex[i].type, info.vertex[i].count);
+        if (info.vertex[i].type == RT_TYPE_NONE || info.vertex[i].count == 0) continue;
+        attributes[attrCount].format = rt_to_wg_vertex_format(info.vertex[i].type, info.vertex[i].count);
         attributes[attrCount].offset = 0;
         attributes[attrCount].shaderLocation = info.vertex[i].location;
-        layouts[attrCount].arrayStride = gl_vertex_size(info.vertex[i].type, info.vertex[i].count);
+        layouts[attrCount].arrayStride = rt_to_wg_vertex_size(info.vertex[i].type, info.vertex[i].count);
         layouts[attrCount].stepMode = info.vertex[i].instance ? WGPUVertexStepMode_Instance : WGPUVertexStepMode_Vertex;
         layouts[attrCount].attributeCount = 1;
         layouts[attrCount].attributes = &attributes[attrCount];
@@ -568,17 +626,17 @@ static bool wg_create_graphics_pipeline(wg_module_native_t& native, rt_module_re
         targets[i].format = WGPUTextureFormat_RGBA8Unorm;
         targets[i].writeMask = WGPUColorWriteMask_All;
         bool blend =
-            (info.colors[i].color.func != GL_FUNC_ADD || info.colors[i].color.src != GL_ONE ||
-             info.colors[i].color.dst != GL_ZERO || info.colors[i].alpha.func != GL_FUNC_ADD ||
-             info.colors[i].alpha.src != GL_ONE || info.colors[i].alpha.dst != GL_ZERO);
+            (info.colors[i].color.func != RT_FUNC_ADD || info.colors[i].color.src != RT_BLEND_ONE ||
+             info.colors[i].color.dst != GL_ZERO || info.colors[i].alpha.func != RT_FUNC_ADD ||
+             info.colors[i].alpha.src != RT_BLEND_ONE || info.colors[i].alpha.dst != GL_ZERO);
         if (blend)
         {
-            blends[i].color.srcFactor = gl_to_wg_blend(info.colors[i].color.src);
-            blends[i].color.dstFactor = gl_to_wg_blend(info.colors[i].color.dst);
-            blends[i].color.operation = gl_to_wg_blend_op(info.colors[i].color.func);
-            blends[i].alpha.srcFactor = gl_to_wg_blend(info.colors[i].alpha.src);
-            blends[i].alpha.dstFactor = gl_to_wg_blend(info.colors[i].alpha.dst);
-            blends[i].alpha.operation = gl_to_wg_blend_op(info.colors[i].alpha.func);
+            blends[i].color.srcFactor = rt_to_wg_blend(info.colors[i].color.src);
+            blends[i].color.dstFactor = rt_to_wg_blend(info.colors[i].color.dst);
+            blends[i].color.operation = rt_to_wg_blend_op(info.colors[i].color.func);
+            blends[i].alpha.srcFactor = rt_to_wg_blend(info.colors[i].alpha.src);
+            blends[i].alpha.dstFactor = rt_to_wg_blend(info.colors[i].alpha.dst);
+            blends[i].alpha.operation = rt_to_wg_blend_op(info.colors[i].alpha.func);
             targets[i].blend = &blends[i];
         }
     }
@@ -589,18 +647,18 @@ static bool wg_create_graphics_pipeline(wg_module_native_t& native, rt_module_re
     fragment.targetCount = GL_MAX_COLOR_TEXTURE_NUM;
     fragment.targets = targets;
 
-    const bool depthEnabled = (info.depth.func != GL_ALWAYS || info.depth.write);
+    const bool depthEnabled = (info.depth.func != RT_ALWAYS || info.depth.write);
     const bool stencilEnabled =
-        (info.stencil.back.func != GL_ALWAYS || info.stencil.back.sfail != GL_KEEP ||
-         info.stencil.back.zfail != GL_KEEP || info.stencil.back.zpass != GL_KEEP ||
-         info.stencil.front.func != GL_ALWAYS || info.stencil.front.sfail != GL_KEEP ||
-         info.stencil.front.zfail != GL_KEEP || info.stencil.front.zpass != GL_KEEP);
+        (info.stencil.back.func != RT_ALWAYS || info.stencil.back.sfail != RT_STENCIL_KEEP ||
+         info.stencil.back.zfail != RT_STENCIL_KEEP || info.stencil.back.zpass != RT_STENCIL_KEEP ||
+         info.stencil.front.func != RT_ALWAYS || info.stencil.front.sfail != RT_STENCIL_KEEP ||
+         info.stencil.front.zfail != RT_STENCIL_KEEP || info.stencil.front.zpass != RT_STENCIL_KEEP);
     WGPUDepthStencilState depth = {};
     depth.format = stencilEnabled ? WGPUTextureFormat_Depth32FloatStencil8 : WGPUTextureFormat_Depth32Float;
     depth.depthWriteEnabled = info.depth.write;
-    depth.depthCompare = gl_to_wg_compare(info.depth.func);
-    depth.stencilFront.compare = gl_to_wg_compare(info.stencil.front.func);
-    depth.stencilBack.compare = gl_to_wg_compare(info.stencil.back.func);
+    depth.depthCompare = rt_to_wg_compare(info.depth.func);
+    depth.stencilFront.compare = rt_to_wg_compare(info.stencil.front.func);
+    depth.stencilBack.compare = rt_to_wg_compare(info.stencil.back.func);
     depth.stencilReadMask = info.stencil.read;
     depth.stencilWriteMask = info.stencil.write;
 
@@ -610,9 +668,9 @@ static bool wg_create_graphics_pipeline(wg_module_native_t& native, rt_module_re
     desc.vertex.entryPoint = (info.ventry && info.ventry[0]) ? info.ventry : "main";
     desc.vertex.bufferCount = attrCount;
     desc.vertex.buffers = layouts;
-    desc.primitive.topology = gl_to_wg_primitive(info.primitive);
-    desc.primitive.frontFace = (info.front_face == GL_CW) ? WGPUFrontFace_CW : WGPUFrontFace_CCW;
-    desc.primitive.cullMode = gl_to_wg_cull(info.cull_mode);
+    desc.primitive.topology = rt_to_wg_primitive(info.primitive);
+    desc.primitive.frontFace = (info.front_face == RT_CW) ? WGPUFrontFace_CW : WGPUFrontFace_CCW;
+    desc.primitive.cullMode = rt_to_wg_cull(info.cull_mode);
     desc.multisample.count = 1;
     desc.multisample.mask = 0xFFFFFFFF;
     if (native.fshader) desc.fragment = &fragment;
@@ -660,11 +718,11 @@ static void wg_flush_descriptors()
         uint32_t binding = mod->descriptorBindings[i];
         auto& slot = webgpu.currentBinding[binding];
         entries[count].binding = binding;
-        if (mod->kinds[i] == WG_KIND_UNIFORM || slot.type == GL_BINDING_BUFFER)
+        if (mod->kinds[i] == WG_KIND_UNIFORM || slot.type == RT_BINDING_BUFFER)
         {
             auto* buf = wg_buffer_native(slot.buffer);
             if (!buf) continue;
-            bool storage = (slot.buffer_bind.target == GL_SHADER_STORAGE_BUFFER);
+            bool storage = (slot.buffer_bind.target == RT_SHADER_STORAGE_BUFFER);
             wg_transition_buffer(*buf, storage ? WG_STATE_SHADER_WRITE : WG_STATE_SHADER_READ);
             entries[count].buffer = buf->handle;
             entries[count].offset = 0;
@@ -920,7 +978,7 @@ rt_buffer_t wg_create_buffer(rt_buffer_info_t const& info)
         wgpuBufferUnmap(native.handle);
         native.state = WG_STATE_HOST;
     }
-    if (info.usage & (GL_BUFFER_USAGE_MAP_READ | GL_BUFFER_USAGE_MAP_WRITE))
+    if (info.usage & (RT_BUFFER_USAGE_MAP_READ | RT_BUFFER_USAGE_MAP_WRITE))
         native.mappedCpu.resize(info.size);
 
     webgpu.bufferID = handle;
@@ -951,12 +1009,12 @@ void wg_bind_buffer(rt_buffer_t& buffer, rt_buffer_bind_t bind)
         fprintf(stderr, "Pipeline not begin");
         abort();
     }
-    webgpu.currentBinding[bind.binding].type = GL_BINDING_BUFFER;
+    webgpu.currentBinding[bind.binding].type = RT_BINDING_BUFFER;
     webgpu.currentBinding[bind.binding].buffer = buffer;
     webgpu.currentBinding[bind.binding].buffer_bind = bind;
 }
 
-void* wg_map_buffer(rt_buffer_t& buffer, GLenum mode, size_t offset, size_t size)
+void* wg_map_buffer(rt_buffer_t& buffer, rt_access_t mode, size_t offset, size_t size)
 {
     (void)mode;
     auto* native = wg_buffer_native(buffer);
@@ -988,18 +1046,18 @@ rt_texture_t wg_create_texture(rt_texture_info_t const& info)
 {
     rt_texture_t result = {};
     if (!webgpu.device || info.width == 0) return result;
-    if (info.target != GL_TEXTURE_1D && info.height == 0) return result;
+    if (info.target != RT_TEXTURE_1D && info.height == 0) return result;
 
     uint32_t handle = webgpu.textureID + 1;
     auto& native = webgpu.textures[handle];
-    native.format = gl_to_wg_format(info.format, info.type, info.internal_format);
+    native.format = rt_to_wg_format(info.format, info.type, info.internal_format);
     native.width = info.width;
-    native.height = info.target == GL_TEXTURE_1D ? 1 : info.height;
+    native.height = info.target == RT_TEXTURE_1D ? 1 : info.height;
     native.depth = info.depth ? info.depth : 1;
     native.target = info.target;
-    native.layers = (info.target == GL_TEXTURE_2D_ARRAY) ? native.depth : 1;
+    native.layers = (info.target == RT_TEXTURE_2D_ARRAY) ? native.depth : 1;
     native.mipLevels = 1;
-    if (info.mipmaps == 0 && gl_has_mipmap_filter(info.min_filter))
+    if (info.mipmaps == 0 && rt_has_mipmap_filter(info.min_filter))
     {
         uint32_t maxDim = std::max(native.width, native.height);
         while (maxDim >>= 1) native.mipLevels++;
@@ -1010,11 +1068,11 @@ rt_texture_t wg_create_texture(rt_texture_info_t const& info)
     WGPUTextureDescriptor desc = {};
     desc.size.width = native.width;
     desc.size.height = native.height;
-    desc.size.depthOrArrayLayers = (info.target == GL_TEXTURE_3D) ? native.depth : native.layers;
+    desc.size.depthOrArrayLayers = (info.target == RT_TEXTURE_3D) ? native.depth : native.layers;
     desc.mipLevelCount = native.mipLevels;
-    desc.sampleCount = (info.target == GL_TEXTURE_2D_MULTISAMPLE && info.samples) ? info.samples : 1;
-    desc.dimension = (info.target == GL_TEXTURE_3D) ? WGPUTextureDimension_3D :
-                     (info.target == GL_TEXTURE_1D) ? WGPUTextureDimension_1D :
+    desc.sampleCount = (info.target == RT_TEXTURE_2D_MULTISAMPLE && info.samples) ? info.samples : 1;
+    desc.dimension = (info.target == RT_TEXTURE_3D) ? WGPUTextureDimension_3D :
+                     (info.target == RT_TEXTURE_1D) ? WGPUTextureDimension_1D :
                      WGPUTextureDimension_2D;
     desc.format = native.format;
     desc.usage = (WGPUTextureUsage)(WGPUTextureUsage_TextureBinding | WGPUTextureUsage_CopyDst |
@@ -1031,13 +1089,13 @@ rt_texture_t wg_create_texture(rt_texture_info_t const& info)
     if (info.data)
     {
         size_t bpp = wg_format_bytes(native.format);
-        size_t bytes = (size_t)native.width * native.height * ((info.target == GL_TEXTURE_3D) ? native.depth : 1) * bpp;
+        size_t bytes = (size_t)native.width * native.height * ((info.target == RT_TEXTURE_3D) ? native.depth : 1) * bpp;
         WGPUImageCopyTexture dst = {};
         dst.texture = native.handle;
         WGPUTextureDataLayout layout = {};
         layout.bytesPerRow = (uint32_t)(native.width * bpp);
         layout.rowsPerImage = native.height;
-        WGPUExtent3D size = {native.width, native.height, (info.target == GL_TEXTURE_3D) ? native.depth : 1};
+        WGPUExtent3D size = {native.width, native.height, (info.target == RT_TEXTURE_3D) ? native.depth : 1};
         wgpuQueueWriteTexture(webgpu.queue, &dst, info.data, bytes, &layout, &size);
         wg_transition_image(native, WG_STATE_SHADER_READ);
     }
@@ -1062,10 +1120,10 @@ rt_texture_t wg_create_texture(rt_texture_info_t const& info)
 rt_texture_t wg_create_texture_color(uint32_t width, uint32_t height, const void* data)
 {
     return wg_create_texture({
-        .width = width, .height = height, .target = GL_TEXTURE_2D,
-        .format = GL_RGBA, .internal_format = GL_RGBA8, .type = GL_UNSIGNED_BYTE,
-        .min_filter = GL_LINEAR, .mag_filter = GL_LINEAR,
-        .wrap_s = GL_CLAMP_TO_EDGE, .wrap_t = GL_CLAMP_TO_EDGE, .wrap_r = GL_CLAMP_TO_EDGE,
+        .width = width, .height = height, .target = RT_TEXTURE_2D,
+        .format = RT_RGBA, .internal_format = RT_RGBA8, .type = RT_UNSIGNED_BYTE,
+        .min_filter = RT_LINEAR, .mag_filter = RT_LINEAR,
+        .wrap_s = RT_CLAMP_TO_EDGE, .wrap_t = RT_CLAMP_TO_EDGE, .wrap_r = RT_CLAMP_TO_EDGE,
         .data = data
     });
 }
@@ -1073,10 +1131,10 @@ rt_texture_t wg_create_texture_color(uint32_t width, uint32_t height, const void
 rt_texture_t wg_create_texture_color_float(uint32_t width, uint32_t height, const void* data)
 {
     return wg_create_texture({
-        .width = width, .height = height, .target = GL_TEXTURE_2D,
-        .format = GL_RGBA, .internal_format = GL_RGBA32F, .type = GL_FLOAT,
-        .min_filter = GL_LINEAR, .mag_filter = GL_LINEAR,
-        .wrap_s = GL_CLAMP_TO_EDGE, .wrap_t = GL_CLAMP_TO_EDGE, .wrap_r = GL_CLAMP_TO_EDGE,
+        .width = width, .height = height, .target = RT_TEXTURE_2D,
+        .format = RT_RGBA, .internal_format = RT_RGBA32F, .type = RT_FLOAT,
+        .min_filter = RT_LINEAR, .mag_filter = RT_LINEAR,
+        .wrap_s = RT_CLAMP_TO_EDGE, .wrap_t = RT_CLAMP_TO_EDGE, .wrap_r = RT_CLAMP_TO_EDGE,
         .data = data
     });
 }
@@ -1084,10 +1142,10 @@ rt_texture_t wg_create_texture_color_float(uint32_t width, uint32_t height, cons
 rt_texture_t wg_create_texture_depth(uint32_t width, uint32_t height, const void* data)
 {
     return wg_create_texture({
-        .width = width, .height = height, .target = GL_TEXTURE_2D,
-        .format = GL_DEPTH_COMPONENT, .internal_format = GL_DEPTH_COMPONENT32F, .type = GL_FLOAT,
-        .min_filter = GL_LINEAR, .mag_filter = GL_LINEAR,
-        .wrap_s = GL_CLAMP_TO_EDGE, .wrap_t = GL_CLAMP_TO_EDGE, .wrap_r = GL_CLAMP_TO_EDGE,
+        .width = width, .height = height, .target = RT_TEXTURE_2D,
+        .format = RT_DEPTH_COMPONENT, .internal_format = RT_DEPTH_COMPONENT32F, .type = RT_FLOAT,
+        .min_filter = RT_LINEAR, .mag_filter = RT_LINEAR,
+        .wrap_s = RT_CLAMP_TO_EDGE, .wrap_t = RT_CLAMP_TO_EDGE, .wrap_r = RT_CLAMP_TO_EDGE,
         .data = data
     });
 }
@@ -1095,10 +1153,10 @@ rt_texture_t wg_create_texture_depth(uint32_t width, uint32_t height, const void
 rt_texture_t wg_create_texture_depth_stencil(uint32_t width, uint32_t height, const void* data)
 {
     return wg_create_texture({
-        .width = width, .height = height, .target = GL_TEXTURE_2D,
-        .format = GL_DEPTH_STENCIL, .internal_format = GL_DEPTH32F_STENCIL8, .type = GL_FLOAT,
-        .min_filter = GL_LINEAR, .mag_filter = GL_LINEAR,
-        .wrap_s = GL_CLAMP_TO_EDGE, .wrap_t = GL_CLAMP_TO_EDGE, .wrap_r = GL_CLAMP_TO_EDGE,
+        .width = width, .height = height, .target = RT_TEXTURE_2D,
+        .format = RT_DEPTH_STENCIL, .internal_format = RT_DEPTH32F_STENCIL8, .type = RT_FLOAT,
+        .min_filter = RT_LINEAR, .mag_filter = RT_LINEAR,
+        .wrap_s = RT_CLAMP_TO_EDGE, .wrap_t = RT_CLAMP_TO_EDGE, .wrap_r = RT_CLAMP_TO_EDGE,
         .data = data
     });
 }
@@ -1123,7 +1181,7 @@ void wg_bind_texture(rt_texture_t& texture, rt_texture_bind_t bind)
         fprintf(stderr, "Pipeline not begin");
         abort();
     }
-    webgpu.currentBinding[bind.binding].type = GL_BINDING_TEXTURE;
+    webgpu.currentBinding[bind.binding].type = RT_BINDING_TEXTURE;
     webgpu.currentBinding[bind.binding].texture = texture;
     webgpu.currentBinding[bind.binding].texture_bind = bind;
 }
@@ -1135,7 +1193,7 @@ void wg_bind_texture_storage(rt_texture_t& texture, rt_texture_storage_bind_t bi
         fprintf(stderr, "Pipeline not begin");
         abort();
     }
-    webgpu.currentBinding[bind.binding].type = GL_BINDING_STORAGE_TEXTURE;
+    webgpu.currentBinding[bind.binding].type = RT_BINDING_STORAGE_TEXTURE;
     webgpu.currentBinding[bind.binding].storage_texture = texture;
     webgpu.currentBinding[bind.binding].storage_texture_bind = bind;
 }
@@ -1146,12 +1204,12 @@ rt_sampler_t wg_create_sampler(rt_sampler_info_t const& info)
     uint32_t handle = webgpu.samplerID + 1;
     auto& native = webgpu.samplers[handle];
     WGPUSamplerDescriptor desc = {};
-    desc.minFilter = gl_to_wg_filter(info.min_filter);
-    desc.magFilter = gl_to_wg_filter(info.mag_filter);
-    desc.mipmapFilter = gl_to_wg_mip(info.min_filter);
-    desc.addressModeU = gl_to_wg_address(info.wrap_s);
-    desc.addressModeV = gl_to_wg_address(info.wrap_t);
-    desc.addressModeW = gl_to_wg_address(info.wrap_r);
+    desc.minFilter = rt_to_wg_filter(info.min_filter);
+    desc.magFilter = rt_to_wg_filter(info.mag_filter);
+    desc.mipmapFilter = rt_to_wg_mip(info.min_filter);
+    desc.addressModeU = rt_to_wg_address(info.wrap_s);
+    desc.addressModeV = rt_to_wg_address(info.wrap_t);
+    desc.addressModeW = rt_to_wg_address(info.wrap_r);
     desc.maxAnisotropy = 1;
     native.handle = wgpuDeviceCreateSampler(webgpu.device, &desc);
     webgpu.samplerID = handle;
@@ -1180,7 +1238,7 @@ void wg_bind_sampler(rt_sampler_t& sampler, rt_sampler_bind_t bind)
         fprintf(stderr, "Pipeline not begin");
         abort();
     }
-    webgpu.currentBinding[bind.binding].type = GL_BINDING_SAMPLER;
+    webgpu.currentBinding[bind.binding].type = RT_BINDING_SAMPLER;
     webgpu.currentBinding[bind.binding].sampler = sampler;
     webgpu.currentBinding[bind.binding].sampler_bind = bind;
 }
@@ -1473,7 +1531,7 @@ void wg_begin_render(rt_pass_render_t& pass)
         depth.depthLoadOp = pass.depth.clear ? WGPULoadOp_Clear : WGPULoadOp_Load;
         depth.depthStoreOp = WGPUStoreOp_Store;
         depth.depthClearValue = pass.depth.value;
-        if (pass.depth.texture.format == GL_DEPTH_STENCIL)
+        if (pass.depth.texture.format == RT_DEPTH_STENCIL)
         {
             depth.stencilLoadOp = pass.stencil.clear ? WGPULoadOp_Clear : WGPULoadOp_Load;
             depth.stencilStoreOp = WGPUStoreOp_Store;
@@ -1765,13 +1823,13 @@ rt_mesh_t wg_create_mesh(const float* vertices, const float* normals, const floa
     native.vertexCount = (uint32_t)vertex_count;
     native.indexCount = (uint32_t)index_count;
     if (vertices)
-        result.vertex[0] = wg_create_buffer({.size = vertex_count * 3 * sizeof(float), .usage = GL_BUFFER_USAGE_VERTEX | GL_BUFFER_USAGE_COPY_DST, .data = vertices});
+        result.vertex[0] = wg_create_buffer({.size = vertex_count * 3 * sizeof(float), .usage = RT_BUFFER_USAGE_VERTEX | RT_BUFFER_USAGE_COPY_DST, .data = vertices});
     if (normals)
-        result.vertex[1] = wg_create_buffer({.size = vertex_count * 3 * sizeof(float), .usage = GL_BUFFER_USAGE_VERTEX | GL_BUFFER_USAGE_COPY_DST, .data = normals});
+        result.vertex[1] = wg_create_buffer({.size = vertex_count * 3 * sizeof(float), .usage = RT_BUFFER_USAGE_VERTEX | RT_BUFFER_USAGE_COPY_DST, .data = normals});
     if (uvs)
-        result.vertex[2] = wg_create_buffer({.size = vertex_count * 2 * sizeof(float), .usage = GL_BUFFER_USAGE_VERTEX | GL_BUFFER_USAGE_COPY_DST, .data = uvs});
+        result.vertex[2] = wg_create_buffer({.size = vertex_count * 2 * sizeof(float), .usage = RT_BUFFER_USAGE_VERTEX | RT_BUFFER_USAGE_COPY_DST, .data = uvs});
     if (indices)
-        result.index = wg_create_buffer({.size = index_count * sizeof(uint32_t), .usage = GL_BUFFER_USAGE_INDEX | GL_BUFFER_USAGE_COPY_DST, .data = indices});
+        result.index = wg_create_buffer({.size = index_count * sizeof(uint32_t), .usage = RT_BUFFER_USAGE_INDEX | RT_BUFFER_USAGE_COPY_DST, .data = indices});
     std::iota(result.location, result.location + std::size(result.location), 0);
     webgpu.meshID = handle;
     result.handle = handle;
@@ -1807,7 +1865,7 @@ static void wg_draw_mesh_impl(rt_mesh_t& mesh, uint32_t instanceCount)
     for (uint32_t i = 0; i < std::size(module.vertex); ++i)
     {
         rt_vertex_t const& layout = module.vertex[i];
-        if (layout.type == GL_NONE || layout.count == 0) continue;
+        if (layout.type == RT_TYPE_NONE || layout.count == 0) continue;
         for (uint32_t k = 0; k < std::size(mesh.vertex); ++k)
         {
             if (mesh.vertex[k].handle == 0 || mesh.location[k] != layout.location) continue;
@@ -1815,7 +1873,7 @@ static void wg_draw_mesh_impl(rt_mesh_t& mesh, uint32_t instanceCount)
             if (!native) break;
             wg_transition_buffer(*native, WG_STATE_VERTEX);
             wgpuRenderPassEncoderSetVertexBuffer(webgpu.renderPass, layout.location, native->handle, 0, mesh.vertex[k].size);
-            uint32_t stride = gl_vertex_size(layout.type, layout.count);
+            uint32_t stride = rt_to_wg_vertex_size(layout.type, layout.count);
             if (vertex_count == 0 && stride)
                 vertex_count = (uint32_t)(mesh.vertex[k].size / stride);
             break;
@@ -1825,9 +1883,9 @@ static void wg_draw_mesh_impl(rt_mesh_t& mesh, uint32_t instanceCount)
     {
         auto* native = wg_buffer_native(mesh.index);
         if (!native) return;
-        uint32_t indexStride = gl_index_type_size(module.index_type);
+        uint32_t indexStride = rt_to_wg_index_size(module.index_type);
         wg_transition_buffer(*native, WG_STATE_INDEX);
-        wgpuRenderPassEncoderSetIndexBuffer(webgpu.renderPass, native->handle, gl_to_wg_index_type(module.index_type), 0, mesh.index.size);
+        wgpuRenderPassEncoderSetIndexBuffer(webgpu.renderPass, native->handle, rt_to_wg_index_type(module.index_type), 0, mesh.index.size);
         wgpuRenderPassEncoderDrawIndexed(webgpu.renderPass, (uint32_t)(mesh.index.size / indexStride), instanceCount, 0, 0, 0);
     }
     else
@@ -1853,13 +1911,13 @@ rt_meshlet_t wg_create_meshlet(const float* vertices, const float* normals, cons
     native.vertexCount = (uint32_t)vertex_count;
     native.indexCount = (uint32_t)index_count;
     if (vertices)
-        result.vertex[0] = wg_create_buffer({.size = vertex_count * 4 * sizeof(float), .usage = GL_BUFFER_USAGE_STORAGE | GL_BUFFER_USAGE_COPY_DST, .data = vertices});
+        result.vertex[0] = wg_create_buffer({.size = vertex_count * 4 * sizeof(float), .usage = RT_BUFFER_USAGE_STORAGE | RT_BUFFER_USAGE_COPY_DST, .data = vertices});
     if (normals)
-        result.vertex[1] = wg_create_buffer({.size = vertex_count * 4 * sizeof(float), .usage = GL_BUFFER_USAGE_STORAGE | GL_BUFFER_USAGE_COPY_DST, .data = normals});
+        result.vertex[1] = wg_create_buffer({.size = vertex_count * 4 * sizeof(float), .usage = RT_BUFFER_USAGE_STORAGE | RT_BUFFER_USAGE_COPY_DST, .data = normals});
     if (uvs)
-        result.vertex[2] = wg_create_buffer({.size = vertex_count * 2 * sizeof(float), .usage = GL_BUFFER_USAGE_STORAGE | GL_BUFFER_USAGE_COPY_DST, .data = uvs});
+        result.vertex[2] = wg_create_buffer({.size = vertex_count * 2 * sizeof(float), .usage = RT_BUFFER_USAGE_STORAGE | RT_BUFFER_USAGE_COPY_DST, .data = uvs});
     if (indices)
-        result.index = wg_create_buffer({.size = index_count * sizeof(uint32_t), .usage = GL_BUFFER_USAGE_STORAGE | GL_BUFFER_USAGE_COPY_DST, .data = indices});
+        result.index = wg_create_buffer({.size = index_count * sizeof(uint32_t), .usage = RT_BUFFER_USAGE_STORAGE | RT_BUFFER_USAGE_COPY_DST, .data = indices});
     std::iota(result.location, result.location + std::size(result.location), 0);
     webgpu.meshletID = handle;
     result.handle = handle;
@@ -1894,18 +1952,18 @@ void wg_draw_meshlet(rt_meshlet_t& meshlet)
     for (uint32_t i = 0; i < std::size(module.vertex); ++i)
     {
         rt_vertex_t const& layout = module.vertex[i];
-        if (layout.type == GL_NONE || layout.count == 0) continue;
+        if (layout.type == RT_TYPE_NONE || layout.count == 0) continue;
         for (uint32_t k = 0; k < std::size(meshlet.vertex); ++k)
         {
             if (meshlet.vertex[k].handle == 0 || meshlet.location[k] != layout.location) continue;
-            wg_bind_buffer(meshlet.vertex[k], {.binding = layout.location, .target = GL_SHADER_STORAGE_BUFFER});
+            wg_bind_buffer(meshlet.vertex[k], {.binding = layout.location, .target = RT_SHADER_STORAGE_BUFFER});
             break;
         }
         if (layout.location + 1 > index_binding)
             index_binding = layout.location + 1;
     }
     if (meshlet.index.handle)
-        wg_bind_buffer(meshlet.index, {.binding = index_binding, .target = GL_SHADER_STORAGE_BUFFER});
+        wg_bind_buffer(meshlet.index, {.binding = index_binding, .target = RT_SHADER_STORAGE_BUFFER});
     wg_flush_descriptors();
 }
 
@@ -1920,7 +1978,7 @@ void wg_draw_screen(int width, int height, rt_color_t clear, rt_texture_t& textu
 {
     static auto module = wg_create_module_render({
         .vertex = {rt_vertex_vertex, {}, rt_vertex_uv},
-        .binding = {{.binding = 0, .type = GL_BINDING_TEXTURE}},
+        .binding = {{.binding = 0, .type = RT_BINDING_TEXTURE}},
     });
     if (!module.handle) return;
     rt_pass_render_t pass = {.module = module, .screen = {.color = {.clear = true, .value = clear}}};

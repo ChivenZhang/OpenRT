@@ -26,77 +26,129 @@ enum rt_module_type_t : uint32_t
     GL_MODULE_TRANSFER = 4,
 };
 
-static VkFilter gl_to_vk_filter(GLenum filter)
+static VkFilter rt_to_vk_filter(rt_filter_t filter)
 {
-    return (filter == GL_NEAREST) ? VK_FILTER_NEAREST : VK_FILTER_LINEAR;
+    switch (filter)
+    {
+        case RT_NEAREST: return VK_FILTER_NEAREST;
+        case RT_LINEAR: return VK_FILTER_LINEAR;
+        case RT_NEAREST_MIPMAP_NEAREST: return VK_FILTER_LINEAR;
+        case RT_LINEAR_MIPMAP_NEAREST: return VK_FILTER_LINEAR;
+        case RT_NEAREST_MIPMAP_LINEAR: return VK_FILTER_LINEAR;
+        case RT_LINEAR_MIPMAP_LINEAR: return VK_FILTER_LINEAR;
+        default: return VK_FILTER_LINEAR;
+    }
 }
 
-static VkFilter gl_to_vk_min_filter(GLenum minFilter)
+static VkFilter rt_to_vk_min_filter(rt_filter_t minFilter)
 {
-    return (minFilter == GL_NEAREST || minFilter == GL_NEAREST_MIPMAP_NEAREST ||
-            minFilter == GL_NEAREST_MIPMAP_LINEAR) ? VK_FILTER_NEAREST : VK_FILTER_LINEAR;
+    switch (minFilter)
+    {
+        case RT_NEAREST: return VK_FILTER_NEAREST;
+        case RT_LINEAR: return VK_FILTER_LINEAR;
+        case RT_NEAREST_MIPMAP_NEAREST: return VK_FILTER_NEAREST;
+        case RT_LINEAR_MIPMAP_NEAREST: return VK_FILTER_LINEAR;
+        case RT_NEAREST_MIPMAP_LINEAR: return VK_FILTER_NEAREST;
+        case RT_LINEAR_MIPMAP_LINEAR: return VK_FILTER_LINEAR;
+        default: return VK_FILTER_LINEAR;
+    }
 }
 
-static VkSamplerAddressMode gl_to_vk_address_mode(GLenum wrap)
+static VkSamplerAddressMode rt_to_vk_address(rt_wrap_t wrap)
 {
     switch (wrap)
     {
-        case GL_REPEAT: return VK_SAMPLER_ADDRESS_MODE_REPEAT;
-        case GL_MIRRORED_REPEAT: return VK_SAMPLER_ADDRESS_MODE_MIRRORED_REPEAT;
-        case GL_CLAMP_TO_BORDER: return VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER;
-        case GL_CLAMP_TO_EDGE:
+        case RT_REPEAT: return VK_SAMPLER_ADDRESS_MODE_REPEAT;
+        case RT_CLAMP_TO_EDGE: return VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+        case RT_CLAMP_TO_BORDER: return VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER;
+        case RT_MIRRORED_REPEAT: return VK_SAMPLER_ADDRESS_MODE_MIRRORED_REPEAT;
+        case RT_MIRROR_CLAMP_TO_EDGE: return VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
         default: return VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
     }
 }
 
-static VkSamplerMipmapMode gl_to_vk_mipmap_mode(GLenum minFilter)
+static VkSamplerMipmapMode rt_to_vk_mipmap(rt_filter_t minFilter)
 {
-    return (minFilter == GL_NEAREST_MIPMAP_NEAREST || minFilter == GL_LINEAR_MIPMAP_NEAREST) ?
-           VK_SAMPLER_MIPMAP_MODE_NEAREST : VK_SAMPLER_MIPMAP_MODE_LINEAR;
+    switch (minFilter)
+    {
+        case RT_NEAREST: return VK_SAMPLER_MIPMAP_MODE_LINEAR;
+        case RT_LINEAR: return VK_SAMPLER_MIPMAP_MODE_LINEAR;
+        case RT_NEAREST_MIPMAP_NEAREST: return VK_SAMPLER_MIPMAP_MODE_NEAREST;
+        case RT_LINEAR_MIPMAP_NEAREST: return VK_SAMPLER_MIPMAP_MODE_NEAREST;
+        case RT_NEAREST_MIPMAP_LINEAR: return VK_SAMPLER_MIPMAP_MODE_LINEAR;
+        case RT_LINEAR_MIPMAP_LINEAR: return VK_SAMPLER_MIPMAP_MODE_LINEAR;
+        default: return VK_SAMPLER_MIPMAP_MODE_LINEAR;
+    }
 }
 
-static bool gl_has_mipmap_filter(GLenum minFilter)
+static bool rt_has_mipmap_filter(rt_filter_t minFilter)
 {
-    return minFilter == GL_NEAREST_MIPMAP_NEAREST || minFilter == GL_LINEAR_MIPMAP_NEAREST ||
-           minFilter == GL_NEAREST_MIPMAP_LINEAR || minFilter == GL_LINEAR_MIPMAP_LINEAR;
+    switch (minFilter)
+    {
+        case RT_NEAREST: return false;
+        case RT_LINEAR: return false;
+        case RT_NEAREST_MIPMAP_NEAREST: return true;
+        case RT_LINEAR_MIPMAP_NEAREST: return true;
+        case RT_NEAREST_MIPMAP_LINEAR: return true;
+        case RT_LINEAR_MIPMAP_LINEAR: return true;
+        default: return false;
+    }
 }
 
-static VkFormat gl_to_vk_format(GLenum glFormat, GLenum glType, GLenum internalFormat = 0)
+static VkFormat rt_to_vk_format(rt_format_t glFormat, rt_type_t glType, rt_internal_format_t internalFormat)
 {
     switch (internalFormat)
     {
-        case GL_R8: return VK_FORMAT_R8_UNORM;
-        case GL_RG8: return VK_FORMAT_R8G8_UNORM;
-        case GL_RGB8: return VK_FORMAT_R8G8B8_UNORM;
-        case GL_RGBA8: return VK_FORMAT_R8G8B8A8_UNORM;
-        case GL_SRGB8_ALPHA8: return VK_FORMAT_R8G8B8A8_SRGB;
-        case GL_R16F: return VK_FORMAT_R16_SFLOAT;
-        case GL_RG16F: return VK_FORMAT_R16G16_SFLOAT;
-        case GL_RGBA16F: return VK_FORMAT_R16G16B16A16_SFLOAT;
-        case GL_R32F: return VK_FORMAT_R32_SFLOAT;
-        case GL_RG32F: return VK_FORMAT_R32G32_SFLOAT;
-        case GL_RGBA32F: return VK_FORMAT_R32G32B32A32_SFLOAT;
-        case GL_DEPTH_COMPONENT16: return VK_FORMAT_D16_UNORM;
-        case GL_DEPTH_COMPONENT24: return VK_FORMAT_X8_D24_UNORM_PACK32;
-        case GL_DEPTH_COMPONENT32F: return VK_FORMAT_D32_SFLOAT;
-        case GL_DEPTH24_STENCIL8: return VK_FORMAT_D24_UNORM_S8_UINT;
-        case GL_DEPTH32F_STENCIL8: return VK_FORMAT_D32_SFLOAT_S8_UINT;
+        case RT_R8: return VK_FORMAT_R8_UNORM;
+        case RT_RG8: return VK_FORMAT_R8G8_UNORM;
+        case RT_R16F: return VK_FORMAT_R16_SFLOAT;
+        case RT_R32F: return VK_FORMAT_R32_SFLOAT;
+        case RT_RG16F: return VK_FORMAT_R16G16_SFLOAT;
+        case RT_RG32F: return VK_FORMAT_R32G32_SFLOAT;
+        case RT_RGB8: return VK_FORMAT_R8G8B8_UNORM;
+        case RT_RGBA8: return VK_FORMAT_R8G8B8A8_UNORM;
+        case RT_SRGB8_ALPHA8: return VK_FORMAT_R8G8B8A8_SRGB;
+        case RT_RGBA16F: return VK_FORMAT_R16G16B16A16_SFLOAT;
+        case RT_RGBA32F: return VK_FORMAT_R32G32B32A32_SFLOAT;
+        case RT_DEPTH_COMPONENT16: return VK_FORMAT_D16_UNORM;
+        case RT_DEPTH_COMPONENT24: return VK_FORMAT_X8_D24_UNORM_PACK32;
+        case RT_DEPTH_COMPONENT32F: return VK_FORMAT_D32_SFLOAT;
+        case RT_DEPTH24_STENCIL8: return VK_FORMAT_D24_UNORM_S8_UINT;
+        case RT_DEPTH32F_STENCIL8: return VK_FORMAT_D32_SFLOAT_S8_UINT;
         default: break;
     }
 
     switch (glFormat)
     {
-        case GL_RED:
-            return (glType == GL_FLOAT) ? VK_FORMAT_R32_SFLOAT : VK_FORMAT_R8_UNORM;
-        case GL_RG:
-            return (glType == GL_FLOAT) ? VK_FORMAT_R32G32_SFLOAT : VK_FORMAT_R8G8_UNORM;
-        case GL_RGB:
-            return (glType == GL_FLOAT) ? VK_FORMAT_R32G32B32_SFLOAT : VK_FORMAT_R8G8B8A8_UNORM;
-        case GL_RGBA:
-            return (glType == GL_FLOAT) ? VK_FORMAT_R32G32B32A32_SFLOAT : VK_FORMAT_R8G8B8A8_UNORM;
-        case GL_DEPTH_COMPONENT:
+        case RT_STENCIL_INDEX:
+            return VK_FORMAT_R8G8B8A8_UNORM;
+        case RT_DEPTH_COMPONENT:
             return VK_FORMAT_D32_SFLOAT;
-        case GL_DEPTH_STENCIL:
+        case RT_RED:
+            switch (glType)
+            {
+                case RT_FLOAT: return VK_FORMAT_R32_SFLOAT;
+                default: return VK_FORMAT_R8_UNORM;
+            }
+        case RT_RGB:
+            switch (glType)
+            {
+                case RT_FLOAT: return VK_FORMAT_R32G32B32_SFLOAT;
+                default: return VK_FORMAT_R8G8B8A8_UNORM;
+            }
+        case RT_RGBA:
+            switch (glType)
+            {
+                case RT_FLOAT: return VK_FORMAT_R32G32B32A32_SFLOAT;
+                default: return VK_FORMAT_R8G8B8A8_UNORM;
+            }
+        case RT_RG:
+            switch (glType)
+            {
+                case RT_FLOAT: return VK_FORMAT_R32G32_SFLOAT;
+                default: return VK_FORMAT_R8G8_UNORM;
+            }
+        case RT_DEPTH_STENCIL:
             return VK_FORMAT_D24_UNORM_S8_UINT;
         default:
             return VK_FORMAT_R8G8B8A8_UNORM;
@@ -121,13 +173,24 @@ static VkImageAspectFlags vk_format_aspect(VkFormat format)
     }
 }
 
-static VkImageUsageFlags gl_to_vk_image_usage(GLenum format)
+static VkImageUsageFlags rt_to_vk_image_usage(rt_format_t format)
 {
     VkImageUsageFlags flags = VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
     switch (format)
     {
-        case GL_DEPTH_COMPONENT:
-        case GL_DEPTH_STENCIL:
+        case RT_STENCIL_INDEX:
+            flags |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_STORAGE_BIT;
+            break;
+        case RT_DEPTH_COMPONENT:
+            flags |= VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+            break;
+        case RT_RED:
+        case RT_RGB:
+        case RT_RGBA:
+        case RT_RG:
+            flags |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_STORAGE_BIT;
+            break;
+        case RT_DEPTH_STENCIL:
             flags |= VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
             break;
         default:
@@ -140,204 +203,214 @@ static VkImageUsageFlags gl_to_vk_image_usage(GLenum format)
 static VkBufferUsageFlags rt_to_vk_buffer_usage(uint32_t usage)
 {
     VkBufferUsageFlags flags = VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
-    if (usage & GL_BUFFER_USAGE_INDEX) flags |= VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
-    if (usage & GL_BUFFER_USAGE_VERTEX) flags |= VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
-    if (usage & GL_BUFFER_USAGE_UNIFORM) flags |= VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
-    if (usage & GL_BUFFER_USAGE_STORAGE) flags |= VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
-    if (usage & GL_BUFFER_USAGE_INDIRECT) flags |= VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT;
+    if (usage & RT_BUFFER_USAGE_INDEX) flags |= VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
+    if (usage & RT_BUFFER_USAGE_VERTEX) flags |= VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+    if (usage & RT_BUFFER_USAGE_UNIFORM) flags |= VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
+    if (usage & RT_BUFFER_USAGE_STORAGE) flags |= VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+    if (usage & RT_BUFFER_USAGE_INDIRECT) flags |= VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT;
     return flags;
 }
 
-static VkFormat gl_to_vk_vertex_format(GLenum type, GLenum count)
+static VkFormat rt_to_vk_vertex_format(rt_type_t type, uint32_t count)
 {
-    if (type == GL_FLOAT)
+    switch (type)
     {
-        switch (count)
-        {
-            case 1: return VK_FORMAT_R32_SFLOAT;
-            case 2: return VK_FORMAT_R32G32_SFLOAT;
-            case 3: return VK_FORMAT_R32G32B32_SFLOAT;
-            case 4: return VK_FORMAT_R32G32B32A32_SFLOAT;
-            default: return VK_FORMAT_R32_SFLOAT;
-        }
+        case RT_INT:
+            switch (count)
+            {
+                case 1: return VK_FORMAT_R32_SINT;
+                case 2: return VK_FORMAT_R32G32_SINT;
+                case 3: return VK_FORMAT_R32G32B32_SINT;
+                case 4: return VK_FORMAT_R32G32B32A32_SINT;
+                default: return VK_FORMAT_R32_SINT;
+            }
+        case RT_UNSIGNED_INT:
+            switch (count)
+            {
+                case 1: return VK_FORMAT_R32_UINT;
+                case 2: return VK_FORMAT_R32G32_UINT;
+                case 3: return VK_FORMAT_R32G32B32_UINT;
+                case 4: return VK_FORMAT_R32G32B32A32_UINT;
+                default: return VK_FORMAT_R32_UINT;
+            }
+        case RT_FLOAT:
+            switch (count)
+            {
+                case 1: return VK_FORMAT_R32_SFLOAT;
+                case 2: return VK_FORMAT_R32G32_SFLOAT;
+                case 3: return VK_FORMAT_R32G32B32_SFLOAT;
+                case 4: return VK_FORMAT_R32G32B32A32_SFLOAT;
+                default: return VK_FORMAT_R32_SFLOAT;
+            }
+        default:
+            return VK_FORMAT_R32_SFLOAT;
     }
-    if (type == GL_INT)
-    {
-        switch (count)
-        {
-            case 1: return VK_FORMAT_R32_SINT;
-            case 2: return VK_FORMAT_R32G32_SINT;
-            case 3: return VK_FORMAT_R32G32B32_SINT;
-            case 4: return VK_FORMAT_R32G32B32A32_SINT;
-            default: return VK_FORMAT_R32_SINT;
-        }
-    }
-    if (type == GL_UNSIGNED_INT)
-    {
-        switch (count)
-        {
-            case 1: return VK_FORMAT_R32_UINT;
-            case 2: return VK_FORMAT_R32G32_UINT;
-            case 3: return VK_FORMAT_R32G32B32_UINT;
-            case 4: return VK_FORMAT_R32G32B32A32_UINT;
-            default: return VK_FORMAT_R32_UINT;
-        }
-    }
-    return VK_FORMAT_R32_SFLOAT;
 }
 
-static VkDescriptorType gl_to_vk_descriptor_type(rt_binding_type_t bindingType)
+static VkDescriptorType rt_to_vk_descriptor(rt_binding_type_t bindingType)
 {
     switch (bindingType)
     {
-        case GL_BINDING_BUFFER: return VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-        case GL_BINDING_TEXTURE: return VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-        case GL_BINDING_STORAGE_TEXTURE: return VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
-        case GL_BINDING_SAMPLER: return VK_DESCRIPTOR_TYPE_SAMPLER;
+        case RT_BINDING_NONE: return VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        case RT_BINDING_BUFFER: return VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        case RT_BINDING_SAMPLER: return VK_DESCRIPTOR_TYPE_SAMPLER;
+        case RT_BINDING_TEXTURE: return VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        case RT_BINDING_STORAGE_TEXTURE: return VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
         default: return VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
     }
 }
 
-static VkCompareOp gl_to_vk_compare_op(GLenum func)
+static VkCompareOp rt_to_vk_compare(rt_compare_op_t func)
 {
     switch (func)
     {
-        case GL_NEVER: return VK_COMPARE_OP_NEVER;
-        case GL_LESS: return VK_COMPARE_OP_LESS;
-        case GL_EQUAL: return VK_COMPARE_OP_EQUAL;
-        case GL_LEQUAL: return VK_COMPARE_OP_LESS_OR_EQUAL;
-        case GL_GREATER: return VK_COMPARE_OP_GREATER;
-        case GL_NOTEQUAL: return VK_COMPARE_OP_NOT_EQUAL;
-        case GL_GEQUAL: return VK_COMPARE_OP_GREATER_OR_EQUAL;
-        case GL_ALWAYS:
+        case RT_NEVER: return VK_COMPARE_OP_NEVER;
+        case RT_LESS: return VK_COMPARE_OP_LESS;
+        case RT_EQUAL: return VK_COMPARE_OP_EQUAL;
+        case RT_LEQUAL: return VK_COMPARE_OP_LESS_OR_EQUAL;
+        case RT_GREATER: return VK_COMPARE_OP_GREATER;
+        case RT_NOTEQUAL: return VK_COMPARE_OP_NOT_EQUAL;
+        case RT_GEQUAL: return VK_COMPARE_OP_GREATER_OR_EQUAL;
+        case RT_ALWAYS: return VK_COMPARE_OP_ALWAYS;
         default: return VK_COMPARE_OP_ALWAYS;
     }
 }
 
-static VkBlendFactor gl_to_vk_blend_factor(GLenum factor)
+static VkBlendFactor rt_to_vk_blend_factor(rt_blend_factor_t factor)
 {
     switch (factor)
     {
-        case GL_ZERO: return VK_BLEND_FACTOR_ZERO;
-        case GL_ONE: return VK_BLEND_FACTOR_ONE;
-        case GL_SRC_COLOR: return VK_BLEND_FACTOR_SRC_COLOR;
-        case GL_ONE_MINUS_SRC_COLOR: return VK_BLEND_FACTOR_ONE_MINUS_SRC_COLOR;
-        case GL_DST_COLOR: return VK_BLEND_FACTOR_DST_COLOR;
-        case GL_ONE_MINUS_DST_COLOR: return VK_BLEND_FACTOR_ONE_MINUS_DST_COLOR;
-        case GL_SRC_ALPHA: return VK_BLEND_FACTOR_SRC_ALPHA;
-        case GL_ONE_MINUS_SRC_ALPHA: return VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
-        case GL_DST_ALPHA: return VK_BLEND_FACTOR_DST_ALPHA;
-        case GL_ONE_MINUS_DST_ALPHA: return VK_BLEND_FACTOR_ONE_MINUS_DST_ALPHA;
-        case GL_CONSTANT_COLOR: return VK_BLEND_FACTOR_CONSTANT_COLOR;
-        case GL_ONE_MINUS_CONSTANT_COLOR: return VK_BLEND_FACTOR_ONE_MINUS_CONSTANT_COLOR;
-        case GL_CONSTANT_ALPHA: return VK_BLEND_FACTOR_CONSTANT_ALPHA;
-        case GL_ONE_MINUS_CONSTANT_ALPHA: return VK_BLEND_FACTOR_ONE_MINUS_CONSTANT_ALPHA;
-        case GL_SRC_ALPHA_SATURATE: return VK_BLEND_FACTOR_SRC_ALPHA_SATURATE;
+        case RT_BLEND_ZERO: return VK_BLEND_FACTOR_ZERO;
+        case RT_BLEND_ONE: return VK_BLEND_FACTOR_ONE;
+        case RT_BLEND_SRC_COLOR: return VK_BLEND_FACTOR_SRC_COLOR;
+        case RT_BLEND_ONE_MINUS_SRC_COLOR: return VK_BLEND_FACTOR_ONE_MINUS_SRC_COLOR;
+        case RT_BLEND_SRC_ALPHA: return VK_BLEND_FACTOR_SRC_ALPHA;
+        case RT_BLEND_ONE_MINUS_SRC_ALPHA: return VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+        case RT_BLEND_DST_ALPHA: return VK_BLEND_FACTOR_DST_ALPHA;
+        case RT_BLEND_ONE_MINUS_DST_ALPHA: return VK_BLEND_FACTOR_ONE_MINUS_DST_ALPHA;
+        case RT_BLEND_DST_COLOR: return VK_BLEND_FACTOR_DST_COLOR;
+        case RT_BLEND_ONE_MINUS_DST_COLOR: return VK_BLEND_FACTOR_ONE_MINUS_DST_COLOR;
+        case RT_BLEND_SRC_ALPHA_SATURATE: return VK_BLEND_FACTOR_SRC_ALPHA_SATURATE;
+        case RT_BLEND_CONSTANT_COLOR: return VK_BLEND_FACTOR_CONSTANT_COLOR;
+        case RT_BLEND_ONE_MINUS_CONSTANT_COLOR: return VK_BLEND_FACTOR_ONE_MINUS_CONSTANT_COLOR;
+        case RT_BLEND_CONSTANT_ALPHA: return VK_BLEND_FACTOR_CONSTANT_ALPHA;
+        case RT_BLEND_ONE_MINUS_CONSTANT_ALPHA: return VK_BLEND_FACTOR_ONE_MINUS_CONSTANT_ALPHA;
         default: return VK_BLEND_FACTOR_ONE;
     }
 }
 
-static VkBlendOp gl_to_vk_blend_op(GLenum func)
+static VkBlendOp rt_to_vk_blend_op(rt_blend_op_t func)
 {
     switch (func)
     {
-        case GL_FUNC_SUBTRACT: return VK_BLEND_OP_SUBTRACT;
-        case GL_FUNC_REVERSE_SUBTRACT: return VK_BLEND_OP_REVERSE_SUBTRACT;
-        case GL_MIN: return VK_BLEND_OP_MIN;
-        case GL_MAX: return VK_BLEND_OP_MAX;
-        case GL_FUNC_ADD:
+        case RT_FUNC_ADD: return VK_BLEND_OP_ADD;
+        case RT_MIN: return VK_BLEND_OP_MIN;
+        case RT_MAX: return VK_BLEND_OP_MAX;
+        case RT_FUNC_SUBTRACT: return VK_BLEND_OP_SUBTRACT;
+        case RT_FUNC_REVERSE_SUBTRACT: return VK_BLEND_OP_REVERSE_SUBTRACT;
         default: return VK_BLEND_OP_ADD;
     }
 }
 
-static VkCullModeFlags gl_to_vk_cull_mode(GLenum mode)
+static VkCullModeFlags rt_to_vk_cull(rt_cull_mode_t mode)
 {
     switch (mode)
     {
-        case GL_FRONT: return VK_CULL_MODE_FRONT_BIT;
-        case GL_BACK: return VK_CULL_MODE_BACK_BIT;
-        case GL_FRONT_AND_BACK: return VK_CULL_MODE_FRONT_AND_BACK;
-        case GL_NONE:
+        case RT_CULL_NONE: return VK_CULL_MODE_NONE;
+        case RT_CULL_FRONT: return VK_CULL_MODE_FRONT_BIT;
+        case RT_CULL_BACK: return VK_CULL_MODE_BACK_BIT;
+        case RT_CULL_FRONT_AND_BACK: return VK_CULL_MODE_FRONT_AND_BACK;
         default: return VK_CULL_MODE_NONE;
     }
 }
 
-static VkFrontFace gl_to_vk_front_face(GLenum face)
+static VkFrontFace rt_to_vk_front_face(rt_front_face_t face)
 {
-    return (face == GL_CW) ? VK_FRONT_FACE_CLOCKWISE : VK_FRONT_FACE_COUNTER_CLOCKWISE;
+    switch (face)
+    {
+        case RT_CW: return VK_FRONT_FACE_CLOCKWISE;
+        case RT_CCW: return VK_FRONT_FACE_COUNTER_CLOCKWISE;
+        default: return VK_FRONT_FACE_COUNTER_CLOCKWISE;
+    }
 }
 
-static VkPolygonMode gl_to_vk_polygon_mode(GLenum fill)
+static VkPolygonMode rt_to_vk_fill(rt_fill_mode_t fill)
 {
     switch (fill)
     {
-        case GL_POINT: return VK_POLYGON_MODE_POINT;
-        case GL_LINE: return VK_POLYGON_MODE_LINE;
-        case GL_FILL:
+        case RT_POINT: return VK_POLYGON_MODE_POINT;
+        case RT_LINE: return VK_POLYGON_MODE_LINE;
+        case RT_FILL: return VK_POLYGON_MODE_FILL;
         default: return VK_POLYGON_MODE_FILL;
     }
 }
 
-static VkPrimitiveTopology gl_to_vk_primitive_topology(GLenum primitive)
+static VkPrimitiveTopology rt_to_vk_primitive(rt_primitive_t primitive)
 {
     switch (primitive)
     {
-        case GL_POINTS: return VK_PRIMITIVE_TOPOLOGY_POINT_LIST;
-        case GL_LINES: return VK_PRIMITIVE_TOPOLOGY_LINE_LIST;
-        case GL_LINE_STRIP: return VK_PRIMITIVE_TOPOLOGY_LINE_STRIP;
-        case GL_LINE_LOOP: return VK_PRIMITIVE_TOPOLOGY_LINE_STRIP;
-        case GL_TRIANGLE_STRIP: return VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP;
-        case GL_TRIANGLE_FAN: return VK_PRIMITIVE_TOPOLOGY_TRIANGLE_FAN;
-        case GL_TRIANGLES:
+        case RT_POINTS: return VK_PRIMITIVE_TOPOLOGY_POINT_LIST;
+        case RT_LINES: return VK_PRIMITIVE_TOPOLOGY_LINE_LIST;
+        case RT_LINE_LOOP: return VK_PRIMITIVE_TOPOLOGY_LINE_STRIP;
+        case RT_LINE_STRIP: return VK_PRIMITIVE_TOPOLOGY_LINE_STRIP;
+        case RT_TRIANGLES: return VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+        case RT_TRIANGLE_STRIP: return VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP;
+        case RT_TRIANGLE_FAN: return VK_PRIMITIVE_TOPOLOGY_TRIANGLE_FAN;
         default: return VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
     }
 }
 
-static VkStencilOp gl_to_vk_stencil_op(GLenum op)
+static VkStencilOp rt_to_vk_stencil_op(rt_stencil_op_t op)
 {
     switch (op)
     {
-        case GL_ZERO: return VK_STENCIL_OP_ZERO;
-        case GL_REPLACE: return VK_STENCIL_OP_REPLACE;
-        case GL_INCR: return VK_STENCIL_OP_INCREMENT_AND_CLAMP;
-        case GL_INCR_WRAP: return VK_STENCIL_OP_INCREMENT_AND_WRAP;
-        case GL_DECR: return VK_STENCIL_OP_DECREMENT_AND_CLAMP;
-        case GL_DECR_WRAP: return VK_STENCIL_OP_DECREMENT_AND_WRAP;
-        case GL_INVERT: return VK_STENCIL_OP_INVERT;
-        case GL_KEEP:
+        case RT_STENCIL_ZERO: return VK_STENCIL_OP_ZERO;
+        case RT_STENCIL_INVERT: return VK_STENCIL_OP_INVERT;
+        case RT_STENCIL_KEEP: return VK_STENCIL_OP_KEEP;
+        case RT_STENCIL_REPLACE: return VK_STENCIL_OP_REPLACE;
+        case RT_STENCIL_INCR: return VK_STENCIL_OP_INCREMENT_AND_CLAMP;
+        case RT_STENCIL_DECR: return VK_STENCIL_OP_DECREMENT_AND_CLAMP;
+        case RT_STENCIL_INCR_WRAP: return VK_STENCIL_OP_INCREMENT_AND_WRAP;
+        case RT_STENCIL_DECR_WRAP: return VK_STENCIL_OP_DECREMENT_AND_WRAP;
         default: return VK_STENCIL_OP_KEEP;
     }
 }
 
-static uint32_t gl_to_vk_vertex_size(GLenum type, GLenum count)
-{
-    if (type == GL_FLOAT || type == GL_INT || type == GL_UNSIGNED_INT)
-        return count * 4;
-    if (type == GL_SHORT || type == GL_UNSIGNED_SHORT || type == GL_HALF_FLOAT)
-        return count * 2;
-    if (type == GL_BYTE || type == GL_UNSIGNED_BYTE)
-        return count;
-    if (type == GL_DOUBLE)
-        return count * 8;
-    return count * 4;
-}
-
-static uint32_t gl_index_type_size(GLenum type)
+static uint32_t rt_to_vk_vertex_size(rt_type_t type, uint32_t count)
 {
     switch (type)
     {
-        case GL_UNSIGNED_SHORT:
+        case RT_TYPE_NONE: return count * 4;
+        case RT_BYTE: return count;
+        case RT_UNSIGNED_BYTE: return count;
+        case RT_SHORT: return count * 2;
+        case RT_UNSIGNED_SHORT: return count * 2;
+        case RT_INT: return count * 4;
+        case RT_UNSIGNED_INT: return count * 4;
+        case RT_FLOAT: return count * 4;
+        case RT_DOUBLE: return count * 8;
+        case RT_HALF_FLOAT: return count * 2;
+        case RT_UNSIGNED_INT_24_8: return count * 4;
+        default: return count * 4;
+    }
+}
+
+static uint32_t rt_to_vk_index_size(rt_type_t type)
+{
+    switch (type)
+    {
+        case RT_UNSIGNED_SHORT:
             return 2;
         default:
             return 4;
     }
 }
 
-static VkIndexType gl_to_vk_index_type(GLenum type)
+static VkIndexType rt_to_vk_index_type(rt_type_t type)
 {
     switch (type)
     {
-        case GL_UNSIGNED_SHORT:
+        case RT_UNSIGNED_SHORT:
             return VK_INDEX_TYPE_UINT16;
         default:
             return VK_INDEX_TYPE_UINT32;
@@ -362,19 +435,43 @@ static uint32_t vk_format_bytes(VkFormat format)
     }
 }
 
-static VkImageAspectFlags vk_image_aspect(GLenum aspect, GLenum format)
+static VkImageAspectFlags rt_to_vk_aspect(rt_format_t aspect, rt_format_t format)
 {
-    if (format == GL_DEPTH_STENCIL)
+    switch (format)
     {
-        if (aspect == GL_STENCIL_INDEX) return VK_IMAGE_ASPECT_STENCIL_BIT;
-        if (aspect == GL_DEPTH_COMPONENT) return VK_IMAGE_ASPECT_DEPTH_BIT;
-        return VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT;
+        case RT_STENCIL_INDEX:
+            return VK_IMAGE_ASPECT_STENCIL_BIT;
+        case RT_DEPTH_COMPONENT:
+            switch (aspect)
+            {
+                case RT_STENCIL_INDEX: return VK_IMAGE_ASPECT_STENCIL_BIT;
+                default: return VK_IMAGE_ASPECT_DEPTH_BIT;
+            }
+        case RT_RED:
+        case RT_RGB:
+        case RT_RGBA:
+        case RT_RG:
+            switch (aspect)
+            {
+                case RT_STENCIL_INDEX: return VK_IMAGE_ASPECT_STENCIL_BIT;
+                case RT_DEPTH_COMPONENT: return VK_IMAGE_ASPECT_DEPTH_BIT;
+                default: return VK_IMAGE_ASPECT_COLOR_BIT;
+            }
+        case RT_DEPTH_STENCIL:
+            switch (aspect)
+            {
+                case RT_STENCIL_INDEX: return VK_IMAGE_ASPECT_STENCIL_BIT;
+                case RT_DEPTH_COMPONENT: return VK_IMAGE_ASPECT_DEPTH_BIT;
+                default: return VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT;
+            }
+        default:
+            switch (aspect)
+            {
+                case RT_STENCIL_INDEX: return VK_IMAGE_ASPECT_STENCIL_BIT;
+                case RT_DEPTH_COMPONENT: return VK_IMAGE_ASPECT_DEPTH_BIT;
+                default: return VK_IMAGE_ASPECT_COLOR_BIT;
+            }
     }
-    if (aspect == GL_STENCIL_INDEX || format == GL_STENCIL_INDEX)
-        return VK_IMAGE_ASPECT_STENCIL_BIT;
-    if (aspect == GL_DEPTH_COMPONENT || format == GL_DEPTH_COMPONENT)
-        return VK_IMAGE_ASPECT_DEPTH_BIT;
-    return VK_IMAGE_ASPECT_COLOR_BIT;
 }
 
 // ====================================================================
@@ -450,8 +547,14 @@ struct vk_pass_compute_native_t
 struct vk_pass_render_native_t
 {
     bool offscreen = false;
+    bool rendering = false;
     uint32_t width = 0;
     uint32_t height = 0;
+    uint32_t colorCount = 0;
+    bool hasDepth = false;
+    bool hasStencil = false;
+    VkRenderingAttachmentInfo colorAttachments[GL_MAX_COLOR_TEXTURE_NUM] = {};
+    VkRenderingAttachmentInfo depthAttachment = {};
 };
 
 struct vk_pass_transfer_native_t
@@ -492,7 +595,6 @@ struct vk_native_t
     VkQueue queue = nullptr;
     uint32_t queueFamily = 0;
     VkAllocationCallbacks* allocator = nullptr;
-    VkCommandPool cmdPool = nullptr;
     VkCommandBuffer cmdBuffer = nullptr;
     VkDescriptorPool descriptorPool = nullptr;
     VkPipelineCache pipelineCache = nullptr;
@@ -503,7 +605,7 @@ struct vk_native_t
 
     struct
     {
-        GLenum type = GL_NONE;
+        rt_binding_type_t type = RT_BINDING_NONE;
         rt_buffer_t buffer = {};
         rt_buffer_bind_t buffer_bind = {};
         rt_texture_t texture = {};
@@ -587,6 +689,24 @@ static bool vk_create_staging(VkDeviceSize size, vk_staging_t& staging, void** m
     return true;
 }
 
+static void vk_suspend_rendering()
+{
+    if (vulkan.currentPassType != GL_MODULE_RENDER || !vulkan.currentRenderPass || !vulkan.currentRenderPass->native)
+        return;
+    auto* pass = (vk_pass_render_native_t*)vulkan.currentRenderPass->native;
+    if (!pass->rendering)
+        return;
+    vkCmdEndRendering(vulkan.cmdBuffer);
+    pass->rendering = false;
+    for (uint32_t i = 0; i < pass->colorCount; ++i)
+    {
+        if (pass->colorAttachments[i].imageView)
+            pass->colorAttachments[i].loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
+    }
+    if (pass->hasDepth)
+        pass->depthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
+}
+
 static void vk_transition_image(vk_texture_native_t& image, VkImageLayout newLayout)
 {
     if (!image.handle)
@@ -628,6 +748,7 @@ static void vk_transition_image(vk_texture_native_t& image, VkImageLayout newLay
 
     if (image.layout != newLayout)
     {
+        vk_suspend_rendering();
         VkImageMemoryBarrier barrier = {};
         barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
         barrier.srcAccessMask = image.access;
@@ -654,6 +775,7 @@ static void vk_transition_buffer(vk_buffer_native_t& buffer, VkPipelineStageFlag
     if (buffer.stage == dstStage && buffer.access == dstAccess)
         return;
 
+    vk_suspend_rendering();
     VkBufferMemoryBarrier barrier = {};
     barrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
     barrier.srcAccessMask = buffer.access;
@@ -722,11 +844,11 @@ static bool vk_setup_descriptors(vk_module_native_t& native, rt_binding_t const*
     native.descriptorCount = 0;
     for (uint32_t i = 0; i < GL_MAX_BINDING_HANDLE_NUM; ++i)
     {
-        if (!bindings || bindings[i].type == GL_NONE)
+        if (!bindings || bindings[i].type == RT_BINDING_NONE)
             continue;
         auto& item = layoutBindings[native.descriptorCount];
         item.binding = bindings[i].binding;
-        item.descriptorType = gl_to_vk_descriptor_type(bindings[i].type);
+        item.descriptorType = rt_to_vk_descriptor(bindings[i].type);
         item.descriptorCount = 1;
         item.stageFlags = stages;
         native.descriptorBindings[native.descriptorCount] = bindings[i].binding;
@@ -798,14 +920,14 @@ static bool vk_create_graphics_pipeline(vk_module_native_t& native, rt_module_re
     {
         for (uint32_t i = 0; i < GL_MAX_VERTEX_BUFFER_NUM; ++i)
         {
-            if (info.vertex[i].type == GL_NONE || info.vertex[i].count == 0)
+            if (info.vertex[i].type == RT_TYPE_NONE || info.vertex[i].count == 0)
                 continue;
             bindingDescs[attrCount].binding = info.vertex[i].location;
-            bindingDescs[attrCount].stride = gl_to_vk_vertex_size(info.vertex[i].type, info.vertex[i].count);
+            bindingDescs[attrCount].stride = rt_to_vk_vertex_size(info.vertex[i].type, info.vertex[i].count);
             bindingDescs[attrCount].inputRate = info.vertex[i].instance ? VK_VERTEX_INPUT_RATE_INSTANCE : VK_VERTEX_INPUT_RATE_VERTEX;
             attrDescs[attrCount].location = info.vertex[i].location;
             attrDescs[attrCount].binding = info.vertex[i].location;
-            attrDescs[attrCount].format = gl_to_vk_vertex_format(info.vertex[i].type, info.vertex[i].count);
+            attrDescs[attrCount].format = rt_to_vk_vertex_format(info.vertex[i].type, info.vertex[i].count);
             attrDescs[attrCount].offset = 0;
             attrCount++;
         }
@@ -820,7 +942,7 @@ static bool vk_create_graphics_pipeline(vk_module_native_t& native, rt_module_re
 
     VkPipelineInputAssemblyStateCreateInfo inputAssembly = {};
     inputAssembly.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
-    inputAssembly.topology = gl_to_vk_primitive_topology(info.primitive);
+    inputAssembly.topology = rt_to_vk_primitive(info.primitive);
 
     VkPipelineViewportStateCreateInfo viewportState = {};
     viewportState.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
@@ -829,9 +951,9 @@ static bool vk_create_graphics_pipeline(vk_module_native_t& native, rt_module_re
 
     VkPipelineRasterizationStateCreateInfo rasterizer = {};
     rasterizer.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
-    rasterizer.polygonMode = gl_to_vk_polygon_mode(info.fill_mode);
-    rasterizer.cullMode = gl_to_vk_cull_mode(info.cull_mode);
-    rasterizer.frontFace = gl_to_vk_front_face(info.front_face);
+    rasterizer.polygonMode = rt_to_vk_fill(info.fill_mode);
+    rasterizer.cullMode = rt_to_vk_cull(info.cull_mode);
+    rasterizer.frontFace = rt_to_vk_front_face(info.front_face);
     rasterizer.depthBiasEnable = (info.depth.bias != 0.0f || info.depth.biasSlope != 0.0f) ? VK_TRUE : VK_FALSE;
     rasterizer.depthBiasConstantFactor = info.depth.bias;
     rasterizer.depthBiasClamp = info.depth.biasClamp;
@@ -842,29 +964,29 @@ static bool vk_create_graphics_pipeline(vk_module_native_t& native, rt_module_re
     multisampling.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
     multisampling.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
 
-    const bool depthEnabled = (info.depth.func != GL_ALWAYS || info.depth.write);
+    const bool depthEnabled = (info.depth.func != RT_ALWAYS || info.depth.write);
     const bool stencilEnabled =
-        (info.stencil.back.func != GL_ALWAYS || info.stencil.back.sfail != GL_KEEP ||
-         info.stencil.back.zfail != GL_KEEP || info.stencil.back.zpass != GL_KEEP ||
-         info.stencil.front.func != GL_ALWAYS || info.stencil.front.sfail != GL_KEEP ||
-         info.stencil.front.zfail != GL_KEEP || info.stencil.front.zpass != GL_KEEP);
+        (info.stencil.back.func != RT_ALWAYS || info.stencil.back.sfail != RT_STENCIL_KEEP ||
+         info.stencil.back.zfail != RT_STENCIL_KEEP || info.stencil.back.zpass != RT_STENCIL_KEEP ||
+         info.stencil.front.func != RT_ALWAYS || info.stencil.front.sfail != RT_STENCIL_KEEP ||
+         info.stencil.front.zfail != RT_STENCIL_KEEP || info.stencil.front.zpass != RT_STENCIL_KEEP);
 
     VkPipelineDepthStencilStateCreateInfo depthStencil = {};
     depthStencil.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
     depthStencil.depthTestEnable = depthEnabled ? VK_TRUE : VK_FALSE;
     depthStencil.depthWriteEnable = info.depth.write ? VK_TRUE : VK_FALSE;
-    depthStencil.depthCompareOp = gl_to_vk_compare_op(info.depth.func);
+    depthStencil.depthCompareOp = rt_to_vk_compare(info.depth.func);
     depthStencil.stencilTestEnable = stencilEnabled ? VK_TRUE : VK_FALSE;
-    depthStencil.front.failOp = gl_to_vk_stencil_op(info.stencil.front.sfail);
-    depthStencil.front.passOp = gl_to_vk_stencil_op(info.stencil.front.zpass);
-    depthStencil.front.depthFailOp = gl_to_vk_stencil_op(info.stencil.front.zfail);
-    depthStencil.front.compareOp = gl_to_vk_compare_op(info.stencil.front.func);
+    depthStencil.front.failOp = rt_to_vk_stencil_op(info.stencil.front.sfail);
+    depthStencil.front.passOp = rt_to_vk_stencil_op(info.stencil.front.zpass);
+    depthStencil.front.depthFailOp = rt_to_vk_stencil_op(info.stencil.front.zfail);
+    depthStencil.front.compareOp = rt_to_vk_compare(info.stencil.front.func);
     depthStencil.front.compareMask = info.stencil.read;
     depthStencil.front.writeMask = info.stencil.write;
-    depthStencil.back.failOp = gl_to_vk_stencil_op(info.stencil.back.sfail);
-    depthStencil.back.passOp = gl_to_vk_stencil_op(info.stencil.back.zpass);
-    depthStencil.back.depthFailOp = gl_to_vk_stencil_op(info.stencil.back.zfail);
-    depthStencil.back.compareOp = gl_to_vk_compare_op(info.stencil.back.func);
+    depthStencil.back.failOp = rt_to_vk_stencil_op(info.stencil.back.sfail);
+    depthStencil.back.passOp = rt_to_vk_stencil_op(info.stencil.back.zpass);
+    depthStencil.back.depthFailOp = rt_to_vk_stencil_op(info.stencil.back.zfail);
+    depthStencil.back.compareOp = rt_to_vk_compare(info.stencil.back.func);
     depthStencil.back.compareMask = info.stencil.read;
     depthStencil.back.writeMask = info.stencil.write;
 
@@ -872,16 +994,16 @@ static bool vk_create_graphics_pipeline(vk_module_native_t& native, rt_module_re
     for (uint32_t i = 0; i < GL_MAX_COLOR_TEXTURE_NUM; ++i)
     {
         bool blendEnabled =
-            (info.colors[i].color.func != GL_FUNC_ADD || info.colors[i].color.src != GL_ONE ||
-             info.colors[i].color.dst != GL_ZERO || info.colors[i].alpha.func != GL_FUNC_ADD ||
-             info.colors[i].alpha.src != GL_ONE || info.colors[i].alpha.dst != GL_ZERO);
+            (info.colors[i].color.func != RT_FUNC_ADD || info.colors[i].color.src != RT_BLEND_ONE ||
+             info.colors[i].color.dst != GL_ZERO || info.colors[i].alpha.func != RT_FUNC_ADD ||
+             info.colors[i].alpha.src != RT_BLEND_ONE || info.colors[i].alpha.dst != GL_ZERO);
         colorBlendAttachments[i].blendEnable = blendEnabled ? VK_TRUE : VK_FALSE;
-        colorBlendAttachments[i].srcColorBlendFactor = gl_to_vk_blend_factor(info.colors[i].color.src);
-        colorBlendAttachments[i].dstColorBlendFactor = gl_to_vk_blend_factor(info.colors[i].color.dst);
-        colorBlendAttachments[i].colorBlendOp = gl_to_vk_blend_op(info.colors[i].color.func);
-        colorBlendAttachments[i].srcAlphaBlendFactor = gl_to_vk_blend_factor(info.colors[i].alpha.src);
-        colorBlendAttachments[i].dstAlphaBlendFactor = gl_to_vk_blend_factor(info.colors[i].alpha.dst);
-        colorBlendAttachments[i].alphaBlendOp = gl_to_vk_blend_op(info.colors[i].alpha.func);
+        colorBlendAttachments[i].srcColorBlendFactor = rt_to_vk_blend_factor(info.colors[i].color.src);
+        colorBlendAttachments[i].dstColorBlendFactor = rt_to_vk_blend_factor(info.colors[i].color.dst);
+        colorBlendAttachments[i].colorBlendOp = rt_to_vk_blend_op(info.colors[i].color.func);
+        colorBlendAttachments[i].srcAlphaBlendFactor = rt_to_vk_blend_factor(info.colors[i].alpha.src);
+        colorBlendAttachments[i].dstAlphaBlendFactor = rt_to_vk_blend_factor(info.colors[i].alpha.dst);
+        colorBlendAttachments[i].alphaBlendOp = rt_to_vk_blend_op(info.colors[i].alpha.func);
         colorBlendAttachments[i].colorWriteMask =
             VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
     }
@@ -982,7 +1104,7 @@ static void vk_flush_descriptors()
         {
             auto* buf = vk_buffer_native(slot.buffer);
             if (!buf) continue;
-            if (slot.buffer_bind.target == GL_SHADER_STORAGE_BUFFER)
+            if (slot.buffer_bind.target == RT_SHADER_STORAGE_BUFFER)
                 writes[writeCount].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
             bufferInfos[writeCount] = {buf->handle, 0, VK_WHOLE_SIZE};
             writes[writeCount].pBufferInfo = &bufferInfos[writeCount];
@@ -1041,54 +1163,44 @@ static void vk_clear_bindings()
 
 // ====================================================================
 
-void vk_load_library(VkInstance instance, VkDevice device, uint32_t family)
+void vk_load_library(VkInstance instance, VkPhysicalDevice physical, VkDevice device, VkQueue queue, VkCommandBuffer cmdbuf, uint32_t family)
 {
     vulkan.instance = instance;
+    vulkan.physicalDevice = physical;
     vulkan.device = device;
     vulkan.queueFamily = family;
+    vulkan.queue = queue;
+    vulkan.cmdBuffer = cmdbuf;
+    vkGetPhysicalDeviceMemoryProperties(vulkan.physicalDevice, &vulkan.memProps);
 
-    uint32_t physCount = 0;
-    vkEnumeratePhysicalDevices(instance, &physCount, nullptr);
-    std::vector<VkPhysicalDevice> devices(physCount);
-    if (physCount) vkEnumeratePhysicalDevices(instance, &physCount, devices.data());
-    for (auto phys : devices)
+    VkPhysicalDeviceDriverProperties driverProps = {};
+    driverProps.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRIVER_PROPERTIES;
+    VkPhysicalDeviceMeshShaderPropertiesNV meshProps = {};
+    meshProps.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MESH_SHADER_PROPERTIES_NV;
+    meshProps.pNext = &driverProps;
+    VkPhysicalDeviceProperties2 props2 = {};
+    props2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
+    props2.pNext = &meshProps;
+    vkGetPhysicalDeviceProperties2(vulkan.physicalDevice, &props2);
+    uint32_t apiMajor = VK_VERSION_MAJOR(props2.properties.apiVersion);
+    uint32_t apiMinor = VK_VERSION_MINOR(props2.properties.apiVersion);
+    uint32_t apiPatch = VK_VERSION_PATCH(props2.properties.apiVersion);
+    uint32_t spirvMinor = apiMinor >= 3 ? 6 : apiMinor == 2 ? 5 : apiMinor == 1 ? 3 : 0;
+    fprintf(stdout, "Vulkan Version: %u.%u.%u\n", apiMajor, apiMinor, apiPatch);
+    fprintf(stdout, "SPIR-V Version: 1.%u\n", spirvMinor);
+    fprintf(stdout, "Vulkan Render : %s\n", props2.properties.deviceName);
+    fprintf(stdout, "Vulkan Vendor : %s\n", driverProps.driverName);
+    fprintf(stdout, "Meshlet Primitives: %u\n", meshProps.maxMeshOutputPrimitives);
+    fprintf(stdout, "Meshlet Vertices  : %u\n", meshProps.maxMeshOutputVertices);
+    fflush(stdout);
+
+    VkCommandBufferBeginInfo beginInfo = {};
+    beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+    if (vkBeginCommandBuffer(vulkan.cmdBuffer, &beginInfo) != VK_SUCCESS)
     {
-        uint32_t familyCount = 0;
-        vkGetPhysicalDeviceQueueFamilyProperties(phys, &familyCount, nullptr);
-        if (family < familyCount)
-        {
-            vulkan.physicalDevice = phys;
-            break;
-        }
-    }
-    if (!vulkan.physicalDevice && !devices.empty())
-        vulkan.physicalDevice = devices[0];
-    if (vulkan.physicalDevice)
-        vkGetPhysicalDeviceMemoryProperties(vulkan.physicalDevice, &vulkan.memProps);
-
-    vkGetDeviceQueue(vulkan.device, family, 0, &vulkan.queue);
-    vulkan.fnDrawMeshTasksNV = (PFN_vkCmdDrawMeshTasksNV)vkGetDeviceProcAddr(vulkan.device, "vkCmdDrawMeshTasksNV");
-
-    VkCommandPoolCreateInfo poolInfo = {};
-    poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-    poolInfo.queueFamilyIndex = family;
-    poolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
-    if (vkCreateCommandPool(vulkan.device, &poolInfo, vulkan.allocator, &vulkan.cmdPool) == VK_SUCCESS)
-    {
-        VkCommandBufferAllocateInfo allocInfo = {};
-        allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-        allocInfo.commandPool = vulkan.cmdPool;
-        allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-        allocInfo.commandBufferCount = 1;
-        vkAllocateCommandBuffers(vulkan.device, &allocInfo, &vulkan.cmdBuffer);
-        VkCommandBufferBeginInfo beginInfo = {};
-        beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-        beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-        if (vkBeginCommandBuffer(vulkan.cmdBuffer, &beginInfo) != VK_SUCCESS)
-        {
-            fprintf(stderr, "Vulkan: failed to begin command buffer\n");
-            abort();
-        }
+        fprintf(stderr, "Vulkan: failed to begin command buffer\n");
+        abort();
     }
 
     VkDescriptorPoolSize poolSizes[] = {
@@ -1119,6 +1231,8 @@ void vk_load_library(VkInstance instance, VkDevice device, uint32_t family)
     samplerInfo.addressModeU = samplerInfo.addressModeV = samplerInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
     samplerInfo.maxLod = VK_LOD_CLAMP_NONE;
     vkCreateSampler(vulkan.device, &samplerInfo, vulkan.allocator, &vulkan.defaultSampler);
+
+    vulkan.fnDrawMeshTasksNV = (PFN_vkCmdDrawMeshTasksNV)vkGetDeviceProcAddr(vulkan.device, "vkCmdDrawMeshTasksNV");
 
     rt_unload_library = vk_unload_library;
     rt_create_buffer = vk_create_buffer;
@@ -1198,16 +1312,6 @@ void vk_unload_library()
     {
         vkDestroyPipelineCache(vulkan.device, vulkan.pipelineCache, vulkan.allocator);
         vulkan.pipelineCache = nullptr;
-    }
-    if (vulkan.cmdPool && vulkan.cmdBuffer)
-    {
-        vkFreeCommandBuffers(vulkan.device, vulkan.cmdPool, 1, &vulkan.cmdBuffer);
-        vulkan.cmdBuffer = nullptr;
-    }
-    if (vulkan.cmdPool)
-    {
-        vkDestroyCommandPool(vulkan.device, vulkan.cmdPool, vulkan.allocator);
-        vulkan.cmdPool = nullptr;
     }
 
     vulkan.buffers.clear();
@@ -1311,7 +1415,7 @@ rt_buffer_t vk_create_buffer(rt_buffer_info_t const& info)
 
     VkMemoryRequirements req = {};
     vkGetBufferMemoryRequirements(vulkan.device, native.handle, &req);
-    bool hostVisible = (info.usage & (GL_BUFFER_USAGE_MAP_READ | GL_BUFFER_USAGE_MAP_WRITE)) || info.data;
+    bool hostVisible = (info.usage & (RT_BUFFER_USAGE_MAP_READ | RT_BUFFER_USAGE_MAP_WRITE)) || info.data;
     native.memFlags = hostVisible ? (VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT)
                                   : VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
     VkMemoryAllocateInfo alloc = {};
@@ -1388,12 +1492,12 @@ void vk_bind_buffer(rt_buffer_t& buffer, rt_buffer_bind_t bind)
         fprintf(stderr, "Pipeline not begin");
         abort();
     }
-    vulkan.currentBinding[bind.binding].type = GL_BINDING_BUFFER;
+    vulkan.currentBinding[bind.binding].type = RT_BINDING_BUFFER;
     vulkan.currentBinding[bind.binding].buffer = buffer;
     vulkan.currentBinding[bind.binding].buffer_bind = bind;
 }
 
-void* vk_map_buffer(rt_buffer_t& buffer, GLenum mode, size_t offset, size_t size)
+void* vk_map_buffer(rt_buffer_t& buffer, rt_access_t mode, size_t offset, size_t size)
 {
     (void)mode;
     auto* native = vk_buffer_native(buffer);
@@ -1404,9 +1508,9 @@ void* vk_map_buffer(rt_buffer_t& buffer, GLenum mode, size_t offset, size_t size
     if (native->mapped)
         vkUnmapMemory(vulkan.device, native->memory);
     VkAccessFlags hostAccess = 0;
-    if (mode != GL_WRITE_ONLY)
+    if (mode != RT_WRITE_ONLY)
         hostAccess |= VK_ACCESS_HOST_READ_BIT;
-    if (mode != GL_READ_ONLY)
+    if (mode != RT_READ_ONLY)
         hostAccess |= VK_ACCESS_HOST_WRITE_BIT;
     vk_transition_buffer(*native, VK_PIPELINE_STAGE_HOST_BIT, hostAccess);
     void* ptr = nullptr;
@@ -1435,12 +1539,12 @@ rt_texture_t vk_create_texture(rt_texture_info_t const& info)
 
     uint32_t handle = vulkan.textureID + 1;
     auto& native = vulkan.textures[handle];
-    native.format = gl_to_vk_format(info.format, info.type, info.internal_format);
+    native.format = rt_to_vk_format(info.format, info.type, info.internal_format);
     native.aspect = vk_format_aspect(native.format);
     native.extent = {info.width, info.height, info.depth ? info.depth : 1};
     native.layers = 1;
     native.mipLevels = 1;
-    if (gl_has_mipmap_filter(info.min_filter))
+    if (rt_has_mipmap_filter(info.min_filter))
     {
         uint32_t maxDim = std::max(info.width, info.height);
         native.mipLevels = 1;
@@ -1449,14 +1553,14 @@ rt_texture_t vk_create_texture(rt_texture_info_t const& info)
 
     VkImageCreateInfo vkInfo = {};
     vkInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
-    vkInfo.imageType = (info.target == GL_TEXTURE_3D) ? VK_IMAGE_TYPE_3D : VK_IMAGE_TYPE_2D;
+    vkInfo.imageType = (info.target == RT_TEXTURE_3D) ? VK_IMAGE_TYPE_3D : VK_IMAGE_TYPE_2D;
     vkInfo.extent = native.extent;
     vkInfo.mipLevels = native.mipLevels;
     vkInfo.arrayLayers = native.layers;
     vkInfo.format = native.format;
     vkInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
     vkInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    vkInfo.usage = gl_to_vk_image_usage(info.format);
+    vkInfo.usage = rt_to_vk_image_usage(info.format);
     vkInfo.samples = VK_SAMPLE_COUNT_1_BIT;
     vkInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
     if (vkCreateImage(vulkan.device, &vkInfo, vulkan.allocator, &native.handle) != VK_SUCCESS)
@@ -1482,7 +1586,7 @@ rt_texture_t vk_create_texture(rt_texture_info_t const& info)
     VkImageViewCreateInfo viewInfo = {};
     viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
     viewInfo.image = native.handle;
-    viewInfo.viewType = (info.target == GL_TEXTURE_3D) ? VK_IMAGE_VIEW_TYPE_3D : VK_IMAGE_VIEW_TYPE_2D;
+    viewInfo.viewType = (info.target == RT_TEXTURE_3D) ? VK_IMAGE_VIEW_TYPE_3D : VK_IMAGE_VIEW_TYPE_2D;
     viewInfo.format = native.format;
     viewInfo.subresourceRange.aspectMask = native.aspect;
     viewInfo.subresourceRange.levelCount = native.mipLevels;
@@ -1535,10 +1639,10 @@ rt_texture_t vk_create_texture(rt_texture_info_t const& info)
 rt_texture_t vk_create_texture_color(uint32_t width, uint32_t height, const void* data)
 {
     return vk_create_texture({
-        .width = width, .height = height, .target = GL_TEXTURE_2D,
-        .format = GL_RGBA, .internal_format = GL_RGBA8, .type = GL_UNSIGNED_BYTE,
-        .min_filter = GL_LINEAR, .mag_filter = GL_LINEAR,
-        .wrap_s = GL_CLAMP_TO_EDGE, .wrap_t = GL_CLAMP_TO_EDGE, .wrap_r = GL_CLAMP_TO_EDGE,
+        .width = width, .height = height, .target = RT_TEXTURE_2D,
+        .format = RT_RGBA, .internal_format = RT_RGBA8, .type = RT_UNSIGNED_BYTE,
+        .min_filter = RT_LINEAR, .mag_filter = RT_LINEAR,
+        .wrap_s = RT_CLAMP_TO_EDGE, .wrap_t = RT_CLAMP_TO_EDGE, .wrap_r = RT_CLAMP_TO_EDGE,
         .data = data
     });
 }
@@ -1546,10 +1650,10 @@ rt_texture_t vk_create_texture_color(uint32_t width, uint32_t height, const void
 rt_texture_t vk_create_texture_depth(uint32_t width, uint32_t height, const void* data)
 {
     return vk_create_texture({
-        .width = width, .height = height, .target = GL_TEXTURE_2D,
-        .format = GL_DEPTH_COMPONENT, .internal_format = GL_DEPTH_COMPONENT32F, .type = GL_FLOAT,
-        .min_filter = GL_LINEAR, .mag_filter = GL_LINEAR,
-        .wrap_s = GL_CLAMP_TO_EDGE, .wrap_t = GL_CLAMP_TO_EDGE, .wrap_r = GL_CLAMP_TO_EDGE,
+        .width = width, .height = height, .target = RT_TEXTURE_2D,
+        .format = RT_DEPTH_COMPONENT, .internal_format = RT_DEPTH_COMPONENT32F, .type = RT_FLOAT,
+        .min_filter = RT_LINEAR, .mag_filter = RT_LINEAR,
+        .wrap_s = RT_CLAMP_TO_EDGE, .wrap_t = RT_CLAMP_TO_EDGE, .wrap_r = RT_CLAMP_TO_EDGE,
         .data = data
     });
 }
@@ -1557,10 +1661,10 @@ rt_texture_t vk_create_texture_depth(uint32_t width, uint32_t height, const void
 rt_texture_t vk_create_texture_depth_stencil(uint32_t width, uint32_t height, const void* data)
 {
     return vk_create_texture({
-        .width = width, .height = height, .target = GL_TEXTURE_2D,
-        .format = GL_DEPTH_STENCIL, .internal_format = GL_DEPTH24_STENCIL8, .type = GL_UNSIGNED_INT_24_8,
-        .min_filter = GL_LINEAR, .mag_filter = GL_LINEAR,
-        .wrap_s = GL_CLAMP_TO_EDGE, .wrap_t = GL_CLAMP_TO_EDGE, .wrap_r = GL_CLAMP_TO_EDGE,
+        .width = width, .height = height, .target = RT_TEXTURE_2D,
+        .format = RT_DEPTH_STENCIL, .internal_format = RT_DEPTH24_STENCIL8, .type = RT_UNSIGNED_INT_24_8,
+        .min_filter = RT_LINEAR, .mag_filter = RT_LINEAR,
+        .wrap_s = RT_CLAMP_TO_EDGE, .wrap_t = RT_CLAMP_TO_EDGE, .wrap_r = RT_CLAMP_TO_EDGE,
         .data = data
     });
 }
@@ -1589,7 +1693,7 @@ void vk_bind_texture(rt_texture_t& texture, rt_texture_bind_t bind)
         fprintf(stderr, "Pipeline not begin");
         abort();
     }
-    vulkan.currentBinding[bind.binding].type = GL_BINDING_TEXTURE;
+    vulkan.currentBinding[bind.binding].type = RT_BINDING_TEXTURE;
     vulkan.currentBinding[bind.binding].texture = texture;
     vulkan.currentBinding[bind.binding].texture_bind = bind;
 }
@@ -1601,7 +1705,7 @@ void vk_bind_texture_storage(rt_texture_t& texture, rt_texture_storage_bind_t bi
         fprintf(stderr, "Pipeline not begin");
         abort();
     }
-    vulkan.currentBinding[bind.binding].type = GL_BINDING_STORAGE_TEXTURE;
+    vulkan.currentBinding[bind.binding].type = RT_BINDING_STORAGE_TEXTURE;
     vulkan.currentBinding[bind.binding].storage_texture = texture;
     vulkan.currentBinding[bind.binding].storage_texture_bind = bind;
 }
@@ -1614,13 +1718,13 @@ rt_sampler_t vk_create_sampler(rt_sampler_info_t const& info)
     auto& native = vulkan.samplers[handle];
     VkSamplerCreateInfo vkInfo = {};
     vkInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
-    vkInfo.magFilter = gl_to_vk_filter(info.mag_filter);
-    vkInfo.minFilter = gl_to_vk_min_filter(info.min_filter);
-    vkInfo.addressModeU = gl_to_vk_address_mode(info.wrap_s);
-    vkInfo.addressModeV = gl_to_vk_address_mode(info.wrap_t);
-    vkInfo.addressModeW = gl_to_vk_address_mode(info.wrap_r);
-    vkInfo.mipmapMode = gl_to_vk_mipmap_mode(info.min_filter);
-    vkInfo.maxLod = gl_has_mipmap_filter(info.min_filter) ? VK_LOD_CLAMP_NONE : 0.0f;
+    vkInfo.magFilter = rt_to_vk_filter(info.mag_filter);
+    vkInfo.minFilter = rt_to_vk_min_filter(info.min_filter);
+    vkInfo.addressModeU = rt_to_vk_address(info.wrap_s);
+    vkInfo.addressModeV = rt_to_vk_address(info.wrap_t);
+    vkInfo.addressModeW = rt_to_vk_address(info.wrap_r);
+    vkInfo.mipmapMode = rt_to_vk_mipmap(info.min_filter);
+    vkInfo.maxLod = rt_has_mipmap_filter(info.min_filter) ? VK_LOD_CLAMP_NONE : 0.0f;
     if (vkCreateSampler(vulkan.device, &vkInfo, vulkan.allocator, &native.handle) != VK_SUCCESS)
     {
         vulkan.samplers.erase(handle);
@@ -1653,7 +1757,7 @@ void vk_bind_sampler(rt_sampler_t& sampler, rt_sampler_bind_t bind)
         fprintf(stderr, "Pipeline not begin");
         abort();
     }
-    vulkan.currentBinding[bind.binding].type = GL_BINDING_SAMPLER;
+    vulkan.currentBinding[bind.binding].type = RT_BINDING_SAMPLER;
     vulkan.currentBinding[bind.binding].sampler = sampler;
     vulkan.currentBinding[bind.binding].sampler_bind = bind;
 }
@@ -2004,9 +2108,9 @@ void vk_begin_render(rt_pass_render_t& pass)
     for (auto& color : pass.colors)
         if (color.texture.handle) native.offscreen = true;
 
-    VkRenderingAttachmentInfo colorAttachments[GL_MAX_COLOR_TEXTURE_NUM] = {};
     uint32_t colorCount = 0;
     uint32_t width = 0, height = 0;
+    VkRenderingAttachmentInfo colorAttachments[GL_MAX_COLOR_TEXTURE_NUM] = {};
     for (uint32_t i = 0; i < GL_MAX_COLOR_TEXTURE_NUM; ++i)
     {
         colorAttachments[i].sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
@@ -2045,17 +2149,32 @@ void vk_begin_render(rt_pass_render_t& pass)
 
     native.width = width;
     native.height = height;
-    VkRenderingInfo renderingInfo = {};
-    renderingInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
-    renderingInfo.renderArea.extent = {std::max(1u, width), std::max(1u, height)};
-    renderingInfo.layerCount = 1;
-    renderingInfo.colorAttachmentCount = std::max(colorCount, (uint32_t)GL_MAX_COLOR_TEXTURE_NUM);
-    renderingInfo.pColorAttachments = colorAttachments;
-    renderingInfo.pDepthAttachment = hasDepth ? &depthAttachment : nullptr;
-    renderingInfo.pStencilAttachment = (hasDepth && pass.depth.texture.format == GL_DEPTH_STENCIL) ? &depthAttachment : nullptr;
-    vkCmdBeginRendering(vulkan.cmdBuffer, &renderingInfo);
+    native.colorCount = colorCount;
+    native.hasDepth = hasDepth;
+    native.hasStencil = hasDepth && pass.depth.texture.format == RT_DEPTH_STENCIL;
+    std::memcpy(native.colorAttachments, colorAttachments, sizeof(colorAttachments));
+    native.depthAttachment = depthAttachment;
     vk_set_viewport(0, 0, (int32_t)width, (int32_t)height);
     vk_set_scissor(0, 0, (int32_t)width, (int32_t)height);
+}
+
+static void vk_cmd_begin_rendering()
+{
+    if (vulkan.currentPassType != GL_MODULE_RENDER || !vulkan.currentRenderPass || !vulkan.currentRenderPass->native)
+        return;
+    auto* native = (vk_pass_render_native_t*)vulkan.currentRenderPass->native;
+    if (native->rendering)
+        return;
+    VkRenderingInfo renderingInfo = {};
+    renderingInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
+    renderingInfo.renderArea.extent = {std::max(1u, native->width), std::max(1u, native->height)};
+    renderingInfo.layerCount = 1;
+    renderingInfo.colorAttachmentCount = native->colorCount;
+    renderingInfo.pColorAttachments = native->colorCount ? native->colorAttachments : nullptr;
+    renderingInfo.pDepthAttachment = native->hasDepth ? &native->depthAttachment : nullptr;
+    renderingInfo.pStencilAttachment = native->hasStencil ? &native->depthAttachment : nullptr;
+    vkCmdBeginRendering(vulkan.cmdBuffer, &renderingInfo);
+    native->rendering = true;
 }
 
 void vk_end_render(rt_pass_render_t& pass)
@@ -2065,7 +2184,9 @@ void vk_end_render(rt_pass_render_t& pass)
         fprintf(stderr, "Pipeline not begin");
         abort();
     }
-    vkCmdEndRendering(vulkan.cmdBuffer);
+    auto* native = (vk_pass_render_native_t*)pass.native;
+    if (native && native->rendering)
+        vkCmdEndRendering(vulkan.cmdBuffer);
     for (auto& color : pass.colors)
         if (auto* tex = vk_texture_native(color.texture))
             vk_transition_image(*tex, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
@@ -2122,6 +2243,7 @@ void vk_draw_mesh_task(uint32_t groupX, uint32_t groupY, uint32_t groupZ)
         abort();
     }
     vk_flush_descriptors();
+    vk_cmd_begin_rendering();
     if (vulkan.fnDrawMeshTasksNV)
         vulkan.fnDrawMeshTasksNV(vulkan.cmdBuffer, std::max(1u, groupX) * std::max(1u, groupY) * std::max(1u, groupZ), 0);
 }
@@ -2237,7 +2359,7 @@ void vk_copy_buffer_texture(rt_texture_copy_t source, rt_buffer_texel_t destinat
     region.bufferOffset = destination.offset;
     region.bufferRowLength = destination.bytesPerRow ? destination.bytesPerRow / vk_format_bytes(src->format) : 0;
     region.bufferImageHeight = destination.rowsPerImage;
-    region.imageSubresource.aspectMask = vk_image_aspect(source.aspect, source.texture.format);
+    region.imageSubresource.aspectMask = rt_to_vk_aspect(source.aspect, source.texture.format);
     region.imageSubresource.mipLevel = source.mipLevel;
     region.imageSubresource.layerCount = 1;
     region.imageOffset = {(int32_t)source.origin.x, (int32_t)source.origin.y, (int32_t)source.origin.z};
@@ -2263,11 +2385,11 @@ void vk_copy_texture(rt_texture_copy_t source, rt_texture_copy_t destination, rt
     vk_transition_image(*src, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
     vk_transition_image(*dst, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
     VkImageCopy region = {};
-    region.srcSubresource.aspectMask = vk_image_aspect(source.aspect, source.texture.format);
+    region.srcSubresource.aspectMask = rt_to_vk_aspect(source.aspect, source.texture.format);
     region.srcSubresource.mipLevel = source.mipLevel;
     region.srcSubresource.layerCount = 1;
     region.srcOffset = {(int32_t)source.origin.x, (int32_t)source.origin.y, (int32_t)source.origin.z};
-    region.dstSubresource.aspectMask = vk_image_aspect(destination.aspect, destination.texture.format);
+    region.dstSubresource.aspectMask = rt_to_vk_aspect(destination.aspect, destination.texture.format);
     region.dstSubresource.mipLevel = destination.mipLevel;
     region.dstSubresource.layerCount = 1;
     region.dstOffset = {(int32_t)destination.origin.x, (int32_t)destination.origin.y, (int32_t)destination.origin.z};
@@ -2302,7 +2424,7 @@ void vk_copy_texture_data(rt_texture_data_t source, rt_texture_copy_t destinatio
     region.bufferOffset = 0;
     region.bufferRowLength = source.bytesPerRow ? source.bytesPerRow / bpp : 0;
     region.bufferImageHeight = source.rowsPerImage;
-    region.imageSubresource.aspectMask = vk_image_aspect(destination.aspect, destination.texture.format);
+    region.imageSubresource.aspectMask = rt_to_vk_aspect(destination.aspect, destination.texture.format);
     region.imageSubresource.mipLevel = destination.mipLevel;
     region.imageSubresource.layerCount = 1;
     region.imageOffset = {(int32_t)destination.origin.x, (int32_t)destination.origin.y, (int32_t)destination.origin.z};
@@ -2332,7 +2454,7 @@ void vk_copy_texture_buffer(rt_buffer_texel_t source, rt_texture_copy_t destinat
     region.bufferOffset = source.offset;
     region.bufferRowLength = source.bytesPerRow ? source.bytesPerRow / vk_format_bytes(dst->format) : 0;
     region.bufferImageHeight = source.rowsPerImage;
-    region.imageSubresource.aspectMask = vk_image_aspect(destination.aspect, destination.texture.format);
+    region.imageSubresource.aspectMask = rt_to_vk_aspect(destination.aspect, destination.texture.format);
     region.imageSubresource.mipLevel = destination.mipLevel;
     region.imageSubresource.layerCount = 1;
     region.imageOffset = {(int32_t)destination.origin.x, (int32_t)destination.origin.y, (int32_t)destination.origin.z};
@@ -2349,13 +2471,13 @@ rt_mesh_t vk_create_mesh(const float* vertices, const float* normals, const floa
     native.vertexCount = (uint32_t)vertex_count;
     native.indexCount = (uint32_t)index_count;
     if (vertices)
-        result.vertex[0] = vk_create_buffer({.size = vertex_count * 3 * sizeof(float), .usage = GL_BUFFER_USAGE_VERTEX | GL_BUFFER_USAGE_COPY_DST, .data = vertices});
+        result.vertex[0] = vk_create_buffer({.size = vertex_count * 3 * sizeof(float), .usage = RT_BUFFER_USAGE_VERTEX | RT_BUFFER_USAGE_COPY_DST, .data = vertices});
     if (normals)
-        result.vertex[1] = vk_create_buffer({.size = vertex_count * 3 * sizeof(float), .usage = GL_BUFFER_USAGE_VERTEX | GL_BUFFER_USAGE_COPY_DST, .data = normals});
+        result.vertex[1] = vk_create_buffer({.size = vertex_count * 3 * sizeof(float), .usage = RT_BUFFER_USAGE_VERTEX | RT_BUFFER_USAGE_COPY_DST, .data = normals});
     if (uvs)
-        result.vertex[2] = vk_create_buffer({.size = vertex_count * 2 * sizeof(float), .usage = GL_BUFFER_USAGE_VERTEX | GL_BUFFER_USAGE_COPY_DST, .data = uvs});
+        result.vertex[2] = vk_create_buffer({.size = vertex_count * 2 * sizeof(float), .usage = RT_BUFFER_USAGE_VERTEX | RT_BUFFER_USAGE_COPY_DST, .data = uvs});
     if (indices)
-        result.index = vk_create_buffer({.size = index_count * sizeof(uint32_t), .usage = GL_BUFFER_USAGE_INDEX | GL_BUFFER_USAGE_COPY_DST, .data = indices});
+        result.index = vk_create_buffer({.size = index_count * sizeof(uint32_t), .usage = RT_BUFFER_USAGE_INDEX | RT_BUFFER_USAGE_COPY_DST, .data = indices});
     std::iota(result.location, result.location + std::size(result.location), 0);
     vulkan.meshID = handle;
     result.handle = handle;
@@ -2388,31 +2510,43 @@ void vk_draw_mesh(rt_mesh_t& mesh)
     vk_flush_descriptors();
     rt_module_render_t const& module = vulkan.currentRenderPass->module;
     uint32_t vertex_count = 0;
+    VkBuffer vertexBuffers[GL_MAX_VERTEX_BUFFER_NUM] = {};
+    uint32_t vertexBindings[GL_MAX_VERTEX_BUFFER_NUM] = {};
+    uint32_t vertexBindCount = 0;
     for (uint32_t i = 0; i < std::size(module.vertex); ++i)
     {
         rt_vertex_t const& layout = module.vertex[i];
-        if (layout.type == GL_NONE || layout.count == 0) continue;
+        if (layout.type == RT_TYPE_NONE || layout.count == 0) continue;
         for (uint32_t k = 0; k < std::size(mesh.vertex); ++k)
         {
             if (mesh.vertex[k].handle == 0 || mesh.location[k] != layout.location) continue;
             auto* native = vk_buffer_native(mesh.vertex[k]);
             if (!native) break;
             vk_transition_buffer(*native, VK_PIPELINE_STAGE_VERTEX_INPUT_BIT, VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT);
-            VkDeviceSize offset = 0;
-            vkCmdBindVertexBuffers(vulkan.cmdBuffer, layout.location, 1, &native->handle, &offset);
-            uint32_t stride = gl_to_vk_vertex_size(layout.type, layout.count);
+            vertexBuffers[vertexBindCount] = native->handle;
+            vertexBindings[vertexBindCount] = layout.location;
+            vertexBindCount++;
+            uint32_t stride = rt_to_vk_vertex_size(layout.type, layout.count);
             if (vertex_count == 0 && stride)
                 vertex_count = (uint32_t)(mesh.vertex[k].size / stride);
             break;
         }
     }
+    vk_buffer_native_t* indexNative = nullptr;
     if (mesh.index.handle)
+        indexNative = vk_buffer_native(mesh.index);
+    if (indexNative)
+        vk_transition_buffer(*indexNative, VK_PIPELINE_STAGE_VERTEX_INPUT_BIT, VK_ACCESS_INDEX_READ_BIT);
+    vk_cmd_begin_rendering();
+    for (uint32_t i = 0; i < vertexBindCount; ++i)
     {
-        auto* native = vk_buffer_native(mesh.index);
-        if (!native) return;
-        uint32_t indexStride = gl_index_type_size(module.index_type);
-        vk_transition_buffer(*native, VK_PIPELINE_STAGE_VERTEX_INPUT_BIT, VK_ACCESS_INDEX_READ_BIT);
-        vkCmdBindIndexBuffer(vulkan.cmdBuffer, native->handle, 0, gl_to_vk_index_type(module.index_type));
+        VkDeviceSize offset = 0;
+        vkCmdBindVertexBuffers(vulkan.cmdBuffer, vertexBindings[i], 1, &vertexBuffers[i], &offset);
+    }
+    if (indexNative)
+    {
+        uint32_t indexStride = rt_to_vk_index_size(module.index_type);
+        vkCmdBindIndexBuffer(vulkan.cmdBuffer, indexNative->handle, 0, rt_to_vk_index_type(module.index_type));
         vkCmdDrawIndexed(vulkan.cmdBuffer, (uint32_t)(mesh.index.size / indexStride), 1, 0, 0, 0);
     }
     else
@@ -2428,13 +2562,13 @@ rt_meshlet_t vk_create_meshlet(const float* vertices, const float* normals, cons
     native.vertexCount = (uint32_t)vertex_count;
     native.indexCount = (uint32_t)index_count;
     if (vertices)
-        result.vertex[0] = vk_create_buffer({.size = vertex_count * 4 * sizeof(float), .usage = GL_BUFFER_USAGE_STORAGE | GL_BUFFER_USAGE_COPY_DST, .data = vertices});
+        result.vertex[0] = vk_create_buffer({.size = vertex_count * 4 * sizeof(float), .usage = RT_BUFFER_USAGE_STORAGE | RT_BUFFER_USAGE_COPY_DST, .data = vertices});
     if (normals)
-        result.vertex[1] = vk_create_buffer({.size = vertex_count * 4 * sizeof(float), .usage = GL_BUFFER_USAGE_STORAGE | GL_BUFFER_USAGE_COPY_DST, .data = normals});
+        result.vertex[1] = vk_create_buffer({.size = vertex_count * 4 * sizeof(float), .usage = RT_BUFFER_USAGE_STORAGE | RT_BUFFER_USAGE_COPY_DST, .data = normals});
     if (uvs)
-        result.vertex[2] = vk_create_buffer({.size = vertex_count * 2 * sizeof(float), .usage = GL_BUFFER_USAGE_STORAGE | GL_BUFFER_USAGE_COPY_DST, .data = uvs});
+        result.vertex[2] = vk_create_buffer({.size = vertex_count * 2 * sizeof(float), .usage = RT_BUFFER_USAGE_STORAGE | RT_BUFFER_USAGE_COPY_DST, .data = uvs});
     if (indices)
-        result.index = vk_create_buffer({.size = index_count * sizeof(uint32_t), .usage = GL_BUFFER_USAGE_STORAGE | GL_BUFFER_USAGE_COPY_DST, .data = indices});
+        result.index = vk_create_buffer({.size = index_count * sizeof(uint32_t), .usage = RT_BUFFER_USAGE_STORAGE | RT_BUFFER_USAGE_COPY_DST, .data = indices});
     std::iota(result.location, result.location + std::size(result.location), 0);
     vulkan.meshletID = handle;
     result.handle = handle;
@@ -2469,19 +2603,20 @@ void vk_draw_meshlet(rt_meshlet_t& meshlet)
     for (uint32_t i = 0; i < std::size(module.vertex); ++i)
     {
         rt_vertex_t const& layout = module.vertex[i];
-        if (layout.type == GL_NONE || layout.count == 0) continue;
+        if (layout.type == RT_TYPE_NONE || layout.count == 0) continue;
         for (uint32_t k = 0; k < std::size(meshlet.vertex); ++k)
         {
             if (meshlet.vertex[k].handle == 0 || meshlet.location[k] != layout.location) continue;
-            vk_bind_buffer(meshlet.vertex[k], {.binding = layout.location, .target = GL_SHADER_STORAGE_BUFFER});
+            vk_bind_buffer(meshlet.vertex[k], {.binding = layout.location, .target = RT_SHADER_STORAGE_BUFFER});
             break;
         }
         if (layout.location + 1 > index_binding)
             index_binding = layout.location + 1;
     }
     if (meshlet.index.handle)
-        vk_bind_buffer(meshlet.index, {.binding = index_binding, .target = GL_SHADER_STORAGE_BUFFER});
+        vk_bind_buffer(meshlet.index, {.binding = index_binding, .target = RT_SHADER_STORAGE_BUFFER});
     vk_flush_descriptors();
+    vk_cmd_begin_rendering();
     auto* native = (vk_meshlet_native_t*)meshlet.native;
     uint32_t tasks = native && native->indexCount ? native->indexCount / 3 : 1;
     if (vulkan.fnDrawMeshTasksNV)
@@ -2509,7 +2644,7 @@ void vk_draw_screen(int width, int height, rt_color_t clear, rt_texture_t& textu
 {
     static auto module = vk_create_module_render({
         .vertex = {rt_vertex_vertex, {}, rt_vertex_uv},
-        .binding = {{.binding = 0, .type = GL_BINDING_TEXTURE}},
+        .binding = {{.binding = 0, .type = RT_BINDING_TEXTURE}},
     });
     if (!module.handle) return;
 

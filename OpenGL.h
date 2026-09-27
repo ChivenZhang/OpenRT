@@ -19,7 +19,7 @@ void gl_unload_library();
 rt_buffer_t gl_create_buffer(rt_buffer_info_t const& info);
 void gl_destroy_buffer(rt_buffer_t& buffer);
 void gl_bind_buffer(rt_buffer_t& buffer, rt_buffer_bind_t bind = {});
-void* gl_map_buffer(rt_buffer_t& buffer, GLenum mode, size_t offset, size_t size);
+void* gl_map_buffer(rt_buffer_t& buffer, rt_access_t mode, size_t offset, size_t size);
 void gl_unmap_buffer(rt_buffer_t& buffer);
 
 rt_texture_t gl_create_texture(rt_texture_info_t const& info);

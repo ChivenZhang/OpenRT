@@ -41,18 +41,204 @@
 
 enum rt_buffer_usage_t : uint32_t
 {
-    GL_BUFFER_USAGE_MAP_READ      = 0x0001,
-    GL_BUFFER_USAGE_MAP_WRITE     = 0x0002,
-    GL_BUFFER_USAGE_COPY_SRC      = 0x0004,
-    GL_BUFFER_USAGE_COPY_DST      = 0x0008,
-    GL_BUFFER_USAGE_INDEX         = 0x0010,
-    GL_BUFFER_USAGE_VERTEX        = 0x0020,
-    GL_BUFFER_USAGE_UNIFORM       = 0x0040,
-    GL_BUFFER_USAGE_STORAGE       = 0x0080,
-    GL_BUFFER_USAGE_INDIRECT      = 0x0100,
-    GL_BUFFER_USAGE_QUERY_RESOLVE = 0x0200,
+    RT_BUFFER_USAGE_MAP_READ      = 0x0001,
+    RT_BUFFER_USAGE_MAP_WRITE     = 0x0002,
+    RT_BUFFER_USAGE_COPY_SRC      = 0x0004,
+    RT_BUFFER_USAGE_COPY_DST      = 0x0008,
+    RT_BUFFER_USAGE_INDEX         = 0x0010,
+    RT_BUFFER_USAGE_VERTEX        = 0x0020,
+    RT_BUFFER_USAGE_UNIFORM       = 0x0040,
+    RT_BUFFER_USAGE_STORAGE       = 0x0080,
+    RT_BUFFER_USAGE_INDIRECT      = 0x0100,
+    RT_BUFFER_USAGE_QUERY_RESOLVE = 0x0200,
 };
 using rt_buffer_usages_t = uint32_t;
+
+enum rt_buffer_target_t : uint32_t
+{
+    RT_UNIFORM_BUFFER = 0,
+    RT_SHADER_STORAGE_BUFFER,
+};
+
+enum rt_texture_target_t : uint32_t
+{
+    RT_TEXTURE_1D = 0,
+    RT_TEXTURE_2D,
+    RT_TEXTURE_3D,
+    RT_TEXTURE_2D_ARRAY,
+    RT_TEXTURE_2D_MULTISAMPLE,
+};
+
+enum rt_format_t : uint32_t
+{
+    RT_STENCIL_INDEX = 0,
+    RT_DEPTH_COMPONENT,
+    RT_RED,
+    RT_RGB,
+    RT_RGBA,
+    RT_RG,
+    RT_DEPTH_STENCIL,
+};
+
+enum rt_internal_format_t : uint32_t
+{
+    RT_R8 = 0,
+    RT_R16,
+    RT_RG8,
+    RT_RG16,
+    RT_R16F,
+    RT_R32F,
+    RT_RG16F,
+    RT_RG32F,
+    RT_RGB8,
+    RT_RGB16,
+    RT_RGBA8,
+    RT_RGBA16,
+    RT_SRGB8_ALPHA8,
+    RT_RGB16F,
+    RT_RGBA16F,
+    RT_RGB32F,
+    RT_RGBA32F,
+    RT_DEPTH_COMPONENT16,
+    RT_DEPTH_COMPONENT24,
+    RT_DEPTH_COMPONENT32F,
+    RT_DEPTH24_STENCIL8,
+    RT_DEPTH32F_STENCIL8,
+};
+
+enum rt_type_t : uint32_t
+{
+    RT_TYPE_NONE = 0,
+    RT_BYTE,
+    RT_UNSIGNED_BYTE,
+    RT_SHORT,
+    RT_UNSIGNED_SHORT,
+    RT_INT,
+    RT_UNSIGNED_INT,
+    RT_FLOAT,
+    RT_DOUBLE,
+    RT_HALF_FLOAT,
+    RT_UNSIGNED_INT_24_8,
+};
+
+enum rt_filter_t : uint32_t
+{
+    RT_NEAREST = 0,
+    RT_LINEAR,
+    RT_NEAREST_MIPMAP_NEAREST,
+    RT_LINEAR_MIPMAP_NEAREST,
+    RT_NEAREST_MIPMAP_LINEAR,
+    RT_LINEAR_MIPMAP_LINEAR,
+};
+
+enum rt_wrap_t : uint32_t
+{
+    RT_REPEAT = 0,
+    RT_CLAMP_TO_EDGE,
+    RT_CLAMP_TO_BORDER,
+    RT_MIRRORED_REPEAT,
+    RT_MIRROR_CLAMP_TO_EDGE,
+};
+
+enum rt_access_t : uint32_t
+{
+    RT_READ_ONLY = 0,
+    RT_WRITE_ONLY,
+    RT_READ_WRITE,
+};
+
+enum rt_binding_type_t : uint32_t
+{
+    RT_BINDING_NONE = 0,
+    RT_BINDING_BUFFER,
+    RT_BINDING_SAMPLER,
+    RT_BINDING_TEXTURE,
+    RT_BINDING_STORAGE_TEXTURE,
+};
+
+enum rt_blend_op_t : uint32_t
+{
+    RT_FUNC_ADD = 0,
+    RT_MIN,
+    RT_MAX,
+    RT_FUNC_SUBTRACT,
+    RT_FUNC_REVERSE_SUBTRACT,
+};
+
+enum rt_blend_factor_t : uint32_t
+{
+    RT_BLEND_ZERO = 0,
+    RT_BLEND_ONE,
+    RT_BLEND_SRC_COLOR,
+    RT_BLEND_ONE_MINUS_SRC_COLOR,
+    RT_BLEND_SRC_ALPHA,
+    RT_BLEND_ONE_MINUS_SRC_ALPHA,
+    RT_BLEND_DST_ALPHA,
+    RT_BLEND_ONE_MINUS_DST_ALPHA,
+    RT_BLEND_DST_COLOR,
+    RT_BLEND_ONE_MINUS_DST_COLOR,
+    RT_BLEND_SRC_ALPHA_SATURATE,
+    RT_BLEND_CONSTANT_COLOR,
+    RT_BLEND_ONE_MINUS_CONSTANT_COLOR,
+    RT_BLEND_CONSTANT_ALPHA,
+    RT_BLEND_ONE_MINUS_CONSTANT_ALPHA,
+};
+
+enum rt_compare_op_t : uint32_t
+{
+    RT_NEVER = 0,
+    RT_LESS,
+    RT_EQUAL,
+    RT_LEQUAL,
+    RT_GREATER,
+    RT_NOTEQUAL,
+    RT_GEQUAL,
+    RT_ALWAYS,
+};
+
+enum rt_stencil_op_t : uint32_t
+{
+    RT_STENCIL_ZERO = 0,
+    RT_STENCIL_INVERT,
+    RT_STENCIL_KEEP,
+    RT_STENCIL_REPLACE,
+    RT_STENCIL_INCR,
+    RT_STENCIL_DECR,
+    RT_STENCIL_INCR_WRAP,
+    RT_STENCIL_DECR_WRAP,
+};
+
+enum rt_cull_mode_t : uint32_t
+{
+    RT_CULL_NONE = 0,
+    RT_CULL_FRONT,
+    RT_CULL_BACK,
+    RT_CULL_FRONT_AND_BACK,
+};
+
+enum rt_front_face_t : uint32_t
+{
+    RT_CW = 0,
+    RT_CCW,
+};
+
+enum rt_fill_mode_t : uint32_t
+{
+    RT_POINT = 0,
+    RT_LINE,
+    RT_FILL,
+};
+
+enum rt_primitive_t : uint32_t
+{
+    RT_POINTS = 0,
+    RT_LINES,
+    RT_LINE_LOOP,
+    RT_LINE_STRIP,
+    RT_TRIANGLES,
+    RT_TRIANGLE_STRIP,
+    RT_TRIANGLE_FAN,
+};
 
 struct rt_buffer_t
 {
@@ -65,14 +251,14 @@ struct rt_buffer_t
 struct rt_buffer_info_t
 {
     size_t size = 0;                    // 缓冲区大小（字节）
-    rt_buffer_usages_t usage = GL_BUFFER_USAGE_MAP_READ | GL_BUFFER_USAGE_MAP_WRITE | GL_BUFFER_USAGE_COPY_SRC | GL_BUFFER_USAGE_COPY_DST; // rt_buffer_usage_t
+    rt_buffer_usages_t usage = RT_BUFFER_USAGE_MAP_READ | RT_BUFFER_USAGE_MAP_WRITE | RT_BUFFER_USAGE_COPY_SRC | RT_BUFFER_USAGE_COPY_DST; // rt_buffer_usage_t
     const void* data = nullptr;         // 初始数据指针，可为 nullptr
 };
 
 struct rt_buffer_bind_t
 {
     uint32_t binding = 0;
-    GLenum target = GL_UNIFORM_BUFFER; // GL_UNIFORM_BUFFER / GL_SHADER_STORAGE_BUFFER
+    rt_buffer_target_t target = RT_UNIFORM_BUFFER; // RT_UNIFORM_BUFFER / RT_SHADER_STORAGE_BUFFER
 };
 
 // ====================================================================
@@ -81,10 +267,10 @@ struct rt_texture_t
 {
     GLuint handle = 0;
     uint32_t width = 0, height = 0, depth = 1;
-    GLenum target = GL_TEXTURE_2D;
-    GLenum format = GL_RGBA;
-    GLenum internal_format = GL_RGBA;
-    GLenum type = GL_UNSIGNED_BYTE;
+    rt_texture_target_t target = RT_TEXTURE_2D;
+    rt_format_t format = RT_RGBA;
+    rt_internal_format_t internal_format = RT_RGBA8;
+    rt_type_t type = RT_UNSIGNED_BYTE;
     uint32_t mipmaps = 0;
     uint32_t samples = 1;
     void* native = nullptr;
@@ -93,15 +279,15 @@ struct rt_texture_t
 struct rt_texture_info_t
 {
     uint32_t width = 0, height = 0, depth = 1;
-    GLenum target = GL_TEXTURE_2D;          // GL_TEXTURE_1D / GL_TEXTURE_2D / GL_TEXTURE_3D / GL_TEXTURE_2D_ARRAY / GL_TEXTURE_2D_MULTISAMPLE
-    GLenum format = GL_RGBA;                // 数据格式
-    GLenum internal_format = GL_RGBA8;      // 内部存储格式
-    GLenum type = GL_UNSIGNED_BYTE;         // 数据类型
-    GLenum min_filter = GL_LINEAR_MIPMAP_LINEAR;  // GL_NEAREST / GL_LINEAR / GL_NEAREST_MIPMAP_NEAREST / GL_LINEAR_MIPMAP_NEAREST / GL_NEAREST_MIPMAP_LINEAR / GL_LINEAR_MIPMAP_LINEAR
-    GLenum mag_filter = GL_LINEAR;                // GL_NEAREST / GL_LINEAR
-    GLenum wrap_s = GL_REPEAT;                    // GL_REPEAT / GL_MIRRORED_REPEAT / GL_CLAMP_TO_EDGE / GL_CLAMP_TO_BORDER / GL_MIRROR_CLAMP_TO_EDGE
-    GLenum wrap_t = GL_REPEAT;                    // GL_REPEAT / GL_MIRRORED_REPEAT / GL_CLAMP_TO_EDGE / GL_CLAMP_TO_BORDER / GL_MIRROR_CLAMP_TO_EDGE
-    GLenum wrap_r = GL_REPEAT;                    // GL_REPEAT / GL_MIRRORED_REPEAT / GL_CLAMP_TO_EDGE / GL_CLAMP_TO_BORDER / GL_MIRROR_CLAMP_TO_EDGE
+    rt_texture_target_t target = RT_TEXTURE_2D;          // RT_TEXTURE_1D / RT_TEXTURE_2D / RT_TEXTURE_3D / RT_TEXTURE_2D_ARRAY / RT_TEXTURE_2D_MULTISAMPLE
+    rt_format_t format = RT_RGBA;                // 数据格式
+    rt_internal_format_t internal_format = RT_RGBA8;      // 内部存储格式
+    rt_type_t type = RT_UNSIGNED_BYTE;         // 数据类型
+    rt_filter_t min_filter = RT_LINEAR_MIPMAP_LINEAR;  // RT_NEAREST / RT_LINEAR / RT_NEAREST_MIPMAP_NEAREST / RT_LINEAR_MIPMAP_NEAREST / RT_NEAREST_MIPMAP_LINEAR / RT_LINEAR_MIPMAP_LINEAR
+    rt_filter_t mag_filter = RT_LINEAR;                // RT_NEAREST / RT_LINEAR
+    rt_wrap_t wrap_s = RT_REPEAT;                    // RT_REPEAT / RT_MIRRORED_REPEAT / RT_CLAMP_TO_EDGE / RT_CLAMP_TO_BORDER / RT_MIRROR_CLAMP_TO_EDGE
+    rt_wrap_t wrap_t = RT_REPEAT;                    // RT_REPEAT / RT_MIRRORED_REPEAT / RT_CLAMP_TO_EDGE / RT_CLAMP_TO_BORDER / RT_MIRROR_CLAMP_TO_EDGE
+    rt_wrap_t wrap_r = RT_REPEAT;                    // RT_REPEAT / RT_MIRRORED_REPEAT / RT_CLAMP_TO_EDGE / RT_CLAMP_TO_BORDER / RT_MIRROR_CLAMP_TO_EDGE
     uint32_t mipmaps = 0;   // 0:auto generate
     uint32_t samples = 1;   // 1x / 4x
     GLfloat border[4] = {0.0f, 0.0f, 0.0f, 0.0f};
@@ -111,7 +297,7 @@ struct rt_texture_info_t
 struct rt_texture_bind_t
 {
     uint32_t binding = 0;
-    GLenum aspect_mode = GL_DEPTH_COMPONENT; // GL_DEPTH_COMPONENT / GL_STENCIL_INDEX
+    rt_format_t aspect_mode = RT_DEPTH_COMPONENT; // RT_DEPTH_COMPONENT / RT_STENCIL_INDEX
 };
 
 struct rt_texture_storage_bind_t
@@ -121,7 +307,7 @@ struct rt_texture_storage_bind_t
     uint32_t base_layer = 0;
     uint32_t level_count = 1;
     uint32_t layer_count = 1;
-    GLenum access = GL_WRITE_ONLY; // GL_WRITE_ONLY / GL_READ_ONLY / GL_READ_WRITE
+    rt_access_t access = RT_WRITE_ONLY; // RT_WRITE_ONLY / RT_READ_ONLY / RT_READ_WRITE
 };
 
 // ====================================================================
@@ -134,11 +320,11 @@ struct rt_sampler_t
 
 struct rt_sampler_info_t
 {
-    GLenum min_filter = GL_LINEAR_MIPMAP_LINEAR;  // GL_NEAREST / GL_LINEAR / GL_NEAREST_MIPMAP_NEAREST / GL_LINEAR_MIPMAP_NEAREST / GL_NEAREST_MIPMAP_LINEAR / GL_LINEAR_MIPMAP_LINEAR
-    GLenum mag_filter = GL_LINEAR;                // GL_NEAREST / GL_LINEAR
-    GLenum wrap_s = GL_REPEAT;                    // GL_REPEAT / GL_MIRRORED_REPEAT / GL_CLAMP_TO_EDGE / GL_CLAMP_TO_BORDER / GL_MIRROR_CLAMP_TO_EDGE
-    GLenum wrap_t = GL_REPEAT;                    // GL_REPEAT / GL_MIRRORED_REPEAT / GL_CLAMP_TO_EDGE / GL_CLAMP_TO_BORDER / GL_MIRROR_CLAMP_TO_EDGE
-    GLenum wrap_r = GL_REPEAT;                    // GL_REPEAT / GL_MIRRORED_REPEAT / GL_CLAMP_TO_EDGE / GL_CLAMP_TO_BORDER / GL_MIRROR_CLAMP_TO_EDGE
+    rt_filter_t min_filter = RT_LINEAR_MIPMAP_LINEAR;  // RT_NEAREST / RT_LINEAR / RT_NEAREST_MIPMAP_NEAREST / RT_LINEAR_MIPMAP_NEAREST / RT_NEAREST_MIPMAP_LINEAR / RT_LINEAR_MIPMAP_LINEAR
+    rt_filter_t mag_filter = RT_LINEAR;                // RT_NEAREST / RT_LINEAR
+    rt_wrap_t wrap_s = RT_REPEAT;                    // RT_REPEAT / RT_MIRRORED_REPEAT / RT_CLAMP_TO_EDGE / RT_CLAMP_TO_BORDER / RT_MIRROR_CLAMP_TO_EDGE
+    rt_wrap_t wrap_t = RT_REPEAT;                    // RT_REPEAT / RT_MIRRORED_REPEAT / RT_CLAMP_TO_EDGE / RT_CLAMP_TO_BORDER / RT_MIRROR_CLAMP_TO_EDGE
+    rt_wrap_t wrap_r = RT_REPEAT;                    // RT_REPEAT / RT_MIRRORED_REPEAT / RT_CLAMP_TO_EDGE / RT_CLAMP_TO_BORDER / RT_MIRROR_CLAMP_TO_EDGE
 };
 
 struct rt_sampler_bind_t
@@ -164,26 +350,18 @@ struct rt_module_compute_t
 struct rt_vertex_t
 {
     uint32_t location = 0;
-    GLenum type = 0;    // GL_BYTE / GL_UNSIGNED_BYTE / GL_SHORT / GL_UNSIGNED_SHORT / GL_INT / GL_UNSIGNED_INT / GL_FLOAT / GL_DOUBLE
-    GLenum count = 0;
+    rt_type_t type = RT_TYPE_NONE;    // RT_BYTE / RT_UNSIGNED_BYTE / RT_SHORT / RT_UNSIGNED_SHORT / RT_INT / RT_UNSIGNED_INT / RT_FLOAT / RT_DOUBLE
+    uint32_t count = 0;
     bool instance = false;
 };
-inline rt_vertex_t rt_vertex_vertex{.location = 0, .type = GL_FLOAT, .count = 3, .instance = false};
-inline rt_vertex_t rt_vertex_normal{.location = 1, .type = GL_FLOAT, .count = 3, .instance = false};
-inline rt_vertex_t rt_vertex_uv{.location = 2, .type = GL_FLOAT, .count = 2, .instance = false};
-
-enum rt_binding_type_t : uint32_t
-{
-    GL_BINDING_BUFFER = 1,
-    GL_BINDING_SAMPLER = 2,
-    GL_BINDING_TEXTURE = 3,
-    GL_BINDING_STORAGE_TEXTURE = 4,
-};
+inline rt_vertex_t rt_vertex_vertex{.location = 0, .type = RT_FLOAT, .count = 3, .instance = false};
+inline rt_vertex_t rt_vertex_normal{.location = 1, .type = RT_FLOAT, .count = 3, .instance = false};
+inline rt_vertex_t rt_vertex_uv{.location = 2, .type = RT_FLOAT, .count = 2, .instance = false};
 
 struct rt_binding_t
 {
     uint32_t binding = 0;
-    rt_binding_type_t type = {};  // GL_BINDING_BUFFER / GL_BINDING_TEXTURE / GL_BINDING_STORAGE_TEXTURE / GL_BINDING_SAMPLER
+    rt_binding_type_t type = {};  // RT_BINDING_BUFFER / RT_BINDING_TEXTURE / RT_BINDING_STORAGE_TEXTURE / RT_BINDING_SAMPLER
 };
 
 struct rt_module_render_info_t
@@ -205,9 +383,9 @@ struct rt_module_render_info_t
     {
         struct
         {
-            GLenum func = GL_FUNC_ADD; // GL_FUNC_ADD / GL_FUNC_SUBTRACT / GL_FUNC_REVERSE_SUBTRACT / GL_MIN / GL_MAX
-            GLenum src = GL_ONE; // GL_ZERO / GL_ONE / GL_SRC_COLOR / GL_ONE_MINUS_SRC_COLOR / GL_DST_COLOR / GL_ONE_MINUS_DST_COLOR / GL_SRC_ALPHA / GL_ONE_MINUS_SRC_ALPHA / GL_DST_ALPHA / GL_ONE_MINUS_DST_ALPHA / GL_CONSTANT_COLOR / GL_ONE_MINUS_CONSTANT_COLOR / GL_CONSTANT_ALPHA / GL_ONE_MINUS_CONSTANT_ALPHA / GL_SRC_ALPHA_SATURATE
-            GLenum dst = GL_ZERO; // GL_ZERO / GL_ONE / GL_SRC_COLOR / GL_ONE_MINUS_SRC_COLOR / GL_DST_COLOR / GL_ONE_MINUS_DST_COLOR / GL_SRC_ALPHA / GL_ONE_MINUS_SRC_ALPHA / GL_DST_ALPHA / GL_ONE_MINUS_DST_ALPHA / GL_CONSTANT_COLOR / GL_ONE_MINUS_CONSTANT_COLOR / GL_CONSTANT_ALPHA / GL_ONE_MINUS_CONSTANT_ALPHA / GL_SRC_ALPHA_SATURATE
+            rt_blend_op_t func = RT_FUNC_ADD; // RT_FUNC_ADD / RT_FUNC_SUBTRACT / RT_FUNC_REVERSE_SUBTRACT / RT_MIN / RT_MAX
+            rt_blend_factor_t src = RT_BLEND_ONE; // RT_BLEND_ZERO / RT_BLEND_ONE / RT_BLEND_SRC_COLOR / RT_BLEND_ONE_MINUS_SRC_COLOR / RT_BLEND_DST_COLOR / RT_BLEND_ONE_MINUS_DST_COLOR / RT_BLEND_SRC_ALPHA / RT_BLEND_ONE_MINUS_SRC_ALPHA / RT_BLEND_DST_ALPHA / RT_BLEND_ONE_MINUS_DST_ALPHA / RT_BLEND_CONSTANT_COLOR / RT_BLEND_ONE_MINUS_CONSTANT_COLOR / RT_BLEND_CONSTANT_ALPHA / RT_BLEND_ONE_MINUS_CONSTANT_ALPHA / RT_BLEND_SRC_ALPHA_SATURATE
+            rt_blend_factor_t dst = RT_BLEND_ZERO; // RT_BLEND_ZERO / RT_BLEND_ONE / RT_BLEND_SRC_COLOR / RT_BLEND_ONE_MINUS_SRC_COLOR / RT_BLEND_DST_COLOR / RT_BLEND_ONE_MINUS_DST_COLOR / RT_BLEND_SRC_ALPHA / RT_BLEND_ONE_MINUS_SRC_ALPHA / RT_BLEND_DST_ALPHA / RT_BLEND_ONE_MINUS_DST_ALPHA / RT_BLEND_CONSTANT_COLOR / RT_BLEND_ONE_MINUS_CONSTANT_COLOR / RT_BLEND_CONSTANT_ALPHA / RT_BLEND_ONE_MINUS_CONSTANT_ALPHA / RT_BLEND_SRC_ALPHA_SATURATE
         } color, alpha;
     } colors[GL_MAX_COLOR_TEXTURE_NUM];
     struct
@@ -216,7 +394,7 @@ struct rt_module_render_info_t
         float bias = 0.0f;
         float biasSlope = 0.0f;
         float biasClamp = 0.0f;
-        GLenum func = GL_ALWAYS; // GL_NEVER / GL_LESS / GL_EQUAL / GL_LEQUAL / GL_GREATER / GL_NOTEQUAL / GL_GEQUAL / GL_ALWAYS
+        rt_compare_op_t func = RT_ALWAYS; // RT_NEVER / RT_LESS / RT_EQUAL / RT_LEQUAL / RT_GREATER / RT_NOTEQUAL / RT_GEQUAL / RT_ALWAYS
     } depth;
     struct
     {
@@ -224,21 +402,21 @@ struct rt_module_render_info_t
         uint32_t write = 0xFFFFFFFF;
         struct
         {
-            GLenum func = GL_ALWAYS; // GL_NEVER / GL_LESS / GL_EQUAL / GL_LEQUAL / GL_GREATER / GL_NOTEQUAL / GL_GEQUAL / GL_ALWAYS
-            GLenum sfail = GL_KEEP; // GL_KEEP / GL_ZERO / GL_REPLACE / GL_INCR / GL_INCR_WRAP / GL_DECR / GL_DECR_WRAP / GL_INVERT
-            GLenum zfail = GL_KEEP; // GL_KEEP / GL_ZERO / GL_REPLACE / GL_INCR / GL_INCR_WRAP / GL_DECR / GL_DECR_WRAP / GL_INVERT
-            GLenum zpass = GL_KEEP; // GL_KEEP / GL_ZERO / GL_REPLACE / GL_INCR / GL_INCR_WRAP / GL_DECR / GL_DECR_WRAP / GL_INVERT
+            rt_compare_op_t func = RT_ALWAYS; // RT_NEVER / RT_LESS / RT_EQUAL / RT_LEQUAL / RT_GREATER / RT_NOTEQUAL / RT_GEQUAL / RT_ALWAYS
+            rt_stencil_op_t sfail = RT_STENCIL_KEEP; // RT_STENCIL_KEEP / RT_STENCIL_ZERO / RT_STENCIL_REPLACE / RT_STENCIL_INCR / RT_STENCIL_INCR_WRAP / RT_STENCIL_DECR / RT_STENCIL_DECR_WRAP / RT_STENCIL_INVERT
+            rt_stencil_op_t zfail = RT_STENCIL_KEEP; // RT_STENCIL_KEEP / RT_STENCIL_ZERO / RT_STENCIL_REPLACE / RT_STENCIL_INCR / RT_STENCIL_INCR_WRAP / RT_STENCIL_DECR / RT_STENCIL_DECR_WRAP / RT_STENCIL_INVERT
+            rt_stencil_op_t zpass = RT_STENCIL_KEEP; // RT_STENCIL_KEEP / RT_STENCIL_ZERO / RT_STENCIL_REPLACE / RT_STENCIL_INCR / RT_STENCIL_INCR_WRAP / RT_STENCIL_DECR / RT_STENCIL_DECR_WRAP / RT_STENCIL_INVERT
         } back, front;
     } stencil;
 
-    GLenum index_type = GL_UNSIGNED_INT;    // GL_UNSIGNED_SHORT / GL_UNSIGNED_INT
+    rt_type_t index_type = RT_UNSIGNED_INT;    // RT_UNSIGNED_SHORT / RT_UNSIGNED_INT
     rt_vertex_t vertex[GL_MAX_VERTEX_BUFFER_NUM];
     rt_binding_t binding[GL_MAX_BINDING_HANDLE_NUM];
 
-    GLenum cull_mode = GL_BACK; // GL_NONE / GL_FRONT / GL_BACK / GL_FRONT_AND_BACK
-    GLenum front_face = GL_CCW; // GL_CW / GL_CCW
-    GLenum fill_mode = GL_FILL; // GL_POINT / GL_LINE / GL_FILL
-    GLenum primitive = GL_TRIANGLES; // GL_POINTS / GL_LINES / GL_LINE_LOOP / GL_LINE_STRIP / GL_TRIANGLES / GL_TRIANGLE_STRIP / GL_TRIANGLE_FAN
+    rt_cull_mode_t cull_mode = RT_CULL_BACK; // RT_CULL_NONE / RT_CULL_FRONT / RT_CULL_BACK / RT_CULL_FRONT_AND_BACK
+    rt_front_face_t front_face = RT_CCW; // RT_CW / RT_CCW
+    rt_fill_mode_t fill_mode = RT_FILL; // RT_POINT / RT_LINE / RT_FILL
+    rt_primitive_t primitive = RT_TRIANGLES; // RT_POINTS / RT_LINES / RT_LINE_LOOP / RT_LINE_STRIP / RT_TRIANGLES / RT_TRIANGLE_STRIP / RT_TRIANGLE_FAN
 };
 
 struct rt_module_render_t
@@ -250,9 +428,9 @@ struct rt_module_render_t
     {
         struct
         {
-            GLenum func = GL_FUNC_ADD;
-            GLenum src = GL_ONE;
-            GLenum dst = GL_ZERO;
+            rt_blend_op_t func = RT_FUNC_ADD;
+            rt_blend_factor_t src = RT_BLEND_ONE;
+            rt_blend_factor_t dst = RT_BLEND_ZERO;
         } color, alpha;
     } colors[GL_MAX_COLOR_TEXTURE_NUM];
     struct
@@ -261,7 +439,7 @@ struct rt_module_render_t
         float bias = 0.0f;
         float biasSlope = 0.0f;
         float biasClamp = 0.0f;
-        GLenum func = GL_ALWAYS;
+        rt_compare_op_t func = RT_ALWAYS;
     } depth;
     struct
     {
@@ -269,21 +447,21 @@ struct rt_module_render_t
         uint32_t write = 0xFFFFFFFF;
         struct
         {
-            GLenum func = GL_ALWAYS;
-            GLenum sfail = GL_KEEP;
-            GLenum zfail = GL_KEEP;
-            GLenum zpass = GL_KEEP;
+            rt_compare_op_t func = RT_ALWAYS;
+            rt_stencil_op_t sfail = RT_STENCIL_KEEP;
+            rt_stencil_op_t zfail = RT_STENCIL_KEEP;
+            rt_stencil_op_t zpass = RT_STENCIL_KEEP;
         } back, front;
     } stencil;
 
-    GLenum index_type = GL_UNSIGNED_INT;
+    rt_type_t index_type = RT_UNSIGNED_INT;
     rt_vertex_t vertex[GL_MAX_VERTEX_BUFFER_NUM];
     rt_binding_t binding[GL_MAX_BINDING_HANDLE_NUM];
 
-    GLenum cull_mode = GL_BACK;
-    GLenum front_face = GL_CCW;
-    GLenum fill_mode = GL_FILL;
-    GLenum primitive = GL_TRIANGLES;
+    rt_cull_mode_t cull_mode = RT_CULL_BACK;
+    rt_front_face_t front_face = RT_CCW;
+    rt_fill_mode_t fill_mode = RT_FILL;
+    rt_primitive_t primitive = RT_TRIANGLES;
 
     void* native = nullptr;
 };
@@ -336,9 +514,9 @@ struct rt_pass_render_t
             rt_color_t value;
             struct
             {
-                GLenum func = GL_FUNC_ADD; // GL_FUNC_ADD / GL_FUNC_SUBTRACT / GL_FUNC_REVERSE_SUBTRACT / GL_MIN / GL_MAX
-                GLenum src = GL_ONE; // GL_ZERO / GL_ONE / GL_SRC_COLOR / GL_ONE_MINUS_SRC_COLOR / GL_DST_COLOR / GL_ONE_MINUS_DST_COLOR / GL_SRC_ALPHA / GL_ONE_MINUS_SRC_ALPHA / GL_DST_ALPHA / GL_ONE_MINUS_DST_ALPHA / GL_CONSTANT_COLOR / GL_ONE_MINUS_CONSTANT_COLOR / GL_CONSTANT_ALPHA / GL_ONE_MINUS_CONSTANT_ALPHA / GL_SRC_ALPHA_SATURATE
-                GLenum dst = GL_ZERO; // GL_ZERO / GL_ONE / GL_SRC_COLOR / GL_ONE_MINUS_SRC_COLOR / GL_DST_COLOR / GL_ONE_MINUS_DST_COLOR / GL_SRC_ALPHA / GL_ONE_MINUS_SRC_ALPHA / GL_DST_ALPHA / GL_ONE_MINUS_DST_ALPHA / GL_CONSTANT_COLOR / GL_ONE_MINUS_CONSTANT_COLOR / GL_CONSTANT_ALPHA / GL_ONE_MINUS_CONSTANT_ALPHA / GL_SRC_ALPHA_SATURATE
+                rt_blend_op_t func = RT_FUNC_ADD; // RT_FUNC_ADD / RT_FUNC_SUBTRACT / RT_FUNC_REVERSE_SUBTRACT / RT_MIN / RT_MAX
+                rt_blend_factor_t src = RT_BLEND_ONE; // RT_BLEND_ZERO / RT_BLEND_ONE / RT_BLEND_SRC_COLOR / RT_BLEND_ONE_MINUS_SRC_COLOR / RT_BLEND_DST_COLOR / RT_BLEND_ONE_MINUS_DST_COLOR / RT_BLEND_SRC_ALPHA / RT_BLEND_ONE_MINUS_SRC_ALPHA / RT_BLEND_DST_ALPHA / RT_BLEND_ONE_MINUS_DST_ALPHA / RT_BLEND_CONSTANT_COLOR / RT_BLEND_ONE_MINUS_CONSTANT_COLOR / RT_BLEND_CONSTANT_ALPHA / RT_BLEND_ONE_MINUS_CONSTANT_ALPHA / RT_BLEND_SRC_ALPHA_SATURATE
+                rt_blend_factor_t dst = RT_BLEND_ZERO; // RT_BLEND_ZERO / RT_BLEND_ONE / RT_BLEND_SRC_COLOR / RT_BLEND_ONE_MINUS_SRC_COLOR / RT_BLEND_DST_COLOR / RT_BLEND_ONE_MINUS_DST_COLOR / RT_BLEND_SRC_ALPHA / RT_BLEND_ONE_MINUS_SRC_ALPHA / RT_BLEND_DST_ALPHA / RT_BLEND_ONE_MINUS_DST_ALPHA / RT_BLEND_CONSTANT_COLOR / RT_BLEND_ONE_MINUS_CONSTANT_COLOR / RT_BLEND_CONSTANT_ALPHA / RT_BLEND_ONE_MINUS_CONSTANT_ALPHA / RT_BLEND_SRC_ALPHA_SATURATE
             } blend;
         } color;
         struct
@@ -349,7 +527,7 @@ struct rt_pass_render_t
             float bias = 0.0f;
             float biasSlope = 0.0f;
             float biasClamp = 0.0f;
-            GLenum func = GL_ALWAYS; // GL_NEVER / GL_LESS / GL_EQUAL / GL_LEQUAL / GL_GREATER / GL_NOTEQUAL / GL_GEQUAL / GL_ALWAYS
+            rt_compare_op_t func = RT_ALWAYS; // RT_NEVER / RT_LESS / RT_EQUAL / RT_LEQUAL / RT_GREATER / RT_NOTEQUAL / RT_GEQUAL / RT_ALWAYS
         } depth;
         struct
         {
@@ -358,10 +536,10 @@ struct rt_pass_render_t
             uint32_t write = 0xFFFFFFFF;
             int32_t value = -1;
             int32_t refer = 0;
-            GLenum func = GL_ALWAYS; // GL_NEVER / GL_LESS / GL_EQUAL / GL_LEQUAL / GL_GREATER / GL_NOTEQUAL / GL_GEQUAL / GL_ALWAYS
-            GLenum sfail = GL_KEEP; // GL_KEEP / GL_ZERO / GL_REPLACE / GL_INCR / GL_INCR_WRAP / GL_DECR / GL_DECR_WRAP / GL_INVERT
-            GLenum zfail = GL_KEEP; // GL_KEEP / GL_ZERO / GL_REPLACE / GL_INCR / GL_INCR_WRAP / GL_DECR / GL_DECR_WRAP / GL_INVERT
-            GLenum zpass = GL_KEEP; // GL_KEEP / GL_ZERO / GL_REPLACE / GL_INCR / GL_INCR_WRAP / GL_DECR / GL_DECR_WRAP / GL_INVERT
+            rt_compare_op_t func = RT_ALWAYS; // RT_NEVER / RT_LESS / RT_EQUAL / RT_LEQUAL / RT_GREATER / RT_NOTEQUAL / RT_GEQUAL / RT_ALWAYS
+            rt_stencil_op_t sfail = RT_STENCIL_KEEP; // RT_STENCIL_KEEP / RT_STENCIL_ZERO / RT_STENCIL_REPLACE / RT_STENCIL_INCR / RT_STENCIL_INCR_WRAP / RT_STENCIL_DECR / RT_STENCIL_DECR_WRAP / RT_STENCIL_INVERT
+            rt_stencil_op_t zfail = RT_STENCIL_KEEP; // RT_STENCIL_KEEP / RT_STENCIL_ZERO / RT_STENCIL_REPLACE / RT_STENCIL_INCR / RT_STENCIL_INCR_WRAP / RT_STENCIL_DECR / RT_STENCIL_DECR_WRAP / RT_STENCIL_INVERT
+            rt_stencil_op_t zpass = RT_STENCIL_KEEP; // RT_STENCIL_KEEP / RT_STENCIL_ZERO / RT_STENCIL_REPLACE / RT_STENCIL_INCR / RT_STENCIL_INCR_WRAP / RT_STENCIL_DECR / RT_STENCIL_DECR_WRAP / RT_STENCIL_INVERT
         } stencil;
     } screen;
 
@@ -425,7 +603,7 @@ struct rt_buffer_texel_t
 struct rt_texture_copy_t
 {
     rt_texture_t& texture;
-    GLenum aspect = GL_DEPTH_COMPONENT; // GL_DEPTH_COMPONENT / GL_STENCIL_INDEX
+    rt_format_t aspect = RT_DEPTH_COMPONENT; // RT_DEPTH_COMPONENT / RT_STENCIL_INDEX
     uint32_t mipLevel = 0;
     rt_size_t origin;
 };
@@ -447,7 +625,7 @@ OPENRT_API void (*rt_unload_library)();
 OPENRT_API rt_buffer_t (*rt_create_buffer)(rt_buffer_info_t const& info);
 OPENRT_API void (*rt_destroy_buffer)(rt_buffer_t& buffer);
 OPENRT_API void (*rt_bind_buffer)(rt_buffer_t& buffer, rt_buffer_bind_t bind);
-OPENRT_API void* (*rt_map_buffer)(rt_buffer_t& buffer, GLenum mode, size_t offset, size_t size); // mode: GL_READ_ONLY / GL_WRITE_ONLY / GL_READ_WRITE
+OPENRT_API void* (*rt_map_buffer)(rt_buffer_t& buffer, rt_access_t mode, size_t offset, size_t size); // mode: RT_READ_ONLY / RT_WRITE_ONLY / RT_READ_WRITE
 OPENRT_API void (*rt_unmap_buffer)(rt_buffer_t& buffer);
 
 OPENRT_API rt_texture_t (*rt_create_texture)(rt_texture_info_t const& info);
