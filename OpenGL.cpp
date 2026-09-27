@@ -36,67 +36,280 @@ static GLenum rt_to_gl_texture_target(rt_texture_target_t target)
     }
 }
 
-static GLenum rt_to_gl_format(rt_format_t format)
+static GLenum rt_to_gl_texture_format(rt_texture_format_t format)
 {
     switch (format)
     {
-        case RT_STENCIL_INDEX: return GL_STENCIL_INDEX;
-        case RT_DEPTH_COMPONENT: return GL_DEPTH_COMPONENT;
-        case RT_RED: return GL_RED;
-        case RT_RGB: return GL_RGB;
-        case RT_RGBA: return GL_RGBA;
-        case RT_RG: return GL_RG;
-        case RT_DEPTH_STENCIL: return GL_DEPTH_STENCIL;
-        default: return GL_RGBA;
-    }
-}
-
-static GLenum rt_to_gl_internal_format(rt_internal_format_t format)
-{
-    switch (format)
-    {
-        case RT_R8: return GL_R8;
-        case RT_R16: return GL_R16;
-        case RT_RG8: return GL_RG8;
-        case RT_RG16: return GL_RG16;
-        case RT_R16F: return GL_R16F;
-        case RT_R32F: return GL_R32F;
-        case RT_RG16F: return GL_RG16F;
-        case RT_RG32F: return GL_RG32F;
-        case RT_RGB8: return GL_RGB8;
-        case RT_RGB16: return GL_RGB16;
-        case RT_RGBA8: return GL_RGBA8;
-        case RT_RGBA16: return GL_RGBA16;
-        case RT_SRGB8_ALPHA8: return GL_SRGB8_ALPHA8;
-        case RT_RGB16F: return GL_RGB16F;
-        case RT_RGBA16F: return GL_RGBA16F;
-        case RT_RGB32F: return GL_RGB32F;
-        case RT_RGBA32F: return GL_RGBA32F;
-        case RT_DEPTH_COMPONENT16: return GL_DEPTH_COMPONENT16;
-        case RT_DEPTH_COMPONENT24: return GL_DEPTH_COMPONENT24;
-        case RT_DEPTH_COMPONENT32F: return GL_DEPTH_COMPONENT32F;
-        case RT_DEPTH24_STENCIL8: return GL_DEPTH24_STENCIL8;
-        case RT_DEPTH32F_STENCIL8: return GL_DEPTH32F_STENCIL8;
+        case RT_TEXTURE_NONE: return GL_RGBA8;
+        case RT_TEXTURE_R8UNORM: return GL_R8;
+        case RT_TEXTURE_R8SNORM: return GL_R8_SNORM;
+        case RT_TEXTURE_R8UINT: return GL_R8UI;
+        case RT_TEXTURE_R8SINT: return GL_R8I;
+        case RT_TEXTURE_R16UNORM: return GL_R16;
+        case RT_TEXTURE_R16SNORM: return GL_R16_SNORM;
+        case RT_TEXTURE_R16UINT: return GL_R16UI;
+        case RT_TEXTURE_R16SINT: return GL_R16I;
+        case RT_TEXTURE_R16FLOAT: return GL_R16F;
+        case RT_TEXTURE_RG8UNORM: return GL_RG8;
+        case RT_TEXTURE_RG8SNORM: return GL_RG8_SNORM;
+        case RT_TEXTURE_RG8UINT: return GL_RG8UI;
+        case RT_TEXTURE_RG8SINT: return GL_RG8I;
+        case RT_TEXTURE_R32UINT: return GL_R32UI;
+        case RT_TEXTURE_R32SINT: return GL_R32I;
+        case RT_TEXTURE_R32FLOAT: return GL_R32F;
+        case RT_TEXTURE_RG16UNORM: return GL_RG16;
+        case RT_TEXTURE_RG16SNORM: return GL_RG16_SNORM;
+        case RT_TEXTURE_RG16UINT: return GL_RG16UI;
+        case RT_TEXTURE_RG16SINT: return GL_RG16I;
+        case RT_TEXTURE_RG16FLOAT: return GL_RG16F;
+        case RT_TEXTURE_RGBA8UNORM: return GL_RGBA8;
+        case RT_TEXTURE_RGBA8UNORM_SRGB: return GL_SRGB8_ALPHA8;
+        case RT_TEXTURE_RGBA8SNORM: return GL_RGBA8_SNORM;
+        case RT_TEXTURE_RGBA8UINT: return GL_RGBA8UI;
+        case RT_TEXTURE_RGBA8SINT: return GL_RGBA8I;
+        case RT_TEXTURE_BGRA8UNORM: return GL_RGBA8;
+        case RT_TEXTURE_BGRA8UNORM_SRGB: return GL_SRGB8_ALPHA8;
+        case RT_TEXTURE_RGB10A2UINT: return GL_RGB10_A2UI;
+        case RT_TEXTURE_RGB10A2UNORM: return GL_RGB10_A2;
+        case RT_TEXTURE_RG11B10UFLOAT: return GL_R11F_G11F_B10F;
+        case RT_TEXTURE_RGB9E5UFLOAT: return GL_RGB9_E5;
+        case RT_TEXTURE_RG32UINT: return GL_RG32UI;
+        case RT_TEXTURE_RG32SINT: return GL_RG32I;
+        case RT_TEXTURE_RG32FLOAT: return GL_RG32F;
+        case RT_TEXTURE_RGBA16UNORM: return GL_RGBA16;
+        case RT_TEXTURE_RGBA16SNORM: return GL_RGBA16_SNORM;
+        case RT_TEXTURE_RGBA16UINT: return GL_RGBA16UI;
+        case RT_TEXTURE_RGBA16SINT: return GL_RGBA16I;
+        case RT_TEXTURE_RGBA16FLOAT: return GL_RGBA16F;
+        case RT_TEXTURE_RGBA32UINT: return GL_RGBA32UI;
+        case RT_TEXTURE_RGBA32SINT: return GL_RGBA32I;
+        case RT_TEXTURE_RGBA32FLOAT: return GL_RGBA32F;
+        case RT_TEXTURE_STENCIL8: return GL_STENCIL_INDEX8;
+        case RT_TEXTURE_DEPTH16UNORM: return GL_DEPTH_COMPONENT16;
+        case RT_TEXTURE_DEPTH24PLUS: return GL_DEPTH_COMPONENT24;
+        case RT_TEXTURE_DEPTH24PLUS_STENCIL8: return GL_DEPTH24_STENCIL8;
+        case RT_TEXTURE_DEPTH32FLOAT: return GL_DEPTH_COMPONENT32F;
+        case RT_TEXTURE_DEPTH32FLOAT_STENCIL8: return GL_DEPTH32F_STENCIL8;
         default: return GL_RGBA8;
     }
 }
 
-static GLenum rt_to_gl_type(rt_type_t type)
+static void rt_to_gl_transfer(rt_texture_format_t texFormat, rt_texture_aspect_t aspect, bool download, GLenum& format, GLenum& type)
 {
-    switch (type)
+    switch (texFormat)
     {
-        case RT_TYPE_NONE: return GL_UNSIGNED_BYTE;
-        case RT_BYTE: return GL_BYTE;
-        case RT_UNSIGNED_BYTE: return GL_UNSIGNED_BYTE;
-        case RT_SHORT: return GL_SHORT;
-        case RT_UNSIGNED_SHORT: return GL_UNSIGNED_SHORT;
-        case RT_INT: return GL_INT;
-        case RT_UNSIGNED_INT: return GL_UNSIGNED_INT;
-        case RT_FLOAT: return GL_FLOAT;
-        case RT_DOUBLE: return GL_DOUBLE;
-        case RT_HALF_FLOAT: return GL_HALF_FLOAT;
-        case RT_UNSIGNED_INT_24_8: return GL_UNSIGNED_INT_24_8;
-        default: return GL_UNSIGNED_BYTE;
+        case RT_TEXTURE_NONE: format = GL_RGBA; type = GL_UNSIGNED_BYTE; return;
+        case RT_TEXTURE_R8UNORM: format = GL_RED; type = GL_UNSIGNED_BYTE; return;
+        case RT_TEXTURE_R8SNORM: format = GL_RED; type = GL_BYTE; return;
+        case RT_TEXTURE_R8UINT: format = GL_RED_INTEGER; type = GL_UNSIGNED_BYTE; return;
+        case RT_TEXTURE_R8SINT: format = GL_RED_INTEGER; type = GL_BYTE; return;
+        case RT_TEXTURE_R16UNORM: format = GL_RED; type = GL_UNSIGNED_SHORT; return;
+        case RT_TEXTURE_R16SNORM: format = GL_RED; type = GL_SHORT; return;
+        case RT_TEXTURE_R16UINT: format = GL_RED_INTEGER; type = GL_UNSIGNED_SHORT; return;
+        case RT_TEXTURE_R16SINT: format = GL_RED_INTEGER; type = GL_SHORT; return;
+        case RT_TEXTURE_R16FLOAT: format = GL_RED; type = GL_HALF_FLOAT; return;
+        case RT_TEXTURE_RG8UNORM: format = GL_RG; type = GL_UNSIGNED_BYTE; return;
+        case RT_TEXTURE_RG8SNORM: format = GL_RG; type = GL_BYTE; return;
+        case RT_TEXTURE_RG8UINT: format = GL_RG_INTEGER; type = GL_UNSIGNED_BYTE; return;
+        case RT_TEXTURE_RG8SINT: format = GL_RG_INTEGER; type = GL_BYTE; return;
+        case RT_TEXTURE_R32UINT: format = GL_RED_INTEGER; type = GL_UNSIGNED_INT; return;
+        case RT_TEXTURE_R32SINT: format = GL_RED_INTEGER; type = GL_INT; return;
+        case RT_TEXTURE_R32FLOAT: format = GL_RED; type = GL_FLOAT; return;
+        case RT_TEXTURE_RG16UNORM: format = GL_RG; type = GL_UNSIGNED_SHORT; return;
+        case RT_TEXTURE_RG16SNORM: format = GL_RG; type = GL_SHORT; return;
+        case RT_TEXTURE_RG16UINT: format = GL_RG_INTEGER; type = GL_UNSIGNED_SHORT; return;
+        case RT_TEXTURE_RG16SINT: format = GL_RG_INTEGER; type = GL_SHORT; return;
+        case RT_TEXTURE_RG16FLOAT: format = GL_RG; type = GL_HALF_FLOAT; return;
+        case RT_TEXTURE_RGBA8UNORM:
+        case RT_TEXTURE_RGBA8UNORM_SRGB: format = GL_RGBA; type = GL_UNSIGNED_BYTE; return;
+        case RT_TEXTURE_RGBA8SNORM: format = GL_RGBA; type = GL_BYTE; return;
+        case RT_TEXTURE_RGBA8UINT: format = GL_RGBA_INTEGER; type = GL_UNSIGNED_BYTE; return;
+        case RT_TEXTURE_RGBA8SINT: format = GL_RGBA_INTEGER; type = GL_BYTE; return;
+        case RT_TEXTURE_BGRA8UNORM:
+        case RT_TEXTURE_BGRA8UNORM_SRGB: format = GL_BGRA; type = GL_UNSIGNED_BYTE; return;
+        case RT_TEXTURE_RGB10A2UINT: format = GL_RGBA_INTEGER; type = GL_UNSIGNED_INT_2_10_10_10_REV; return;
+        case RT_TEXTURE_RGB10A2UNORM: format = GL_RGBA; type = GL_UNSIGNED_INT_2_10_10_10_REV; return;
+        case RT_TEXTURE_RG11B10UFLOAT: format = GL_RGB; type = GL_UNSIGNED_INT_10F_11F_11F_REV; return;
+        case RT_TEXTURE_RGB9E5UFLOAT: format = GL_RGB; type = GL_UNSIGNED_INT_5_9_9_9_REV; return;
+        case RT_TEXTURE_RG32UINT: format = GL_RG_INTEGER; type = GL_UNSIGNED_INT; return;
+        case RT_TEXTURE_RG32SINT: format = GL_RG_INTEGER; type = GL_INT; return;
+        case RT_TEXTURE_RG32FLOAT: format = GL_RG; type = GL_FLOAT; return;
+        case RT_TEXTURE_RGBA16UNORM: format = GL_RGBA; type = GL_UNSIGNED_SHORT; return;
+        case RT_TEXTURE_RGBA16SNORM: format = GL_RGBA; type = GL_SHORT; return;
+        case RT_TEXTURE_RGBA16UINT: format = GL_RGBA_INTEGER; type = GL_UNSIGNED_SHORT; return;
+        case RT_TEXTURE_RGBA16SINT: format = GL_RGBA_INTEGER; type = GL_SHORT; return;
+        case RT_TEXTURE_RGBA16FLOAT: format = GL_RGBA; type = GL_HALF_FLOAT; return;
+        case RT_TEXTURE_RGBA32UINT: format = GL_RGBA_INTEGER; type = GL_UNSIGNED_INT; return;
+        case RT_TEXTURE_RGBA32SINT: format = GL_RGBA_INTEGER; type = GL_INT; return;
+        case RT_TEXTURE_RGBA32FLOAT: format = GL_RGBA; type = GL_FLOAT; return;
+        case RT_TEXTURE_STENCIL8: format = GL_STENCIL_INDEX; type = GL_UNSIGNED_BYTE; return;
+        case RT_TEXTURE_DEPTH16UNORM: format = GL_DEPTH_COMPONENT; type = GL_UNSIGNED_SHORT; return;
+        case RT_TEXTURE_DEPTH24PLUS: format = GL_DEPTH_COMPONENT; type = GL_UNSIGNED_INT; return;
+        case RT_TEXTURE_DEPTH24PLUS_STENCIL8:
+            switch (aspect)
+            {
+                case RT_TEXTURE_ASPECT_ALL:
+                    format = GL_DEPTH_STENCIL; type = GL_UNSIGNED_INT_24_8; return;
+                case RT_TEXTURE_ASPECT_STENCIL:
+                    format = GL_STENCIL_INDEX; type = GL_UNSIGNED_BYTE; return;
+                case RT_TEXTURE_ASPECT_DEPTH:
+                    format = download ? GL_DEPTH_COMPONENT : GL_DEPTH_STENCIL;
+                    type = download ? GL_UNSIGNED_INT : GL_UNSIGNED_INT_24_8;
+                    return;
+                default:
+                    format = GL_DEPTH_STENCIL; type = GL_UNSIGNED_INT_24_8; return;
+            }
+        case RT_TEXTURE_DEPTH32FLOAT: format = GL_DEPTH_COMPONENT; type = GL_FLOAT; return;
+        case RT_TEXTURE_DEPTH32FLOAT_STENCIL8:
+            switch (aspect)
+            {
+                case RT_TEXTURE_ASPECT_ALL:
+                    format = GL_DEPTH_STENCIL; type = GL_FLOAT_32_UNSIGNED_INT_24_8_REV; return;
+                case RT_TEXTURE_ASPECT_STENCIL:
+                    format = GL_STENCIL_INDEX; type = GL_UNSIGNED_BYTE; return;
+                case RT_TEXTURE_ASPECT_DEPTH:
+                    format = download ? GL_DEPTH_COMPONENT : GL_DEPTH_STENCIL;
+                    type = download ? GL_FLOAT : GL_FLOAT_32_UNSIGNED_INT_24_8_REV;
+                    return;
+                default:
+                    format = GL_DEPTH_STENCIL; type = GL_FLOAT_32_UNSIGNED_INT_24_8_REV; return;
+            }
+        default:
+            format = GL_RGBA; type = GL_UNSIGNED_BYTE; return;
+    }
+}
+
+static void rt_to_gl_vertex_format(GLuint index, rt_vertex_format_t format)
+{
+    switch (format)
+    {
+        case RT_VERTEX_NONE:
+            break;
+        case RT_VERTEX_UINT8:
+            glVertexAttribIFormat(index, 1, GL_UNSIGNED_BYTE, 0);
+            break;
+        case RT_VERTEX_UINT8X2:
+            glVertexAttribIFormat(index, 2, GL_UNSIGNED_BYTE, 0);
+            break;
+        case RT_VERTEX_UINT8X4:
+            glVertexAttribIFormat(index, 4, GL_UNSIGNED_BYTE, 0);
+            break;
+        case RT_VERTEX_SINT8:
+            glVertexAttribIFormat(index, 1, GL_BYTE, 0);
+            break;
+        case RT_VERTEX_SINT8X2:
+            glVertexAttribIFormat(index, 2, GL_BYTE, 0);
+            break;
+        case RT_VERTEX_SINT8X4:
+            glVertexAttribIFormat(index, 4, GL_BYTE, 0);
+            break;
+        case RT_VERTEX_UNORM8:
+            glVertexAttribFormat(index, 1, GL_UNSIGNED_BYTE, GL_TRUE, 0);
+            break;
+        case RT_VERTEX_UNORM8X2:
+            glVertexAttribFormat(index, 2, GL_UNSIGNED_BYTE, GL_TRUE, 0);
+            break;
+        case RT_VERTEX_UNORM8X4:
+            glVertexAttribFormat(index, 4, GL_UNSIGNED_BYTE, GL_TRUE, 0);
+            break;
+        case RT_VERTEX_SNORM8:
+            glVertexAttribFormat(index, 1, GL_BYTE, GL_TRUE, 0);
+            break;
+        case RT_VERTEX_SNORM8X2:
+            glVertexAttribFormat(index, 2, GL_BYTE, GL_TRUE, 0);
+            break;
+        case RT_VERTEX_SNORM8X4:
+            glVertexAttribFormat(index, 4, GL_BYTE, GL_TRUE, 0);
+            break;
+        case RT_VERTEX_UINT16:
+            glVertexAttribIFormat(index, 1, GL_UNSIGNED_SHORT, 0);
+            break;
+        case RT_VERTEX_UINT16X2:
+            glVertexAttribIFormat(index, 2, GL_UNSIGNED_SHORT, 0);
+            break;
+        case RT_VERTEX_UINT16X4:
+            glVertexAttribIFormat(index, 4, GL_UNSIGNED_SHORT, 0);
+            break;
+        case RT_VERTEX_SINT16:
+            glVertexAttribIFormat(index, 1, GL_SHORT, 0);
+            break;
+        case RT_VERTEX_SINT16X2:
+            glVertexAttribIFormat(index, 2, GL_SHORT, 0);
+            break;
+        case RT_VERTEX_SINT16X4:
+            glVertexAttribIFormat(index, 4, GL_SHORT, 0);
+            break;
+        case RT_VERTEX_UNORM16:
+            glVertexAttribFormat(index, 1, GL_UNSIGNED_SHORT, GL_TRUE, 0);
+            break;
+        case RT_VERTEX_UNORM16X2:
+            glVertexAttribFormat(index, 2, GL_UNSIGNED_SHORT, GL_TRUE, 0);
+            break;
+        case RT_VERTEX_UNORM16X4:
+            glVertexAttribFormat(index, 4, GL_UNSIGNED_SHORT, GL_TRUE, 0);
+            break;
+        case RT_VERTEX_SNORM16:
+            glVertexAttribFormat(index, 1, GL_SHORT, GL_TRUE, 0);
+            break;
+        case RT_VERTEX_SNORM16X2:
+            glVertexAttribFormat(index, 2, GL_SHORT, GL_TRUE, 0);
+            break;
+        case RT_VERTEX_SNORM16X4:
+            glVertexAttribFormat(index, 4, GL_SHORT, GL_TRUE, 0);
+            break;
+        case RT_VERTEX_FLOAT16:
+            glVertexAttribFormat(index, 1, GL_HALF_FLOAT, GL_FALSE, 0);
+            break;
+        case RT_VERTEX_FLOAT16X2:
+            glVertexAttribFormat(index, 2, GL_HALF_FLOAT, GL_FALSE, 0);
+            break;
+        case RT_VERTEX_FLOAT16X4:
+            glVertexAttribFormat(index, 4, GL_HALF_FLOAT, GL_FALSE, 0);
+            break;
+        case RT_VERTEX_FLOAT32:
+            glVertexAttribFormat(index, 1, GL_FLOAT, GL_FALSE, 0);
+            break;
+        case RT_VERTEX_FLOAT32X2:
+            glVertexAttribFormat(index, 2, GL_FLOAT, GL_FALSE, 0);
+            break;
+        case RT_VERTEX_FLOAT32X3:
+            glVertexAttribFormat(index, 3, GL_FLOAT, GL_FALSE, 0);
+            break;
+        case RT_VERTEX_FLOAT32X4:
+            glVertexAttribFormat(index, 4, GL_FLOAT, GL_FALSE, 0);
+            break;
+        case RT_VERTEX_UINT32:
+            glVertexAttribIFormat(index, 1, GL_UNSIGNED_INT, 0);
+            break;
+        case RT_VERTEX_UINT32X2:
+            glVertexAttribIFormat(index, 2, GL_UNSIGNED_INT, 0);
+            break;
+        case RT_VERTEX_UINT32X3:
+            glVertexAttribIFormat(index, 3, GL_UNSIGNED_INT, 0);
+            break;
+        case RT_VERTEX_UINT32X4:
+            glVertexAttribIFormat(index, 4, GL_UNSIGNED_INT, 0);
+            break;
+        case RT_VERTEX_SINT32:
+            glVertexAttribIFormat(index, 1, GL_INT, 0);
+            break;
+        case RT_VERTEX_SINT32X2:
+            glVertexAttribIFormat(index, 2, GL_INT, 0);
+            break;
+        case RT_VERTEX_SINT32X3:
+            glVertexAttribIFormat(index, 3, GL_INT, 0);
+            break;
+        case RT_VERTEX_SINT32X4:
+            glVertexAttribIFormat(index, 4, GL_INT, 0);
+            break;
+        case RT_VERTEX_UNORM10_10_10_2:
+            glVertexAttribFormat(index, 4, GL_UNSIGNED_INT_2_10_10_10_REV, GL_TRUE, 0);
+            break;
+        case RT_VERTEX_UNORM8X4_BGRA:
+            glVertexAttribFormat(index, 4, GL_UNSIGNED_BYTE, GL_TRUE, 0);
+            break;
+        default:
+            break;
     }
 }
 
@@ -551,9 +764,10 @@ rt_texture_t gl_create_texture(rt_texture_info_t const& info)
     }
 
     GLenum glTarget = rt_to_gl_texture_target(target);
-    GLenum glInternal = rt_to_gl_internal_format(info.internal_format);
-    GLenum glFormat = rt_to_gl_format(info.format);
-    GLenum glType = rt_to_gl_type(info.type);
+    GLenum glInternal = rt_to_gl_texture_format(info.format);
+    GLenum glFormat = GL_RGBA;
+    GLenum glType = GL_UNSIGNED_BYTE;
+    rt_to_gl_transfer(info.format, RT_TEXTURE_ASPECT_ALL, false, glFormat, glType);
 
     glGenTextures(1, &result.handle);
     glBindTexture(glTarget, result.handle);
@@ -598,45 +812,47 @@ rt_texture_t gl_create_texture(rt_texture_info_t const& info)
 
     if (info.data == nullptr)
     {
-        if (info.format == RT_DEPTH_COMPONENT)
+        if (rt_texture_has_depth(info.format) && !rt_texture_has_stencil(info.format))
         {
-            GLfloat clearValue = 1.0f;
-            glClearTexImage(result.handle, 0, glFormat, glType, &clearValue);
-        }
-        else if (info.format == RT_DEPTH_STENCIL)
-        {
-            if (info.internal_format == RT_DEPTH24_STENCIL8)
+            if (glType == GL_FLOAT)
             {
-                GLuint clearValue = 0xFFFFFF00u; // 深度 24 位全 1 (= 1.0)，模板 8 位 = 0
+                GLfloat clearValue = 1.0f;
                 glClearTexImage(result.handle, 0, glFormat, glType, &clearValue);
             }
-            else if (info.internal_format == RT_DEPTH32F_STENCIL8)
+            else if (glType == GL_UNSIGNED_SHORT)
             {
-                struct
-                {
-                    float depth;
-                    uint32_t stencil;
-                } clearValue = {1.0f, 0};
-                glClearTexImage(result.handle, 0, glFormat, GL_FLOAT_32_UNSIGNED_INT_24_8_REV, &clearValue);
+                GLushort clearValue = 0xFFFF;
+                glClearTexImage(result.handle, 0, glFormat, glType, &clearValue);
             }
             else
             {
-                fprintf(stderr, "Unsupported depth stencil format");
-                abort();
+                GLuint clearValue = 0xFFFFFFFFu;
+                glClearTexImage(result.handle, 0, glFormat, glType, &clearValue);
             }
+        }
+        else if (info.format == RT_TEXTURE_DEPTH24PLUS_STENCIL8)
+        {
+            GLuint clearValue = 0xFFFFFF00u;
+            glClearTexImage(result.handle, 0, glFormat, glType, &clearValue);
+        }
+        else if (info.format == RT_TEXTURE_DEPTH32FLOAT_STENCIL8)
+        {
+            struct
+            {
+                float depth;
+                uint32_t stencil;
+            } clearValue = {1.0f, 0};
+            glClearTexImage(result.handle, 0, glFormat, GL_FLOAT_32_UNSIGNED_INT_24_8_REV, &clearValue);
+        }
+        else if (glType == GL_FLOAT || glType == GL_HALF_FLOAT)
+        {
+            GLfloat clearValue[4] = {0, 0, 0, 0};
+            glClearTexImage(result.handle, 0, glFormat, glType, clearValue);
         }
         else
         {
-            if (info.type == RT_FLOAT)
-            {
-                GLfloat clearValue[4] = {0, 0, 0, 0};
-                glClearTexImage(result.handle, 0, glFormat, glType, clearValue);
-            }
-            else
-            {
-                GLubyte clearValue[4] = {0, 0, 0, 0};
-                glClearTexImage(result.handle, 0, glFormat, glType, clearValue);
-            }
+            GLubyte clearValue[4] = {0, 0, 0, 0};
+            glClearTexImage(result.handle, 0, glFormat, glType, clearValue);
         }
     }
 
@@ -668,8 +884,6 @@ rt_texture_t gl_create_texture(rt_texture_info_t const& info)
     result.depth = depth;
     result.target = target;
     result.format = info.format;
-    result.internal_format = info.internal_format;
-    result.type = info.type;
     result.mipmaps = mipmaps;
     result.samples = samples;
     return result;
@@ -682,9 +896,7 @@ rt_texture_t gl_create_texture_color(uint32_t width, uint32_t height, const void
         .width = width,
         .height = height,
         .target = RT_TEXTURE_2D,
-        .format = RT_RGBA,
-        .internal_format = RT_RGBA8,
-        .type = RT_UNSIGNED_BYTE,
+        .format = RT_TEXTURE_RGBA8UNORM,
         .min_filter = RT_LINEAR,
         .mag_filter = RT_LINEAR,
         .wrap_s = RT_CLAMP_TO_BORDER,
@@ -702,9 +914,7 @@ rt_texture_t gl_create_texture_color_float(uint32_t width, uint32_t height, cons
         .width = width,
         .height = height,
         .target = RT_TEXTURE_2D,
-        .format = RT_RGBA,
-        .internal_format = RT_RGBA32F,
-        .type = RT_FLOAT,
+        .format = RT_TEXTURE_RGBA32FLOAT,
         .min_filter = RT_LINEAR,
         .mag_filter = RT_LINEAR,
         .wrap_s = RT_CLAMP_TO_BORDER,
@@ -722,9 +932,7 @@ rt_texture_t gl_create_texture_depth(uint32_t width, uint32_t height, const void
         .width = width,
         .height = height,
         .target = RT_TEXTURE_2D,
-        .format = RT_DEPTH_COMPONENT,
-        .internal_format = RT_DEPTH_COMPONENT32F,
-        .type = RT_FLOAT,
+        .format = RT_TEXTURE_DEPTH32FLOAT,
         .min_filter = RT_NEAREST,
         .mag_filter = RT_NEAREST,
         .wrap_s = RT_CLAMP_TO_BORDER,
@@ -742,9 +950,7 @@ rt_texture_t gl_create_texture_depth_stencil(uint32_t width, uint32_t height, co
         .width = width,
         .height = height,
         .target = RT_TEXTURE_2D,
-        .format = RT_DEPTH_STENCIL,
-        .internal_format = RT_DEPTH24_STENCIL8,
-        .type = RT_UNSIGNED_INT_24_8,
+        .format = RT_TEXTURE_DEPTH24PLUS_STENCIL8,
         .min_filter = RT_NEAREST,
         .mag_filter = RT_NEAREST,
         .wrap_s = RT_CLAMP_TO_EDGE,
@@ -771,9 +977,17 @@ void gl_bind_texture(rt_texture_t& texture, rt_texture_bind_t bind)
     glActiveTexture(GL_TEXTURE0 + bind.binding);
     glBindTexture(rt_to_gl_texture_target(texture.target), texture.handle);
 
-    if (texture.format == RT_DEPTH_COMPONENT || texture.format == RT_DEPTH_STENCIL)
+    if (rt_texture_has_depth(texture.format) || rt_texture_has_stencil(texture.format))
     {
-        glTexParameteri(rt_to_gl_texture_target(texture.target), GL_DEPTH_STENCIL_TEXTURE_MODE, rt_to_gl_format(bind.aspect_mode));
+        GLenum mode = GL_DEPTH_COMPONENT;
+        switch (bind.aspect_mode)
+        {
+            case RT_TEXTURE_ASPECT_ALL: mode = GL_DEPTH_COMPONENT; break;
+            case RT_TEXTURE_ASPECT_STENCIL: mode = GL_STENCIL_INDEX; break;
+            case RT_TEXTURE_ASPECT_DEPTH: mode = GL_DEPTH_COMPONENT; break;
+            default: break;
+        }
+        glTexParameteri(rt_to_gl_texture_target(texture.target), GL_DEPTH_STENCIL_TEXTURE_MODE, mode);
     }
 }
 
@@ -786,7 +1000,7 @@ void gl_bind_texture_storage(rt_texture_t& texture, rt_texture_storage_bind_t bi
     }
 
     glBindImageTexture(bind.binding, texture.handle, (GLint)bind.base_level, 1 < bind.layer_count,
-                       (GLint)bind.base_layer, rt_to_gl_access(bind.access), rt_to_gl_internal_format(texture.internal_format));
+                       (GLint)bind.base_layer, rt_to_gl_access(bind.access), rt_to_gl_texture_format(texture.format));
 }
 
 // ====================================================================
@@ -940,33 +1154,11 @@ rt_module_render_t gl_create_module_render(rt_module_render_info_t const& info)
     for (uint32_t i = 0; i < std::size(info.vertex); ++i)
     {
         auto& vertex = info.vertex[i];
-        if (vertex.type == RT_TYPE_NONE || vertex.count == 0)
+        if (vertex.format == RT_VERTEX_NONE)
             continue;
 
         glEnableVertexAttribArray(vertex.location);
-        GLenum glType = rt_to_gl_type(vertex.type);
-        switch (vertex.type)
-        {
-        case RT_BYTE:
-        case RT_UNSIGNED_BYTE:
-        case RT_SHORT:
-        case RT_UNSIGNED_SHORT:
-        case RT_INT:
-        case RT_UNSIGNED_INT:
-            glVertexAttribIFormat(vertex.location, (GLint)vertex.count, glType, 0);
-            break;
-        case RT_FLOAT:
-            glVertexAttribFormat(vertex.location, (GLint)vertex.count, glType, GL_FALSE, 0);
-            break;
-        case RT_DOUBLE:
-            glVertexAttribLFormat(vertex.location, (GLint)vertex.count, glType, 0);
-            break;
-        case RT_HALF_FLOAT:
-        case RT_UNSIGNED_INT_24_8:
-        default:
-            glVertexAttribFormat(vertex.location, (GLint)vertex.count, glType, GL_FALSE, 0);
-            break;
-        }
+        rt_to_gl_vertex_format(vertex.location, vertex.format);
         glVertexAttribBinding(vertex.location, i);
         glVertexBindingDivisor(i, vertex.instance ? 1 : 0);
     }
@@ -1000,8 +1192,7 @@ rt_module_render_t gl_create_module_render(rt_module_render_info_t const& info)
     for (size_t i = 0; i < std::size(info.vertex); ++i)
     {
         result.vertex[i].location = info.vertex[i].location;
-        result.vertex[i].type = info.vertex[i].type;
-        result.vertex[i].count = info.vertex[i].count;
+        result.vertex[i].format = info.vertex[i].format;
         result.vertex[i].instance = info.vertex[i].instance;
     }
     for (size_t i = 0; i < std::size(info.binding); ++i)
@@ -1128,8 +1319,7 @@ rt_module_render_t gl_create_module_meshlet(rt_module_render_info_t const& info)
     for (size_t i = 0; i < std::size(info.vertex); ++i)
     {
         result.vertex[i].location = info.vertex[i].location;
-        result.vertex[i].type = info.vertex[i].type;
-        result.vertex[i].count = info.vertex[i].count;
+        result.vertex[i].format = info.vertex[i].format;
         result.vertex[i].instance = info.vertex[i].instance;
     }
     for (size_t i = 0; i < std::size(info.binding); ++i)
@@ -1349,13 +1539,17 @@ void gl_begin_render(rt_pass_render_t& pass)
         if (pass.depth.texture.handle)
         {
             glBindTexture(rt_to_gl_texture_target(pass.depth.texture.target), pass.depth.texture.handle);
-            if (pass.depth.texture.format == RT_DEPTH_COMPONENT)
+            if (rt_texture_has_depth(pass.depth.texture.format) && rt_texture_has_stencil(pass.depth.texture.format))
+            {
+                glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, rt_to_gl_texture_target(pass.depth.texture.target), pass.depth.texture.handle, 0);
+            }
+            else if (rt_texture_has_depth(pass.depth.texture.format))
             {
                 glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, rt_to_gl_texture_target(pass.depth.texture.target), pass.depth.texture.handle, 0);
             }
-            else if (pass.depth.texture.format == RT_DEPTH_STENCIL)
+            else if (rt_texture_has_stencil(pass.depth.texture.format))
             {
-                glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, rt_to_gl_texture_target(pass.depth.texture.target), pass.depth.texture.handle, 0);
+                glFramebufferTexture2D(GL_FRAMEBUFFER, GL_STENCIL_ATTACHMENT, rt_to_gl_texture_target(pass.depth.texture.target), pass.depth.texture.handle, 0);
             }
             else
             {
@@ -1397,13 +1591,13 @@ void gl_begin_render(rt_pass_render_t& pass)
         }
 
         if (pass.depth.texture.handle &&
-            (pass.depth.texture.format == RT_DEPTH_COMPONENT || pass.depth.texture.format == RT_DEPTH_STENCIL))
+            (rt_texture_has_depth(pass.depth.texture.format) || rt_texture_has_stencil(pass.depth.texture.format)))
         {
-            if (pass.depth.clear)
+            if (pass.depth.clear && rt_texture_has_depth(pass.depth.texture.format))
             {
                 glClearBufferfv(GL_DEPTH, 0, &pass.depth.value);
             }
-            if (pass.stencil.clear && pass.depth.texture.format == RT_DEPTH_STENCIL)
+            if (pass.stencil.clear && rt_texture_has_stencil(pass.depth.texture.format))
             {
                 glClearBufferiv(GL_STENCIL, 0, &pass.stencil.value);
             }
@@ -1757,132 +1951,19 @@ static uint32_t gl_bytes_per_pixel(GLenum format, GLenum type)
     return components * gl_type_size(type);
 }
 
-// 根据 sized internal format 推导颜色纹理的传输格式与类型，未识别的格式返回 false
-static bool rt_color_transfer_format(rt_internal_format_t internal_format, GLenum& format, GLenum& type)
+static void gl_transfer_format(rt_texture_t const& texture, rt_texture_aspect_t aspect, bool download, GLenum& format, GLenum& type)
 {
-    switch (internal_format)
+    if (aspect == RT_TEXTURE_ASPECT_DEPTH && !rt_texture_has_depth(texture.format))
     {
-    case RT_R8:            format = rt_to_gl_format(RT_RED);  type = rt_to_gl_type(RT_UNSIGNED_BYTE); return true;
-    case RT_R16:           format = rt_to_gl_format(RT_RED);  type = rt_to_gl_type(RT_UNSIGNED_SHORT); return true;
-    case RT_RG8:           format = rt_to_gl_format(RT_RG);   type = rt_to_gl_type(RT_UNSIGNED_BYTE); return true;
-    case RT_RG16:          format = rt_to_gl_format(RT_RG);   type = rt_to_gl_type(RT_UNSIGNED_SHORT); return true;
-    case RT_R16F:          format = rt_to_gl_format(RT_RED);  type = rt_to_gl_type(RT_HALF_FLOAT); return true;
-    case RT_R32F:          format = rt_to_gl_format(RT_RED);  type = rt_to_gl_type(RT_FLOAT); return true;
-    case RT_RG16F:         format = rt_to_gl_format(RT_RG);   type = rt_to_gl_type(RT_HALF_FLOAT); return true;
-    case RT_RG32F:         format = rt_to_gl_format(RT_RG);   type = rt_to_gl_type(RT_FLOAT); return true;
-    case RT_RGB8:          format = rt_to_gl_format(RT_RGB);  type = rt_to_gl_type(RT_UNSIGNED_BYTE); return true;
-    case RT_RGB16:         format = rt_to_gl_format(RT_RGB);  type = rt_to_gl_type(RT_UNSIGNED_SHORT); return true;
-    case RT_RGBA8:         format = rt_to_gl_format(RT_RGBA); type = rt_to_gl_type(RT_UNSIGNED_BYTE); return true;
-    case RT_RGBA16:        format = rt_to_gl_format(RT_RGBA); type = rt_to_gl_type(RT_UNSIGNED_SHORT); return true;
-    case RT_SRGB8_ALPHA8:  format = rt_to_gl_format(RT_RGBA); type = rt_to_gl_type(RT_UNSIGNED_BYTE); return true;
-    case RT_RGB16F:        format = rt_to_gl_format(RT_RGB);  type = rt_to_gl_type(RT_HALF_FLOAT); return true;
-    case RT_RGBA16F:       format = rt_to_gl_format(RT_RGBA); type = rt_to_gl_type(RT_HALF_FLOAT); return true;
-    case RT_RGB32F:        format = rt_to_gl_format(RT_RGB);  type = rt_to_gl_type(RT_FLOAT); return true;
-    case RT_RGBA32F:       format = rt_to_gl_format(RT_RGBA); type = rt_to_gl_type(RT_FLOAT); return true;
-    case GL_RGBA4:         format = rt_to_gl_format(RT_RGBA); type = GL_UNSIGNED_SHORT_4_4_4_4; return true;
-    case GL_RGB5_A1:       format = rt_to_gl_format(RT_RGBA); type = GL_UNSIGNED_SHORT_5_5_5_1; return true;
-    case GL_RGB10_A2:      format = rt_to_gl_format(RT_RGBA); type = GL_UNSIGNED_INT_2_10_10_10_REV; return true;
-    case GL_R8I:           format = GL_RED_INTEGER;  type = rt_to_gl_type(RT_BYTE); return true;
-    case GL_R8UI:          format = GL_RED_INTEGER;  type = rt_to_gl_type(RT_UNSIGNED_BYTE); return true;
-    case GL_R16I:          format = GL_RED_INTEGER;  type = rt_to_gl_type(RT_SHORT); return true;
-    case GL_R16UI:         format = GL_RED_INTEGER;  type = rt_to_gl_type(RT_UNSIGNED_SHORT); return true;
-    case GL_R32I:          format = GL_RED_INTEGER;  type = rt_to_gl_type(RT_INT); return true;
-    case GL_R32UI:         format = GL_RED_INTEGER;  type = rt_to_gl_type(RT_UNSIGNED_INT); return true;
-    case GL_RG8I:          format = GL_RG_INTEGER;   type = rt_to_gl_type(RT_BYTE); return true;
-    case GL_RG8UI:         format = GL_RG_INTEGER;   type = rt_to_gl_type(RT_UNSIGNED_BYTE); return true;
-    case GL_RG16I:         format = GL_RG_INTEGER;   type = rt_to_gl_type(RT_SHORT); return true;
-    case GL_RG16UI:        format = GL_RG_INTEGER;   type = rt_to_gl_type(RT_UNSIGNED_SHORT); return true;
-    case GL_RG32I:         format = GL_RG_INTEGER;   type = rt_to_gl_type(RT_INT); return true;
-    case GL_RG32UI:        format = GL_RG_INTEGER;   type = rt_to_gl_type(RT_UNSIGNED_INT); return true;
-    case GL_R11F_G11F_B10F: format = rt_to_gl_format(RT_RGB); type = GL_UNSIGNED_INT_10F_11F_11F_REV; return true;
-    case GL_RGB9_E5:       format = rt_to_gl_format(RT_RGB);  type = GL_UNSIGNED_INT_5_9_9_9_REV; return true;
-    case GL_SRGB8:         format = rt_to_gl_format(RT_RGB);  type = rt_to_gl_type(RT_UNSIGNED_BYTE); return true;
-    case GL_RGB565:        format = rt_to_gl_format(RT_RGB);  type = GL_UNSIGNED_SHORT_5_6_5; return true;
-    case GL_RGBA32UI:      format = GL_RGBA_INTEGER; type = rt_to_gl_type(RT_UNSIGNED_INT); return true;
-    case GL_RGB32UI:       format = GL_RGB_INTEGER;  type = rt_to_gl_type(RT_UNSIGNED_INT); return true;
-    case GL_RGBA16UI:      format = GL_RGBA_INTEGER; type = rt_to_gl_type(RT_UNSIGNED_SHORT); return true;
-    case GL_RGB16UI:       format = GL_RGB_INTEGER;  type = rt_to_gl_type(RT_UNSIGNED_SHORT); return true;
-    case GL_RGBA8UI:       format = GL_RGBA_INTEGER; type = rt_to_gl_type(RT_UNSIGNED_BYTE); return true;
-    case GL_RGB8UI:        format = GL_RGB_INTEGER;  type = rt_to_gl_type(RT_UNSIGNED_BYTE); return true;
-    case GL_RGBA32I:       format = GL_RGBA_INTEGER; type = rt_to_gl_type(RT_INT); return true;
-    case GL_RGB32I:        format = GL_RGB_INTEGER;  type = rt_to_gl_type(RT_INT); return true;
-    case GL_RGBA16I:       format = GL_RGBA_INTEGER; type = rt_to_gl_type(RT_SHORT); return true;
-    case GL_RGB16I:        format = GL_RGB_INTEGER;  type = rt_to_gl_type(RT_SHORT); return true;
-    case GL_RGBA8I:        format = GL_RGBA_INTEGER; type = rt_to_gl_type(RT_BYTE); return true;
-    case GL_RGB8I:         format = GL_RGB_INTEGER;  type = rt_to_gl_type(RT_BYTE); return true;
-    case GL_R8_SNORM:      format = rt_to_gl_format(RT_RED);  type = rt_to_gl_type(RT_BYTE); return true;
-    case GL_RG8_SNORM:     format = rt_to_gl_format(RT_RG);   type = rt_to_gl_type(RT_BYTE); return true;
-    case GL_RGB8_SNORM:    format = rt_to_gl_format(RT_RGB);  type = rt_to_gl_type(RT_BYTE); return true;
-    case GL_RGBA8_SNORM:   format = rt_to_gl_format(RT_RGBA); type = rt_to_gl_type(RT_BYTE); return true;
-    case GL_R16_SNORM:     format = rt_to_gl_format(RT_RED);  type = rt_to_gl_type(RT_SHORT); return true;
-    case GL_RG16_SNORM:    format = rt_to_gl_format(RT_RG);   type = rt_to_gl_type(RT_SHORT); return true;
-    case GL_RGB16_SNORM:   format = rt_to_gl_format(RT_RGB);  type = rt_to_gl_type(RT_SHORT); return true;
-    case GL_RGBA16_SNORM:  format = rt_to_gl_format(RT_RGBA); type = rt_to_gl_type(RT_SHORT); return true;
-    case GL_RGB10_A2UI:    format = GL_RGBA_INTEGER; type = GL_UNSIGNED_INT_2_10_10_10_REV; return true;
-    default:
-        return false;
+        fprintf(stderr, "Texture has no depth aspect\n");
+        abort();
     }
-}
-
-// 根据纹理与 aspect 决定传输使用的像素格式和类型
-// download 为 true 时允许从深度模板纹理中单独读取深度或模板
-static void gl_transfer_format(rt_texture_t const& texture, rt_format_t aspect, bool download, GLenum& format, GLenum& type)
-{
-    switch (texture.format)
+    if (aspect == RT_TEXTURE_ASPECT_STENCIL && !rt_texture_has_stencil(texture.format))
     {
-    case RT_STENCIL_INDEX:
-        if (aspect == RT_DEPTH_COMPONENT && download)
-        {
-            fprintf(stderr, "Texture has no depth aspect\n");
-            abort();
-        }
-        format = rt_to_gl_format(RT_STENCIL_INDEX);
-        type = rt_to_gl_type(RT_UNSIGNED_BYTE);
-        return;
-    case RT_DEPTH_COMPONENT:
-        if (aspect == RT_STENCIL_INDEX)
-        {
-            fprintf(stderr, "Texture has no stencil aspect\n");
-            abort();
-        }
-        format = rt_to_gl_format(RT_DEPTH_COMPONENT);
-        type = rt_to_gl_type(texture.type);
-        return;
-    case RT_RED:
-    case RT_RGB:
-    case RT_RGBA:
-    case RT_RG:
-        if (!rt_color_transfer_format(texture.internal_format, format, type))
-        {
-            format = rt_to_gl_format(texture.format);
-            type = rt_to_gl_type(texture.type);
-        }
-        return;
-    case RT_DEPTH_STENCIL:
-        if (download && aspect == RT_STENCIL_INDEX)
-        {
-            format = rt_to_gl_format(RT_STENCIL_INDEX);
-            type = rt_to_gl_type(RT_UNSIGNED_BYTE);
-        }
-        else if (download && aspect == RT_DEPTH_COMPONENT)
-        {
-            format = rt_to_gl_format(RT_DEPTH_COMPONENT);
-            type = rt_to_gl_type(RT_FLOAT);
-        }
-        else
-        {
-            format = rt_to_gl_format(RT_DEPTH_STENCIL);
-            type = rt_to_gl_type(texture.type);
-        }
-        return;
-    default:
-        if (!rt_color_transfer_format(texture.internal_format, format, type))
-        {
-            format = rt_to_gl_format(texture.format);
-            type = rt_to_gl_type(texture.type);
-        }
-        return;
+        fprintf(stderr, "Texture has no stencil aspect\n");
+        abort();
     }
+    rt_to_gl_transfer(texture.format, aspect, download, format, type);
 }
 
 // 校验纹理拷贝区域是否越界
@@ -2210,40 +2291,73 @@ void gl_copy_texture_buffer(rt_buffer_texel_t source, rt_texture_copy_t destinat
 
 // ====================================================================
 
-static GLsizei rt_type_size(rt_type_t type)
+static GLsizei rt_to_gl_vertex_size(rt_vertex_format_t format)
 {
-    switch (type)
+    switch (format)
     {
-    case RT_TYPE_NONE:
-        return 4;
-    case RT_BYTE:
-    case RT_UNSIGNED_BYTE:
-        return 1;
-    case RT_SHORT:
-    case RT_UNSIGNED_SHORT:
-        return 2;
-    case RT_INT:
-    case RT_UNSIGNED_INT:
-    case RT_FLOAT:
-        return 4;
-    case RT_DOUBLE:
-        return 8;
-    case RT_HALF_FLOAT:
-        return 2;
-    case RT_UNSIGNED_INT_24_8:
-    default:
-        return 4;
+        case RT_VERTEX_NONE: return 0;
+        case RT_VERTEX_UINT8: return 1;
+        case RT_VERTEX_UINT8X2: return 2;
+        case RT_VERTEX_UINT8X4: return 4;
+        case RT_VERTEX_SINT8: return 1;
+        case RT_VERTEX_SINT8X2: return 2;
+        case RT_VERTEX_SINT8X4: return 4;
+        case RT_VERTEX_UNORM8: return 1;
+        case RT_VERTEX_UNORM8X2: return 2;
+        case RT_VERTEX_UNORM8X4: return 4;
+        case RT_VERTEX_SNORM8: return 1;
+        case RT_VERTEX_SNORM8X2: return 2;
+        case RT_VERTEX_SNORM8X4: return 4;
+        case RT_VERTEX_UINT16: return 2;
+        case RT_VERTEX_UINT16X2: return 4;
+        case RT_VERTEX_UINT16X4: return 8;
+        case RT_VERTEX_SINT16: return 2;
+        case RT_VERTEX_SINT16X2: return 4;
+        case RT_VERTEX_SINT16X4: return 8;
+        case RT_VERTEX_UNORM16: return 2;
+        case RT_VERTEX_UNORM16X2: return 4;
+        case RT_VERTEX_UNORM16X4: return 8;
+        case RT_VERTEX_SNORM16: return 2;
+        case RT_VERTEX_SNORM16X2: return 4;
+        case RT_VERTEX_SNORM16X4: return 8;
+        case RT_VERTEX_FLOAT16: return 2;
+        case RT_VERTEX_FLOAT16X2: return 4;
+        case RT_VERTEX_FLOAT16X4: return 8;
+        case RT_VERTEX_FLOAT32: return 4;
+        case RT_VERTEX_FLOAT32X2: return 8;
+        case RT_VERTEX_FLOAT32X3: return 12;
+        case RT_VERTEX_FLOAT32X4: return 16;
+        case RT_VERTEX_UINT32: return 4;
+        case RT_VERTEX_UINT32X2: return 8;
+        case RT_VERTEX_UINT32X3: return 12;
+        case RT_VERTEX_UINT32X4: return 16;
+        case RT_VERTEX_SINT32: return 4;
+        case RT_VERTEX_SINT32X2: return 8;
+        case RT_VERTEX_SINT32X3: return 12;
+        case RT_VERTEX_SINT32X4: return 16;
+        case RT_VERTEX_UNORM10_10_10_2:
+        case RT_VERTEX_UNORM8X4_BGRA: return 4;
+        default: return 0;
     }
 }
 
-static GLsizei rt_index_size(rt_type_t type)
+static GLenum rt_to_gl_index_type(rt_index_type_t type)
 {
     switch (type)
     {
-    case RT_UNSIGNED_SHORT:
-        return 2;
-    default:
-        return 4;
+    case RT_INDEX_UINT16: return GL_UNSIGNED_SHORT;
+    case RT_INDEX_UINT32: return GL_UNSIGNED_INT;
+    default: return GL_UNSIGNED_INT;
+    }
+}
+
+static GLsizei rt_index_size(rt_index_type_t type)
+{
+    switch (type)
+    {
+    case RT_INDEX_UINT16: return 2;
+    case RT_INDEX_UINT32: return 4;
+    default: return 4;
     }
 }
 
@@ -2296,11 +2410,11 @@ void gl_draw_mesh(rt_mesh_t& mesh)
     for (uint32_t i = 0; i < std::size(module.vertex); ++i)
     {
         rt_vertex_t const& layout = module.vertex[i];
-        if (layout.type == RT_TYPE_NONE || layout.count == 0)
+        if (layout.format == RT_VERTEX_NONE)
             continue;
 
         GLuint buffer = 0;
-        GLsizei stride = rt_type_size(layout.type) * (GLsizei)layout.count;
+        GLsizei stride = rt_to_gl_vertex_size(layout.format);
         for (uint32_t k = 0; k < std::size(mesh.vertex); ++k)
         {
             if (mesh.vertex[k].handle == 0 || mesh.location[k] != layout.location)
@@ -2318,7 +2432,7 @@ void gl_draw_mesh(rt_mesh_t& mesh)
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, mesh.index.handle);
         GLsizei index_stride = rt_index_size(module.index_type);
         auto index_count = (GLsizei)(mesh.index.size / (size_t)index_stride);
-        glDrawElements(rt_to_gl_primitive(module.primitive), index_count, rt_to_gl_type(module.index_type), (void*)0);
+        glDrawElements(rt_to_gl_primitive(module.primitive), index_count, rt_to_gl_index_type(module.index_type), (void*)0);
     }
     else
     {
@@ -2346,11 +2460,11 @@ void gl_draw_mesh_multi(rt_mesh_t& mesh, uint32_t count)
     for (uint32_t i = 0; i < std::size(module.vertex); ++i)
     {
         rt_vertex_t const& layout = module.vertex[i];
-        if (layout.type == RT_TYPE_NONE || layout.count == 0)
+        if (layout.format == RT_VERTEX_NONE)
             continue;
 
         GLuint buffer = 0;
-        GLsizei stride = rt_type_size(layout.type) * (GLsizei)layout.count;
+        GLsizei stride = rt_to_gl_vertex_size(layout.format);
         for (uint32_t k = 0; k < std::size(mesh.vertex); ++k)
         {
             if (mesh.vertex[k].handle == 0 || mesh.location[k] != layout.location)
@@ -2368,7 +2482,7 @@ void gl_draw_mesh_multi(rt_mesh_t& mesh, uint32_t count)
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, mesh.index.handle);
         GLsizei index_stride = rt_index_size(module.index_type);
         auto index_count = (GLsizei)(mesh.index.size / (size_t)index_stride);
-        glDrawElementsInstanced(rt_to_gl_primitive(module.primitive), index_count, rt_to_gl_type(module.index_type), (void*)0, (int32_t)count);
+        glDrawElementsInstanced(rt_to_gl_primitive(module.primitive), index_count, rt_to_gl_index_type(module.index_type), (void*)0, (int32_t)count);
     }
     else
     {
@@ -2428,7 +2542,7 @@ void gl_draw_meshlet(rt_meshlet_t& meshlet)
     for (uint32_t i = 0; i < std::size(module.vertex); ++i)
     {
         rt_vertex_t const& layout = module.vertex[i];
-        if (layout.type == RT_TYPE_NONE || layout.count == 0)
+        if (layout.format == RT_VERTEX_NONE)
             continue;
 
         for (uint32_t k = 0; k < std::size(meshlet.vertex); ++k)

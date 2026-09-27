@@ -6,7 +6,7 @@ struct rt_image_t
     void* data = nullptr;
     size_t size = 0;
     uint32_t width = 0, height = 0, channel = 0;
-    rt_type_t type = RT_UNSIGNED_BYTE;
+    rt_texture_format_t format = RT_TEXTURE_RGBA8UNORM;
 };
 rt_image_t rt_load_image_file(const char* filename, bool flip = false);
 void rt_destroy_image(rt_image_t& image);
@@ -33,24 +33,44 @@ static rt_image_t rt_load_image_file(const char* filename, bool flip)
 
     int width = 0, height = 0, channels = 0;
     void* data = nullptr;
-    rt_type_t type = RT_UNSIGNED_BYTE;
+    rt_texture_format_t format = RT_TEXTURE_RGBA8UNORM;
     size_t size = 0;
 
-    // 按文件实际位深选择加载方式：HDR -> float，16 位 PNG/PSD -> ushort，其余 -> byte
+    int infoChannels = 0;
+    stbi_info(filename, &width, &height, &infoChannels);
+    int req = (infoChannels == 1 || infoChannels == 2) ? 0 : 4;
+
+    // 按文件实际位深选择加载方式：HDR -> float，16 位 PNG/PSD -> unorm16，其余 -> unorm8
+    // GPUTextureFormat 没有 RGB，三通道图像扩展为 RGBA
     if (stbi_is_hdr(filename)) {
-        data = stbi_loadf(filename, &width, &height, &channels, 0);
-        type = RT_FLOAT;
-        size = width * height * channels * sizeof(float);
+        data = stbi_loadf(filename, &width, &height, &channels, req);
+        switch (channels)
+        {
+            case 1: format = RT_TEXTURE_R32FLOAT; break;
+            case 2: format = RT_TEXTURE_RG32FLOAT; break;
+            default: format = RT_TEXTURE_RGBA32FLOAT; break;
+        }
+        size = (size_t)width * height * channels * sizeof(float);
     }
     else if (stbi_is_16_bit(filename)) {
-        data = stbi_load_16(filename, &width, &height, &channels, 0);
-        type = RT_UNSIGNED_SHORT;
-        size = width * height * channels * sizeof(uint16_t);
+        data = stbi_load_16(filename, &width, &height, &channels, req);
+        switch (channels)
+        {
+            case 1: format = RT_TEXTURE_R16UNORM; break;
+            case 2: format = RT_TEXTURE_RG16UNORM; break;
+            default: format = RT_TEXTURE_RGBA16UNORM; break;
+        }
+        size = (size_t)width * height * channels * sizeof(uint16_t);
     }
     else {
-        data = stbi_load(filename, &width, &height, &channels, 0);
-        type = RT_UNSIGNED_BYTE;
-        size = width * height * channels * sizeof(uint8_t);
+        data = stbi_load(filename, &width, &height, &channels, req);
+        switch (channels)
+        {
+            case 1: format = RT_TEXTURE_R8UNORM; break;
+            case 2: format = RT_TEXTURE_RG8UNORM; break;
+            default: format = RT_TEXTURE_RGBA8UNORM; break;
+        }
+        size = (size_t)width * height * channels * sizeof(uint8_t);
     }
 
     if (!data) {
@@ -64,7 +84,7 @@ static rt_image_t rt_load_image_file(const char* filename, bool flip)
     image.width = width;
     image.height = height;
     image.channel = channels;
-    image.type = type;
+    image.format = format;
     return image;
 }
 
@@ -77,64 +97,21 @@ static void rt_destroy_image(rt_image_t& image)
 static rt_texture_t rt_load_texture(rt_image_t image)
 {
     auto data = image.data;
-    auto type = image.type;
     auto width = image.width;
     auto height = image.height;
-    auto channels = image.channel;
 
     rt_texture_info_t info = {};
     info.width = width;
     info.height = height;
     info.depth = 1;
     info.target = RT_TEXTURE_2D;
-    info.type = type;
+    info.format = image.format;
     info.data = data;
 
-    switch (channels)
+    if (image.channel < 1 || image.channel > 4)
     {
-        case 1:
-            info.format = RT_RED;
-            switch (type)
-            {
-                case RT_UNSIGNED_BYTE:  info.internal_format = RT_R8;   break;
-                case RT_UNSIGNED_SHORT: info.internal_format = RT_R16;  break;
-                case RT_FLOAT:          info.internal_format = RT_R32F; break;
-            }
-            break;
-
-        case 2:
-            info.format = RT_RG;
-            switch (type)
-            {
-                case RT_UNSIGNED_BYTE:  info.internal_format = RT_RG8;   break;
-                case RT_UNSIGNED_SHORT: info.internal_format = RT_RG16;  break;
-                case RT_FLOAT:          info.internal_format = RT_RG32F; break;
-            }
-            break;
-
-        case 3:
-            info.format = RT_RGB;
-            switch (type)
-            {
-                case RT_UNSIGNED_BYTE:  info.internal_format = RT_RGB8;   break;
-                case RT_UNSIGNED_SHORT: info.internal_format = RT_RGB16;  break;
-                case RT_FLOAT:          info.internal_format = RT_RGB32F; break;
-            }
-            break;
-
-        case 4:
-            info.format = RT_RGBA;
-            switch (type)
-            {
-                case RT_UNSIGNED_BYTE:  info.internal_format = RT_RGBA8;   break;
-                case RT_UNSIGNED_SHORT: info.internal_format = RT_RGBA16;  break;
-                case RT_FLOAT:          info.internal_format = RT_RGBA32F; break;
-            }
-            break;
-
-        default:
-            fprintf(stderr, "Unsupported channel count: %d\n", channels);
-            return {};
+        fprintf(stderr, "Unsupported channel count: %d\n", image.channel);
+        return {};
     }
 
     rt_texture_t texture = rt_create_texture(info);

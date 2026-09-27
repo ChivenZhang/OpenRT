@@ -46,13 +46,13 @@ void frame(int width, int height)
 
         // Copy Texture To Buffer
 
-        auto buffer = rt_create_buffer({.size = texture.width * texture.height * 3,});
+        auto buffer = rt_create_buffer({.size = texture.width * texture.height * 4,});
         {
             rt_pass_transfer_t pass = {};
             rt_begin_transfer(pass);
             rt_copy_buffer_texture(
                 {.texture = texture, },
-                {.buffer = buffer, .bytesPerRow = texture.width * 3, .rowsPerImage = texture.height,},
+                {.buffer = buffer, .bytesPerRow = texture.width * 4, .rowsPerImage = texture.height,},
                 {texture.width, texture.height, 1});
             rt_end_transfer(pass);
         }
@@ -60,12 +60,12 @@ void frame(int width, int height)
 
         // Copy Buffer To Texture
 
-        texture = rt_create_texture({.width = texture.width, .height = texture.height, .format = RT_RGB, .internal_format = RT_RGB8, });
+        texture = rt_create_texture({.width = texture.width, .height = texture.height, .format = RT_TEXTURE_RGBA8UNORM, });
         {
             rt_pass_transfer_t pass = {};
             rt_begin_transfer(pass);
             rt_copy_texture_buffer(
-                {.buffer = buffer, .bytesPerRow = texture.width * 3, .rowsPerImage = texture.height,},
+                {.buffer = buffer, .bytesPerRow = texture.width * 4, .rowsPerImage = texture.height,},
                 {.texture = texture,},
                 {texture.width, texture.height, 1});
             rt_end_transfer(pass);

@@ -69,56 +69,145 @@ enum rt_texture_target_t : uint32_t
     RT_TEXTURE_2D_MULTISAMPLE,
 };
 
-enum rt_format_t : uint32_t
+enum rt_texture_format_t : uint32_t
 {
-    RT_STENCIL_INDEX = 0,
-    RT_DEPTH_COMPONENT,
-    RT_RED,
-    RT_RGB,
-    RT_RGBA,
-    RT_RG,
-    RT_DEPTH_STENCIL,
+    RT_TEXTURE_NONE = 0,
+    RT_TEXTURE_R8UNORM,
+    RT_TEXTURE_R8SNORM,
+    RT_TEXTURE_R8UINT,
+    RT_TEXTURE_R8SINT,
+    RT_TEXTURE_R16UNORM,
+    RT_TEXTURE_R16SNORM,
+    RT_TEXTURE_R16UINT,
+    RT_TEXTURE_R16SINT,
+    RT_TEXTURE_R16FLOAT,
+    RT_TEXTURE_RG8UNORM,
+    RT_TEXTURE_RG8SNORM,
+    RT_TEXTURE_RG8UINT,
+    RT_TEXTURE_RG8SINT,
+    RT_TEXTURE_R32UINT,
+    RT_TEXTURE_R32SINT,
+    RT_TEXTURE_R32FLOAT,
+    RT_TEXTURE_RG16UNORM,
+    RT_TEXTURE_RG16SNORM,
+    RT_TEXTURE_RG16UINT,
+    RT_TEXTURE_RG16SINT,
+    RT_TEXTURE_RG16FLOAT,
+    RT_TEXTURE_RGBA8UNORM,
+    RT_TEXTURE_RGBA8UNORM_SRGB,
+    RT_TEXTURE_RGBA8SNORM,
+    RT_TEXTURE_RGBA8UINT,
+    RT_TEXTURE_RGBA8SINT,
+    RT_TEXTURE_BGRA8UNORM,
+    RT_TEXTURE_BGRA8UNORM_SRGB,
+    RT_TEXTURE_RGB10A2UINT,
+    RT_TEXTURE_RGB10A2UNORM,
+    RT_TEXTURE_RG11B10UFLOAT,
+    RT_TEXTURE_RGB9E5UFLOAT,
+    RT_TEXTURE_RG32UINT,
+    RT_TEXTURE_RG32SINT,
+    RT_TEXTURE_RG32FLOAT,
+    RT_TEXTURE_RGBA16UNORM,
+    RT_TEXTURE_RGBA16SNORM,
+    RT_TEXTURE_RGBA16UINT,
+    RT_TEXTURE_RGBA16SINT,
+    RT_TEXTURE_RGBA16FLOAT,
+    RT_TEXTURE_RGBA32UINT,
+    RT_TEXTURE_RGBA32SINT,
+    RT_TEXTURE_RGBA32FLOAT,
+    RT_TEXTURE_STENCIL8,
+    RT_TEXTURE_DEPTH16UNORM,
+    RT_TEXTURE_DEPTH24PLUS,
+    RT_TEXTURE_DEPTH24PLUS_STENCIL8,
+    RT_TEXTURE_DEPTH32FLOAT,
+    RT_TEXTURE_DEPTH32FLOAT_STENCIL8,
 };
 
-enum rt_internal_format_t : uint32_t
+enum rt_texture_aspect_t : uint32_t
 {
-    RT_R8 = 0,
-    RT_R16,
-    RT_RG8,
-    RT_RG16,
-    RT_R16F,
-    RT_R32F,
-    RT_RG16F,
-    RT_RG32F,
-    RT_RGB8,
-    RT_RGB16,
-    RT_RGBA8,
-    RT_RGBA16,
-    RT_SRGB8_ALPHA8,
-    RT_RGB16F,
-    RT_RGBA16F,
-    RT_RGB32F,
-    RT_RGBA32F,
-    RT_DEPTH_COMPONENT16,
-    RT_DEPTH_COMPONENT24,
-    RT_DEPTH_COMPONENT32F,
-    RT_DEPTH24_STENCIL8,
-    RT_DEPTH32F_STENCIL8,
+    RT_TEXTURE_ASPECT_ALL = 0,
+    RT_TEXTURE_ASPECT_STENCIL,
+    RT_TEXTURE_ASPECT_DEPTH,
 };
 
-enum rt_type_t : uint32_t
+inline bool rt_texture_has_depth(rt_texture_format_t format)
 {
-    RT_TYPE_NONE = 0,
-    RT_BYTE,
-    RT_UNSIGNED_BYTE,
-    RT_SHORT,
-    RT_UNSIGNED_SHORT,
-    RT_INT,
-    RT_UNSIGNED_INT,
-    RT_FLOAT,
-    RT_DOUBLE,
-    RT_HALF_FLOAT,
-    RT_UNSIGNED_INT_24_8,
+    switch (format)
+    {
+        case RT_TEXTURE_DEPTH16UNORM:
+        case RT_TEXTURE_DEPTH24PLUS:
+        case RT_TEXTURE_DEPTH24PLUS_STENCIL8:
+        case RT_TEXTURE_DEPTH32FLOAT:
+        case RT_TEXTURE_DEPTH32FLOAT_STENCIL8:
+            return true;
+        default:
+            return false;
+    }
+}
+
+inline bool rt_texture_has_stencil(rt_texture_format_t format)
+{
+    switch (format)
+    {
+        case RT_TEXTURE_STENCIL8:
+        case RT_TEXTURE_DEPTH24PLUS_STENCIL8:
+        case RT_TEXTURE_DEPTH32FLOAT_STENCIL8:
+            return true;
+        default:
+            return false;
+    }
+}
+
+enum rt_index_type_t : uint32_t
+{
+    RT_INDEX_UINT16 = 0,
+    RT_INDEX_UINT32,
+};
+
+enum rt_vertex_format_t : uint32_t
+{
+    RT_VERTEX_NONE = 0,
+    RT_VERTEX_UINT8,
+    RT_VERTEX_UINT8X2,
+    RT_VERTEX_UINT8X4,
+    RT_VERTEX_SINT8,
+    RT_VERTEX_SINT8X2,
+    RT_VERTEX_SINT8X4,
+    RT_VERTEX_UNORM8,
+    RT_VERTEX_UNORM8X2,
+    RT_VERTEX_UNORM8X4,
+    RT_VERTEX_SNORM8,
+    RT_VERTEX_SNORM8X2,
+    RT_VERTEX_SNORM8X4,
+    RT_VERTEX_UINT16,
+    RT_VERTEX_UINT16X2,
+    RT_VERTEX_UINT16X4,
+    RT_VERTEX_SINT16,
+    RT_VERTEX_SINT16X2,
+    RT_VERTEX_SINT16X4,
+    RT_VERTEX_UNORM16,
+    RT_VERTEX_UNORM16X2,
+    RT_VERTEX_UNORM16X4,
+    RT_VERTEX_SNORM16,
+    RT_VERTEX_SNORM16X2,
+    RT_VERTEX_SNORM16X4,
+    RT_VERTEX_FLOAT16,
+    RT_VERTEX_FLOAT16X2,
+    RT_VERTEX_FLOAT16X4,
+    RT_VERTEX_FLOAT32,
+    RT_VERTEX_FLOAT32X2,
+    RT_VERTEX_FLOAT32X3,
+    RT_VERTEX_FLOAT32X4,
+    RT_VERTEX_UINT32,
+    RT_VERTEX_UINT32X2,
+    RT_VERTEX_UINT32X3,
+    RT_VERTEX_UINT32X4,
+    RT_VERTEX_SINT32,
+    RT_VERTEX_SINT32X2,
+    RT_VERTEX_SINT32X3,
+    RT_VERTEX_SINT32X4,
+    RT_VERTEX_UNORM10_10_10_2,
+    RT_VERTEX_UNORM8X4_BGRA,
 };
 
 enum rt_filter_t : uint32_t
@@ -277,9 +366,7 @@ struct rt_texture_t
     GLuint handle = 0;
     uint32_t width = 0, height = 0, depth = 1;
     rt_texture_target_t target = RT_TEXTURE_2D;
-    rt_format_t format = RT_RGBA;
-    rt_internal_format_t internal_format = RT_RGBA8;
-    rt_type_t type = RT_UNSIGNED_BYTE;
+    rt_texture_format_t format = RT_TEXTURE_RGBA8UNORM;
     uint32_t mipmaps = 0;
     uint32_t samples = 1;
     void* native = nullptr;
@@ -289,9 +376,7 @@ struct rt_texture_info_t
 {
     uint32_t width = 0, height = 0, depth = 1;
     rt_texture_target_t target = RT_TEXTURE_2D;          // RT_TEXTURE_1D / RT_TEXTURE_2D / RT_TEXTURE_3D / RT_TEXTURE_2D_ARRAY / RT_TEXTURE_2D_MULTISAMPLE
-    rt_format_t format = RT_RGBA;                // 数据格式
-    rt_internal_format_t internal_format = RT_RGBA8;      // 内部存储格式
-    rt_type_t type = RT_UNSIGNED_BYTE;         // 数据类型
+    rt_texture_format_t format = RT_TEXTURE_RGBA8UNORM;
     rt_filter_t min_filter = RT_LINEAR_MIPMAP_LINEAR;  // RT_NEAREST / RT_LINEAR / RT_NEAREST_MIPMAP_NEAREST / RT_LINEAR_MIPMAP_NEAREST / RT_NEAREST_MIPMAP_LINEAR / RT_LINEAR_MIPMAP_LINEAR
     rt_filter_t mag_filter = RT_LINEAR;                // RT_NEAREST / RT_LINEAR
     rt_wrap_t wrap_s = RT_REPEAT;                    // RT_REPEAT / RT_MIRRORED_REPEAT / RT_CLAMP_TO_EDGE / RT_CLAMP_TO_BORDER / RT_MIRROR_CLAMP_TO_EDGE
@@ -306,7 +391,7 @@ struct rt_texture_info_t
 struct rt_texture_bind_t
 {
     uint32_t binding = 0;
-    rt_format_t aspect_mode = RT_DEPTH_COMPONENT; // RT_DEPTH_COMPONENT / RT_STENCIL_INDEX
+    rt_texture_aspect_t aspect_mode = RT_TEXTURE_ASPECT_DEPTH;
 };
 
 struct rt_texture_storage_bind_t
@@ -359,13 +444,12 @@ struct rt_module_compute_t
 struct rt_vertex_t
 {
     uint32_t location = 0;
-    rt_type_t type = RT_TYPE_NONE;    // RT_BYTE / RT_UNSIGNED_BYTE / RT_SHORT / RT_UNSIGNED_SHORT / RT_INT / RT_UNSIGNED_INT / RT_FLOAT / RT_DOUBLE
-    uint32_t count = 0;
+    rt_vertex_format_t format = RT_VERTEX_NONE;
     bool instance = false;
 };
-inline rt_vertex_t rt_vertex_vertex{.location = 0, .type = RT_FLOAT, .count = 3, .instance = false};
-inline rt_vertex_t rt_vertex_normal{.location = 1, .type = RT_FLOAT, .count = 3, .instance = false};
-inline rt_vertex_t rt_vertex_uv{.location = 2, .type = RT_FLOAT, .count = 2, .instance = false};
+inline rt_vertex_t rt_vertex_vertex{.location = 0, .format = RT_VERTEX_FLOAT32X3, .instance = false};
+inline rt_vertex_t rt_vertex_normal{.location = 1, .format = RT_VERTEX_FLOAT32X3, .instance = false};
+inline rt_vertex_t rt_vertex_uv{.location = 2, .format = RT_VERTEX_FLOAT32X2, .instance = false};
 
 struct rt_binding_t
 {
@@ -418,7 +502,7 @@ struct rt_module_render_info_t
         } back, front;
     } stencil;
 
-    rt_type_t index_type = RT_UNSIGNED_INT;    // RT_UNSIGNED_SHORT / RT_UNSIGNED_INT
+    rt_index_type_t index_type = RT_INDEX_UINT32; // RT_INDEX_UINT16 / RT_INDEX_UINT32
     rt_vertex_t vertex[RT_MAX_VERTEX_BUFFER_NUM];
     rt_binding_t binding[RT_MAX_BINDING_HANDLE_NUM];
 
@@ -463,7 +547,7 @@ struct rt_module_render_t
         } back, front;
     } stencil;
 
-    rt_type_t index_type = RT_UNSIGNED_INT;
+    rt_index_type_t index_type = RT_INDEX_UINT32;
     rt_vertex_t vertex[RT_MAX_VERTEX_BUFFER_NUM];
     rt_binding_t binding[RT_MAX_BINDING_HANDLE_NUM];
 
@@ -612,7 +696,7 @@ struct rt_buffer_texel_t
 struct rt_texture_copy_t
 {
     rt_texture_t& texture;
-    rt_format_t aspect = RT_DEPTH_COMPONENT; // RT_DEPTH_COMPONENT / RT_STENCIL_INDEX
+    rt_texture_aspect_t aspect = RT_TEXTURE_ASPECT_ALL;
     uint32_t mipLevel = 0;
     rt_size_t origin;
 };

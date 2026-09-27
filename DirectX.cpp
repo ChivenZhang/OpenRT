@@ -80,89 +80,111 @@ static bool rt_has_mipmap_filter(rt_filter_t minFilter)
     }
 }
 
-static DXGI_FORMAT rt_to_dx_format(rt_format_t glFormat, rt_type_t glType, rt_internal_format_t internalFormat)
+static DXGI_FORMAT rt_to_dx_texture_format(rt_texture_format_t format)
 {
-    switch (internalFormat)
+    switch (format)
     {
-        case RT_R8: return DXGI_FORMAT_R8_UNORM;
-        case RT_RG8: return DXGI_FORMAT_R8G8_UNORM;
-        case RT_R16F: return DXGI_FORMAT_R16_FLOAT;
-        case RT_R32F: return DXGI_FORMAT_R32_FLOAT;
-        case RT_RG16F: return DXGI_FORMAT_R16G16_FLOAT;
-        case RT_RG32F: return DXGI_FORMAT_R32G32_FLOAT;
-        case RT_RGB8: return DXGI_FORMAT_R8G8B8A8_UNORM;
-        case RT_RGBA8: return DXGI_FORMAT_R8G8B8A8_UNORM;
-        case RT_SRGB8_ALPHA8: return DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
-        case RT_RGBA16F: return DXGI_FORMAT_R16G16B16A16_FLOAT;
-        case RT_RGBA32F: return DXGI_FORMAT_R32G32B32A32_FLOAT;
-        case RT_DEPTH_COMPONENT16: return DXGI_FORMAT_D16_UNORM;
-        case RT_DEPTH_COMPONENT24: return DXGI_FORMAT_D32_FLOAT;
-        case RT_DEPTH_COMPONENT32F: return DXGI_FORMAT_D32_FLOAT;
-        case RT_DEPTH24_STENCIL8: return DXGI_FORMAT_D24_UNORM_S8_UINT;
-        case RT_DEPTH32F_STENCIL8: return DXGI_FORMAT_D32_FLOAT_S8X24_UINT;
-        default: break;
-    }
-    switch (glFormat)
-    {
-        case RT_STENCIL_INDEX: return DXGI_FORMAT_R8G8B8A8_UNORM;
-        case RT_DEPTH_COMPONENT: return DXGI_FORMAT_D32_FLOAT;
-        case RT_RED:
-            switch (glType)
-            {
-                case RT_FLOAT: return DXGI_FORMAT_R32_FLOAT;
-                default: return DXGI_FORMAT_R8_UNORM;
-            }
-        case RT_RGB:
-        case RT_RGBA:
-            switch (glType)
-            {
-                case RT_FLOAT: return DXGI_FORMAT_R32G32B32A32_FLOAT;
-                default: return DXGI_FORMAT_R8G8B8A8_UNORM;
-            }
-        case RT_RG:
-            switch (glType)
-            {
-                case RT_FLOAT: return DXGI_FORMAT_R32G32_FLOAT;
-                default: return DXGI_FORMAT_R8G8_UNORM;
-            }
-        case RT_DEPTH_STENCIL: return DXGI_FORMAT_D24_UNORM_S8_UINT;
-        default: return DXGI_FORMAT_R8G8B8A8_UNORM;
+        case RT_TEXTURE_NONE: return DXGI_FORMAT_UNKNOWN;
+        case RT_TEXTURE_R8UNORM: return DXGI_FORMAT_R8_UNORM;
+        case RT_TEXTURE_R8SNORM: return DXGI_FORMAT_R8_SNORM;
+        case RT_TEXTURE_R8UINT: return DXGI_FORMAT_R8_UINT;
+        case RT_TEXTURE_R8SINT: return DXGI_FORMAT_R8_SINT;
+        case RT_TEXTURE_R16UNORM: return DXGI_FORMAT_R16_UNORM;
+        case RT_TEXTURE_R16SNORM: return DXGI_FORMAT_R16_SNORM;
+        case RT_TEXTURE_R16UINT: return DXGI_FORMAT_R16_UINT;
+        case RT_TEXTURE_R16SINT: return DXGI_FORMAT_R16_SINT;
+        case RT_TEXTURE_R16FLOAT: return DXGI_FORMAT_R16_FLOAT;
+        case RT_TEXTURE_RG8UNORM: return DXGI_FORMAT_R8G8_UNORM;
+        case RT_TEXTURE_RG8SNORM: return DXGI_FORMAT_R8G8_SNORM;
+        case RT_TEXTURE_RG8UINT: return DXGI_FORMAT_R8G8_UINT;
+        case RT_TEXTURE_RG8SINT: return DXGI_FORMAT_R8G8_SINT;
+        case RT_TEXTURE_R32UINT: return DXGI_FORMAT_R32_UINT;
+        case RT_TEXTURE_R32SINT: return DXGI_FORMAT_R32_SINT;
+        case RT_TEXTURE_R32FLOAT: return DXGI_FORMAT_R32_FLOAT;
+        case RT_TEXTURE_RG16UNORM: return DXGI_FORMAT_R16G16_UNORM;
+        case RT_TEXTURE_RG16SNORM: return DXGI_FORMAT_R16G16_SNORM;
+        case RT_TEXTURE_RG16UINT: return DXGI_FORMAT_R16G16_UINT;
+        case RT_TEXTURE_RG16SINT: return DXGI_FORMAT_R16G16_SINT;
+        case RT_TEXTURE_RG16FLOAT: return DXGI_FORMAT_R16G16_FLOAT;
+        case RT_TEXTURE_RGBA8UNORM: return DXGI_FORMAT_R8G8B8A8_UNORM;
+        case RT_TEXTURE_RGBA8UNORM_SRGB: return DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
+        case RT_TEXTURE_RGBA8SNORM: return DXGI_FORMAT_R8G8B8A8_SNORM;
+        case RT_TEXTURE_RGBA8UINT: return DXGI_FORMAT_R8G8B8A8_UINT;
+        case RT_TEXTURE_RGBA8SINT: return DXGI_FORMAT_R8G8B8A8_SINT;
+        case RT_TEXTURE_BGRA8UNORM: return DXGI_FORMAT_B8G8R8A8_UNORM;
+        case RT_TEXTURE_BGRA8UNORM_SRGB: return DXGI_FORMAT_B8G8R8A8_UNORM_SRGB;
+        case RT_TEXTURE_RGB10A2UINT: return DXGI_FORMAT_R10G10B10A2_UINT;
+        case RT_TEXTURE_RGB10A2UNORM: return DXGI_FORMAT_R10G10B10A2_UNORM;
+        case RT_TEXTURE_RG11B10UFLOAT: return DXGI_FORMAT_R11G11B10_FLOAT;
+        case RT_TEXTURE_RGB9E5UFLOAT: return DXGI_FORMAT_R9G9B9E5_SHAREDEXP;
+        case RT_TEXTURE_RG32UINT: return DXGI_FORMAT_R32G32_UINT;
+        case RT_TEXTURE_RG32SINT: return DXGI_FORMAT_R32G32_SINT;
+        case RT_TEXTURE_RG32FLOAT: return DXGI_FORMAT_R32G32_FLOAT;
+        case RT_TEXTURE_RGBA16UNORM: return DXGI_FORMAT_R16G16B16A16_UNORM;
+        case RT_TEXTURE_RGBA16SNORM: return DXGI_FORMAT_R16G16B16A16_SNORM;
+        case RT_TEXTURE_RGBA16UINT: return DXGI_FORMAT_R16G16B16A16_UINT;
+        case RT_TEXTURE_RGBA16SINT: return DXGI_FORMAT_R16G16B16A16_SINT;
+        case RT_TEXTURE_RGBA16FLOAT: return DXGI_FORMAT_R16G16B16A16_FLOAT;
+        case RT_TEXTURE_RGBA32UINT: return DXGI_FORMAT_R32G32B32A32_UINT;
+        case RT_TEXTURE_RGBA32SINT: return DXGI_FORMAT_R32G32B32A32_SINT;
+        case RT_TEXTURE_RGBA32FLOAT: return DXGI_FORMAT_R32G32B32A32_FLOAT;
+        case RT_TEXTURE_STENCIL8: return DXGI_FORMAT_D24_UNORM_S8_UINT;
+        case RT_TEXTURE_DEPTH16UNORM: return DXGI_FORMAT_D16_UNORM;
+        case RT_TEXTURE_DEPTH24PLUS: return DXGI_FORMAT_D32_FLOAT;
+        case RT_TEXTURE_DEPTH24PLUS_STENCIL8: return DXGI_FORMAT_D24_UNORM_S8_UINT;
+        case RT_TEXTURE_DEPTH32FLOAT: return DXGI_FORMAT_D32_FLOAT;
+        case RT_TEXTURE_DEPTH32FLOAT_STENCIL8: return DXGI_FORMAT_D32_FLOAT_S8X24_UINT;
+        default: return DXGI_FORMAT_UNKNOWN;
     }
 }
 
-static DXGI_FORMAT rt_to_dx_vertex_format(rt_type_t type, uint32_t count)
+static DXGI_FORMAT rt_to_dx_vertex_format(rt_vertex_format_t format)
 {
-    switch (type)
+    switch (format)
     {
-        case RT_INT:
-            switch (count)
-            {
-                case 1: return DXGI_FORMAT_R32_SINT;
-                case 2: return DXGI_FORMAT_R32G32_SINT;
-                case 3: return DXGI_FORMAT_R32G32B32_SINT;
-                case 4: return DXGI_FORMAT_R32G32B32A32_SINT;
-                default: return DXGI_FORMAT_R32_SINT;
-            }
-        case RT_UNSIGNED_INT:
-            switch (count)
-            {
-                case 1: return DXGI_FORMAT_R32_UINT;
-                case 2: return DXGI_FORMAT_R32G32_UINT;
-                case 3: return DXGI_FORMAT_R32G32B32_UINT;
-                case 4: return DXGI_FORMAT_R32G32B32A32_UINT;
-                default: return DXGI_FORMAT_R32_UINT;
-            }
-        case RT_FLOAT:
-            switch (count)
-            {
-                case 1: return DXGI_FORMAT_R32_FLOAT;
-                case 2: return DXGI_FORMAT_R32G32_FLOAT;
-                case 3: return DXGI_FORMAT_R32G32B32_FLOAT;
-                case 4: return DXGI_FORMAT_R32G32B32A32_FLOAT;
-                default: return DXGI_FORMAT_R32_FLOAT;
-            }
-        default:
-            return DXGI_FORMAT_R32_FLOAT;
+        case RT_VERTEX_NONE: return DXGI_FORMAT_UNKNOWN;
+        case RT_VERTEX_UINT8: return DXGI_FORMAT_R8_UINT;
+        case RT_VERTEX_UINT8X2: return DXGI_FORMAT_R8G8_UINT;
+        case RT_VERTEX_UINT8X4: return DXGI_FORMAT_R8G8B8A8_UINT;
+        case RT_VERTEX_SINT8: return DXGI_FORMAT_R8_SINT;
+        case RT_VERTEX_SINT8X2: return DXGI_FORMAT_R8G8_SINT;
+        case RT_VERTEX_SINT8X4: return DXGI_FORMAT_R8G8B8A8_SINT;
+        case RT_VERTEX_UNORM8: return DXGI_FORMAT_R8_UNORM;
+        case RT_VERTEX_UNORM8X2: return DXGI_FORMAT_R8G8_UNORM;
+        case RT_VERTEX_UNORM8X4: return DXGI_FORMAT_R8G8B8A8_UNORM;
+        case RT_VERTEX_SNORM8: return DXGI_FORMAT_R8_SNORM;
+        case RT_VERTEX_SNORM8X2: return DXGI_FORMAT_R8G8_SNORM;
+        case RT_VERTEX_SNORM8X4: return DXGI_FORMAT_R8G8B8A8_SNORM;
+        case RT_VERTEX_UINT16: return DXGI_FORMAT_R16_UINT;
+        case RT_VERTEX_UINT16X2: return DXGI_FORMAT_R16G16_UINT;
+        case RT_VERTEX_UINT16X4: return DXGI_FORMAT_R16G16B16A16_UINT;
+        case RT_VERTEX_SINT16: return DXGI_FORMAT_R16_SINT;
+        case RT_VERTEX_SINT16X2: return DXGI_FORMAT_R16G16_SINT;
+        case RT_VERTEX_SINT16X4: return DXGI_FORMAT_R16G16B16A16_SINT;
+        case RT_VERTEX_UNORM16: return DXGI_FORMAT_R16_UNORM;
+        case RT_VERTEX_UNORM16X2: return DXGI_FORMAT_R16G16_UNORM;
+        case RT_VERTEX_UNORM16X4: return DXGI_FORMAT_R16G16B16A16_UNORM;
+        case RT_VERTEX_SNORM16: return DXGI_FORMAT_R16_SNORM;
+        case RT_VERTEX_SNORM16X2: return DXGI_FORMAT_R16G16_SNORM;
+        case RT_VERTEX_SNORM16X4: return DXGI_FORMAT_R16G16B16A16_SNORM;
+        case RT_VERTEX_FLOAT16: return DXGI_FORMAT_R16_FLOAT;
+        case RT_VERTEX_FLOAT16X2: return DXGI_FORMAT_R16G16_FLOAT;
+        case RT_VERTEX_FLOAT16X4: return DXGI_FORMAT_R16G16B16A16_FLOAT;
+        case RT_VERTEX_FLOAT32: return DXGI_FORMAT_R32_FLOAT;
+        case RT_VERTEX_FLOAT32X2: return DXGI_FORMAT_R32G32_FLOAT;
+        case RT_VERTEX_FLOAT32X3: return DXGI_FORMAT_R32G32B32_FLOAT;
+        case RT_VERTEX_FLOAT32X4: return DXGI_FORMAT_R32G32B32A32_FLOAT;
+        case RT_VERTEX_UINT32: return DXGI_FORMAT_R32_UINT;
+        case RT_VERTEX_UINT32X2: return DXGI_FORMAT_R32G32_UINT;
+        case RT_VERTEX_UINT32X3: return DXGI_FORMAT_R32G32B32_UINT;
+        case RT_VERTEX_UINT32X4: return DXGI_FORMAT_R32G32B32A32_UINT;
+        case RT_VERTEX_SINT32: return DXGI_FORMAT_R32_SINT;
+        case RT_VERTEX_SINT32X2: return DXGI_FORMAT_R32G32_SINT;
+        case RT_VERTEX_SINT32X3: return DXGI_FORMAT_R32G32B32_SINT;
+        case RT_VERTEX_SINT32X4: return DXGI_FORMAT_R32G32B32A32_SINT;
+        case RT_VERTEX_UNORM10_10_10_2: return DXGI_FORMAT_R10G10B10A2_UNORM;
+        case RT_VERTEX_UNORM8X4_BGRA: return DXGI_FORMAT_B8G8R8A8_UNORM;
+        default: return DXGI_FORMAT_UNKNOWN;
     }
 }
 
@@ -287,39 +309,72 @@ static D3D12_STENCIL_OP rt_to_dx_stencil_op(rt_stencil_op_t op)
     }
 }
 
-static uint32_t rt_to_dx_vertex_size(rt_type_t type, uint32_t count)
+static uint32_t rt_to_dx_vertex_size(rt_vertex_format_t format)
 {
-    switch (type)
+    switch (format)
     {
-        case RT_TYPE_NONE: return count * 4;
-        case RT_BYTE: return count;
-        case RT_UNSIGNED_BYTE: return count;
-        case RT_SHORT: return count * 2;
-        case RT_UNSIGNED_SHORT: return count * 2;
-        case RT_INT: return count * 4;
-        case RT_UNSIGNED_INT: return count * 4;
-        case RT_FLOAT: return count * 4;
-        case RT_DOUBLE: return count * 8;
-        case RT_HALF_FLOAT: return count * 2;
-        case RT_UNSIGNED_INT_24_8: return count * 4;
-        default: return count * 4;
+        case RT_VERTEX_NONE: return 0;
+        case RT_VERTEX_UINT8: return 1;
+        case RT_VERTEX_UINT8X2: return 2;
+        case RT_VERTEX_UINT8X4: return 4;
+        case RT_VERTEX_SINT8: return 1;
+        case RT_VERTEX_SINT8X2: return 2;
+        case RT_VERTEX_SINT8X4: return 4;
+        case RT_VERTEX_UNORM8: return 1;
+        case RT_VERTEX_UNORM8X2: return 2;
+        case RT_VERTEX_UNORM8X4: return 4;
+        case RT_VERTEX_SNORM8: return 1;
+        case RT_VERTEX_SNORM8X2: return 2;
+        case RT_VERTEX_SNORM8X4: return 4;
+        case RT_VERTEX_UINT16: return 2;
+        case RT_VERTEX_UINT16X2: return 4;
+        case RT_VERTEX_UINT16X4: return 8;
+        case RT_VERTEX_SINT16: return 2;
+        case RT_VERTEX_SINT16X2: return 4;
+        case RT_VERTEX_SINT16X4: return 8;
+        case RT_VERTEX_UNORM16: return 2;
+        case RT_VERTEX_UNORM16X2: return 4;
+        case RT_VERTEX_UNORM16X4: return 8;
+        case RT_VERTEX_SNORM16: return 2;
+        case RT_VERTEX_SNORM16X2: return 4;
+        case RT_VERTEX_SNORM16X4: return 8;
+        case RT_VERTEX_FLOAT16: return 2;
+        case RT_VERTEX_FLOAT16X2: return 4;
+        case RT_VERTEX_FLOAT16X4: return 8;
+        case RT_VERTEX_FLOAT32: return 4;
+        case RT_VERTEX_FLOAT32X2: return 8;
+        case RT_VERTEX_FLOAT32X3: return 12;
+        case RT_VERTEX_FLOAT32X4: return 16;
+        case RT_VERTEX_UINT32: return 4;
+        case RT_VERTEX_UINT32X2: return 8;
+        case RT_VERTEX_UINT32X3: return 12;
+        case RT_VERTEX_UINT32X4: return 16;
+        case RT_VERTEX_SINT32: return 4;
+        case RT_VERTEX_SINT32X2: return 8;
+        case RT_VERTEX_SINT32X3: return 12;
+        case RT_VERTEX_SINT32X4: return 16;
+        case RT_VERTEX_UNORM10_10_10_2:
+        case RT_VERTEX_UNORM8X4_BGRA: return 4;
+        default: return 0;
     }
 }
 
-static uint32_t rt_to_dx_index_size(rt_type_t type)
+static uint32_t rt_to_dx_index_size(rt_index_type_t type)
 {
     switch (type)
     {
-        case RT_UNSIGNED_SHORT: return 2;
+        case RT_INDEX_UINT16: return 2;
+        case RT_INDEX_UINT32: return 4;
         default: return 4;
     }
 }
 
-static DXGI_FORMAT rt_to_dx_index_type(rt_type_t type)
+static DXGI_FORMAT rt_to_dx_index_type(rt_index_type_t type)
 {
     switch (type)
     {
-        case RT_UNSIGNED_SHORT: return DXGI_FORMAT_R16_UINT;
+        case RT_INDEX_UINT16: return DXGI_FORMAT_R16_UINT;
+        case RT_INDEX_UINT32: return DXGI_FORMAT_R32_UINT;
         default: return DXGI_FORMAT_R32_UINT;
     }
 }
@@ -328,21 +383,67 @@ static uint32_t dx_format_bytes(DXGI_FORMAT format)
 {
     switch (format)
     {
-        case DXGI_FORMAT_R8_UNORM: return 1;
-        case DXGI_FORMAT_R8G8_UNORM:
-        case DXGI_FORMAT_D16_UNORM:
-        case DXGI_FORMAT_R16_FLOAT: return 2;
+        case DXGI_FORMAT_R32G32B32A32_FLOAT:
+        case DXGI_FORMAT_R32G32B32A32_UINT:
+        case DXGI_FORMAT_R32G32B32A32_SINT:
+            return 16;
+        case DXGI_FORMAT_R16G16B16A16_FLOAT:
+        case DXGI_FORMAT_R16G16B16A16_UNORM:
+        case DXGI_FORMAT_R16G16B16A16_UINT:
+        case DXGI_FORMAT_R16G16B16A16_SNORM:
+        case DXGI_FORMAT_R16G16B16A16_SINT:
+            return 8;
+        case DXGI_FORMAT_R32G32_FLOAT:
+        case DXGI_FORMAT_R32G32_UINT:
+        case DXGI_FORMAT_R32G32_SINT:
+            return 8;
+        case DXGI_FORMAT_D32_FLOAT_S8X24_UINT:
+            return 8;
+        case DXGI_FORMAT_R10G10B10A2_UNORM:
+        case DXGI_FORMAT_R10G10B10A2_UINT:
+        case DXGI_FORMAT_R11G11B10_FLOAT:
+            return 4;
         case DXGI_FORMAT_R8G8B8A8_UNORM:
         case DXGI_FORMAT_R8G8B8A8_UNORM_SRGB:
-        case DXGI_FORMAT_R32_FLOAT:
+        case DXGI_FORMAT_R8G8B8A8_UINT:
+        case DXGI_FORMAT_R8G8B8A8_SNORM:
+        case DXGI_FORMAT_R8G8B8A8_SINT:
+            return 4;
+        case DXGI_FORMAT_R16G16_FLOAT:
+        case DXGI_FORMAT_R16G16_UNORM:
+        case DXGI_FORMAT_R16G16_UINT:
+        case DXGI_FORMAT_R16G16_SNORM:
+        case DXGI_FORMAT_R16G16_SINT:
+            return 4;
         case DXGI_FORMAT_D32_FLOAT:
+        case DXGI_FORMAT_R32_FLOAT:
+        case DXGI_FORMAT_R32_UINT:
+        case DXGI_FORMAT_R32_SINT:
+            return 4;
         case DXGI_FORMAT_D24_UNORM_S8_UINT:
-        case DXGI_FORMAT_R16G16_FLOAT: return 4;
-        case DXGI_FORMAT_R16G16B16A16_FLOAT:
-        case DXGI_FORMAT_R32G32_FLOAT:
-        case DXGI_FORMAT_D32_FLOAT_S8X24_UINT: return 8;
-        case DXGI_FORMAT_R32G32B32_FLOAT: return 12;
-        case DXGI_FORMAT_R32G32B32A32_FLOAT: return 16;
+            return 4;
+        case DXGI_FORMAT_R8G8_UNORM:
+        case DXGI_FORMAT_R8G8_UINT:
+        case DXGI_FORMAT_R8G8_SNORM:
+        case DXGI_FORMAT_R8G8_SINT:
+            return 2;
+        case DXGI_FORMAT_R16_FLOAT:
+        case DXGI_FORMAT_D16_UNORM:
+        case DXGI_FORMAT_R16_UNORM:
+        case DXGI_FORMAT_R16_UINT:
+        case DXGI_FORMAT_R16_SNORM:
+        case DXGI_FORMAT_R16_SINT:
+            return 2;
+        case DXGI_FORMAT_R8_UNORM:
+        case DXGI_FORMAT_R8_UINT:
+        case DXGI_FORMAT_R8_SNORM:
+        case DXGI_FORMAT_R8_SINT:
+            return 1;
+        case DXGI_FORMAT_R9G9B9E5_SHAREDEXP:
+            return 4;
+        case DXGI_FORMAT_B8G8R8A8_UNORM:
+        case DXGI_FORMAT_B8G8R8A8_UNORM_SRGB:
+            return 4;
         default: return 4;
     }
 }
@@ -683,10 +784,10 @@ static bool dx_create_graphics_pipeline(dx_module_native_t& native, rt_module_re
     {
         for (uint32_t i = 0; i < RT_MAX_VERTEX_BUFFER_NUM; ++i)
         {
-            if (info.vertex[i].type == RT_TYPE_NONE || info.vertex[i].count == 0) continue;
+            if (info.vertex[i].format == RT_VERTEX_NONE) continue;
             elements[attrCount].SemanticName = "TEXCOORD";
             elements[attrCount].SemanticIndex = info.vertex[i].location;
-            elements[attrCount].Format = rt_to_dx_vertex_format(info.vertex[i].type, info.vertex[i].count);
+            elements[attrCount].Format = rt_to_dx_vertex_format(info.vertex[i].format);
             elements[attrCount].InputSlot = info.vertex[i].location;
             elements[attrCount].AlignedByteOffset = 0;
             elements[attrCount].InputSlotClass = info.vertex[i].instance ?
@@ -1252,7 +1353,7 @@ rt_texture_t dx_create_texture(rt_texture_info_t const& info)
 
     uint32_t handle = direct.textureID + 1;
     auto& native = direct.textures[handle];
-    native.format = rt_to_dx_format(info.format, info.type, info.internal_format);
+    native.format = rt_to_dx_texture_format(info.format);
     native.width = info.width;
     native.height = info.target == RT_TEXTURE_1D ? 1 : info.height;
     native.depth = info.depth ? info.depth : 1;
@@ -1336,8 +1437,6 @@ rt_texture_t dx_create_texture(rt_texture_info_t const& info)
     result.height = native.height;
     result.depth = info.depth;
     result.format = info.format;
-    result.internal_format = info.internal_format;
-    result.type = info.type;
     result.target = info.target;
     result.mipmaps = native.mipLevels;
     result.samples = native.samples;
@@ -1349,7 +1448,7 @@ rt_texture_t dx_create_texture_color(uint32_t width, uint32_t height, const void
 {
     return dx_create_texture({
         .width = width, .height = height, .target = RT_TEXTURE_2D,
-        .format = RT_RGBA, .internal_format = RT_RGBA8, .type = RT_UNSIGNED_BYTE,
+        .format = RT_TEXTURE_RGBA8UNORM,
         .min_filter = RT_LINEAR, .mag_filter = RT_LINEAR,
         .wrap_s = RT_CLAMP_TO_EDGE, .wrap_t = RT_CLAMP_TO_EDGE, .wrap_r = RT_CLAMP_TO_EDGE,
         .data = data
@@ -1360,7 +1459,7 @@ rt_texture_t dx_create_texture_color_float(uint32_t width, uint32_t height, cons
 {
     return dx_create_texture({
         .width = width, .height = height, .target = RT_TEXTURE_2D,
-        .format = RT_RGBA, .internal_format = RT_RGBA32F, .type = RT_FLOAT,
+        .format = RT_TEXTURE_RGBA32FLOAT,
         .min_filter = RT_LINEAR, .mag_filter = RT_LINEAR,
         .wrap_s = RT_CLAMP_TO_EDGE, .wrap_t = RT_CLAMP_TO_EDGE, .wrap_r = RT_CLAMP_TO_EDGE,
         .data = data
@@ -1371,7 +1470,7 @@ rt_texture_t dx_create_texture_depth(uint32_t width, uint32_t height, const void
 {
     return dx_create_texture({
         .width = width, .height = height, .target = RT_TEXTURE_2D,
-        .format = RT_DEPTH_COMPONENT, .internal_format = RT_DEPTH_COMPONENT32F, .type = RT_FLOAT,
+        .format = RT_TEXTURE_DEPTH32FLOAT,
         .min_filter = RT_LINEAR, .mag_filter = RT_LINEAR,
         .wrap_s = RT_CLAMP_TO_EDGE, .wrap_t = RT_CLAMP_TO_EDGE, .wrap_r = RT_CLAMP_TO_EDGE,
         .data = data
@@ -1382,7 +1481,7 @@ rt_texture_t dx_create_texture_depth_stencil(uint32_t width, uint32_t height, co
 {
     return dx_create_texture({
         .width = width, .height = height, .target = RT_TEXTURE_2D,
-        .format = RT_DEPTH_STENCIL, .internal_format = RT_DEPTH24_STENCIL8, .type = RT_UNSIGNED_INT_24_8,
+        .format = RT_TEXTURE_DEPTH24PLUS_STENCIL8,
         .min_filter = RT_LINEAR, .mag_filter = RT_LINEAR,
         .wrap_s = RT_CLAMP_TO_EDGE, .wrap_t = RT_CLAMP_TO_EDGE, .wrap_r = RT_CLAMP_TO_EDGE,
         .data = data
@@ -2127,14 +2226,14 @@ static void dx_draw_mesh_impl(rt_mesh_t& mesh, uint32_t instanceCount)
     for (uint32_t i = 0; i < std::size(module.vertex); ++i)
     {
         rt_vertex_t const& layout = module.vertex[i];
-        if (layout.type == RT_TYPE_NONE || layout.count == 0) continue;
+        if (layout.format == RT_VERTEX_NONE) continue;
         for (uint32_t k = 0; k < std::size(mesh.vertex); ++k)
         {
             if (mesh.vertex[k].handle == 0 || mesh.location[k] != layout.location) continue;
             auto* native = dx_buffer_native(mesh.vertex[k]);
             if (!native) break;
             dx_transition_buffer(*native, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
-            uint32_t stride = rt_to_dx_vertex_size(layout.type, layout.count);
+            uint32_t stride = rt_to_dx_vertex_size(layout.format);
             D3D12_VERTEX_BUFFER_VIEW view = {};
             view.BufferLocation = native->handle->GetGPUVirtualAddress();
             view.SizeInBytes = (UINT)mesh.vertex[k].size;
@@ -2222,7 +2321,7 @@ void dx_draw_meshlet(rt_meshlet_t& meshlet)
     for (uint32_t i = 0; i < std::size(module.vertex); ++i)
     {
         rt_vertex_t const& layout = module.vertex[i];
-        if (layout.type == RT_TYPE_NONE || layout.count == 0) continue;
+        if (layout.format == RT_VERTEX_NONE) continue;
         for (uint32_t k = 0; k < std::size(meshlet.vertex); ++k)
         {
             if (meshlet.vertex[k].handle == 0 || meshlet.location[k] != layout.location) continue;

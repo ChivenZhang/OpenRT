@@ -102,89 +102,111 @@ static bool rt_has_mipmap_filter(rt_filter_t minFilter)
     }
 }
 
-static MTL::PixelFormat rt_to_mt_format(rt_format_t glFormat, rt_type_t glType, rt_internal_format_t internalFormat)
+static MTL::PixelFormat rt_to_mt_texture_format(rt_texture_format_t format)
 {
-    switch (internalFormat)
+    switch (format)
     {
-        case RT_R8: return MTL::PixelFormatR8Unorm;
-        case RT_RG8: return MTL::PixelFormatRG8Unorm;
-        case RT_R16F: return MTL::PixelFormatR16Float;
-        case RT_R32F: return MTL::PixelFormatR32Float;
-        case RT_RG16F: return MTL::PixelFormatRG16Float;
-        case RT_RG32F: return MTL::PixelFormatRG32Float;
-        case RT_RGB8: return MTL::PixelFormatRGBA8Unorm;
-        case RT_RGBA8: return MTL::PixelFormatRGBA8Unorm;
-        case RT_SRGB8_ALPHA8: return MTL::PixelFormatRGBA8Unorm_sRGB;
-        case RT_RGBA16F: return MTL::PixelFormatRGBA16Float;
-        case RT_RGBA32F: return MTL::PixelFormatRGBA32Float;
-        case RT_DEPTH_COMPONENT16: return MTL::PixelFormatDepth16Unorm;
-        case RT_DEPTH_COMPONENT24: return MTL::PixelFormatDepth32Float;
-        case RT_DEPTH_COMPONENT32F: return MTL::PixelFormatDepth32Float;
-        case RT_DEPTH24_STENCIL8: return MTL::PixelFormatDepth24Unorm_Stencil8;
-        case RT_DEPTH32F_STENCIL8: return MTL::PixelFormatDepth32Float_Stencil8;
-        default: break;
-    }
-    switch (glFormat)
-    {
-        case RT_STENCIL_INDEX: return MTL::PixelFormatRGBA8Unorm;
-        case RT_DEPTH_COMPONENT: return MTL::PixelFormatDepth32Float;
-        case RT_RED:
-            switch (glType)
-            {
-                case RT_FLOAT: return MTL::PixelFormatR32Float;
-                default: return MTL::PixelFormatR8Unorm;
-            }
-        case RT_RGB:
-        case RT_RGBA:
-            switch (glType)
-            {
-                case RT_FLOAT: return MTL::PixelFormatRGBA32Float;
-                default: return MTL::PixelFormatRGBA8Unorm;
-            }
-        case RT_RG:
-            switch (glType)
-            {
-                case RT_FLOAT: return MTL::PixelFormatRG32Float;
-                default: return MTL::PixelFormatRG8Unorm;
-            }
-        case RT_DEPTH_STENCIL: return MTL::PixelFormatDepth32Float_Stencil8;
-        default: return MTL::PixelFormatRGBA8Unorm;
+        case RT_TEXTURE_NONE: return MTL::PixelFormatInvalid;
+        case RT_TEXTURE_R8UNORM: return MTL::PixelFormatR8Unorm;
+        case RT_TEXTURE_R8SNORM: return MTL::PixelFormatR8Snorm;
+        case RT_TEXTURE_R8UINT: return MTL::PixelFormatR8Uint;
+        case RT_TEXTURE_R8SINT: return MTL::PixelFormatR8Sint;
+        case RT_TEXTURE_R16UNORM: return MTL::PixelFormatR16Unorm;
+        case RT_TEXTURE_R16SNORM: return MTL::PixelFormatR16Snorm;
+        case RT_TEXTURE_R16UINT: return MTL::PixelFormatR16Uint;
+        case RT_TEXTURE_R16SINT: return MTL::PixelFormatR16Sint;
+        case RT_TEXTURE_R16FLOAT: return MTL::PixelFormatR16Float;
+        case RT_TEXTURE_RG8UNORM: return MTL::PixelFormatRG8Unorm;
+        case RT_TEXTURE_RG8SNORM: return MTL::PixelFormatRG8Snorm;
+        case RT_TEXTURE_RG8UINT: return MTL::PixelFormatRG8Uint;
+        case RT_TEXTURE_RG8SINT: return MTL::PixelFormatRG8Sint;
+        case RT_TEXTURE_R32UINT: return MTL::PixelFormatR32Uint;
+        case RT_TEXTURE_R32SINT: return MTL::PixelFormatR32Sint;
+        case RT_TEXTURE_R32FLOAT: return MTL::PixelFormatR32Float;
+        case RT_TEXTURE_RG16UNORM: return MTL::PixelFormatRG16Unorm;
+        case RT_TEXTURE_RG16SNORM: return MTL::PixelFormatRG16Snorm;
+        case RT_TEXTURE_RG16UINT: return MTL::PixelFormatRG16Uint;
+        case RT_TEXTURE_RG16SINT: return MTL::PixelFormatRG16Sint;
+        case RT_TEXTURE_RG16FLOAT: return MTL::PixelFormatRG16Float;
+        case RT_TEXTURE_RGBA8UNORM: return MTL::PixelFormatRGBA8Unorm;
+        case RT_TEXTURE_RGBA8UNORM_SRGB: return MTL::PixelFormatRGBA8Unorm_sRGB;
+        case RT_TEXTURE_RGBA8SNORM: return MTL::PixelFormatRGBA8Snorm;
+        case RT_TEXTURE_RGBA8UINT: return MTL::PixelFormatRGBA8Uint;
+        case RT_TEXTURE_RGBA8SINT: return MTL::PixelFormatRGBA8Sint;
+        case RT_TEXTURE_BGRA8UNORM: return MTL::PixelFormatBGRA8Unorm;
+        case RT_TEXTURE_BGRA8UNORM_SRGB: return MTL::PixelFormatBGRA8Unorm_sRGB;
+        case RT_TEXTURE_RGB10A2UINT: return MTL::PixelFormatRGB10A2Uint;
+        case RT_TEXTURE_RGB10A2UNORM: return MTL::PixelFormatRGB10A2Unorm;
+        case RT_TEXTURE_RG11B10UFLOAT: return MTL::PixelFormatRG11B10Float;
+        case RT_TEXTURE_RGB9E5UFLOAT: return MTL::PixelFormatRGB9E5Float;
+        case RT_TEXTURE_RG32UINT: return MTL::PixelFormatRG32Uint;
+        case RT_TEXTURE_RG32SINT: return MTL::PixelFormatRG32Sint;
+        case RT_TEXTURE_RG32FLOAT: return MTL::PixelFormatRG32Float;
+        case RT_TEXTURE_RGBA16UNORM: return MTL::PixelFormatRGBA16Unorm;
+        case RT_TEXTURE_RGBA16SNORM: return MTL::PixelFormatRGBA16Snorm;
+        case RT_TEXTURE_RGBA16UINT: return MTL::PixelFormatRGBA16Uint;
+        case RT_TEXTURE_RGBA16SINT: return MTL::PixelFormatRGBA16Sint;
+        case RT_TEXTURE_RGBA16FLOAT: return MTL::PixelFormatRGBA16Float;
+        case RT_TEXTURE_RGBA32UINT: return MTL::PixelFormatRGBA32Uint;
+        case RT_TEXTURE_RGBA32SINT: return MTL::PixelFormatRGBA32Sint;
+        case RT_TEXTURE_RGBA32FLOAT: return MTL::PixelFormatRGBA32Float;
+        case RT_TEXTURE_STENCIL8: return MTL::PixelFormatStencil8;
+        case RT_TEXTURE_DEPTH16UNORM: return MTL::PixelFormatDepth16Unorm;
+        case RT_TEXTURE_DEPTH24PLUS: return MTL::PixelFormatDepth32Float;
+        case RT_TEXTURE_DEPTH24PLUS_STENCIL8: return MTL::PixelFormatDepth24Unorm_Stencil8;
+        case RT_TEXTURE_DEPTH32FLOAT: return MTL::PixelFormatDepth32Float;
+        case RT_TEXTURE_DEPTH32FLOAT_STENCIL8: return MTL::PixelFormatDepth32Float_Stencil8;
+        default: return MTL::PixelFormatInvalid;
     }
 }
 
-static MTL::VertexFormat rt_to_mt_vertex_format(rt_type_t type, uint32_t count)
+static MTL::VertexFormat rt_to_mt_vertex_format(rt_vertex_format_t format)
 {
-    switch (type)
+    switch (format)
     {
-        case RT_INT:
-            switch (count)
-            {
-                case 1: return MTL::VertexFormatInt;
-                case 2: return MTL::VertexFormatInt2;
-                case 3: return MTL::VertexFormatInt3;
-                case 4: return MTL::VertexFormatInt4;
-                default: return MTL::VertexFormatInt;
-            }
-        case RT_UNSIGNED_INT:
-            switch (count)
-            {
-                case 1: return MTL::VertexFormatUInt;
-                case 2: return MTL::VertexFormatUInt2;
-                case 3: return MTL::VertexFormatUInt3;
-                case 4: return MTL::VertexFormatUInt4;
-                default: return MTL::VertexFormatUInt;
-            }
-        case RT_FLOAT:
-            switch (count)
-            {
-                case 1: return MTL::VertexFormatFloat;
-                case 2: return MTL::VertexFormatFloat2;
-                case 3: return MTL::VertexFormatFloat3;
-                case 4: return MTL::VertexFormatFloat4;
-                default: return MTL::VertexFormatFloat;
-            }
-        default:
-            return MTL::VertexFormatFloat;
+        case RT_VERTEX_NONE: return MTL::VertexFormatInvalid;
+        case RT_VERTEX_UINT8: return MTL::VertexFormatUChar;
+        case RT_VERTEX_UINT8X2: return MTL::VertexFormatUChar2;
+        case RT_VERTEX_UINT8X4: return MTL::VertexFormatUChar4;
+        case RT_VERTEX_SINT8: return MTL::VertexFormatChar;
+        case RT_VERTEX_SINT8X2: return MTL::VertexFormatChar2;
+        case RT_VERTEX_SINT8X4: return MTL::VertexFormatChar4;
+        case RT_VERTEX_UNORM8: return MTL::VertexFormatUCharNormalized;
+        case RT_VERTEX_UNORM8X2: return MTL::VertexFormatUChar2Normalized;
+        case RT_VERTEX_UNORM8X4: return MTL::VertexFormatUChar4Normalized;
+        case RT_VERTEX_SNORM8: return MTL::VertexFormatCharNormalized;
+        case RT_VERTEX_SNORM8X2: return MTL::VertexFormatChar2Normalized;
+        case RT_VERTEX_SNORM8X4: return MTL::VertexFormatChar4Normalized;
+        case RT_VERTEX_UINT16: return MTL::VertexFormatUShort;
+        case RT_VERTEX_UINT16X2: return MTL::VertexFormatUShort2;
+        case RT_VERTEX_UINT16X4: return MTL::VertexFormatUShort4;
+        case RT_VERTEX_SINT16: return MTL::VertexFormatShort;
+        case RT_VERTEX_SINT16X2: return MTL::VertexFormatShort2;
+        case RT_VERTEX_SINT16X4: return MTL::VertexFormatShort4;
+        case RT_VERTEX_UNORM16: return MTL::VertexFormatUShortNormalized;
+        case RT_VERTEX_UNORM16X2: return MTL::VertexFormatUShort2Normalized;
+        case RT_VERTEX_UNORM16X4: return MTL::VertexFormatUShort4Normalized;
+        case RT_VERTEX_SNORM16: return MTL::VertexFormatShortNormalized;
+        case RT_VERTEX_SNORM16X2: return MTL::VertexFormatShort2Normalized;
+        case RT_VERTEX_SNORM16X4: return MTL::VertexFormatShort4Normalized;
+        case RT_VERTEX_FLOAT16: return MTL::VertexFormatHalf;
+        case RT_VERTEX_FLOAT16X2: return MTL::VertexFormatHalf2;
+        case RT_VERTEX_FLOAT16X4: return MTL::VertexFormatHalf4;
+        case RT_VERTEX_FLOAT32: return MTL::VertexFormatFloat;
+        case RT_VERTEX_FLOAT32X2: return MTL::VertexFormatFloat2;
+        case RT_VERTEX_FLOAT32X3: return MTL::VertexFormatFloat3;
+        case RT_VERTEX_FLOAT32X4: return MTL::VertexFormatFloat4;
+        case RT_VERTEX_UINT32: return MTL::VertexFormatUInt;
+        case RT_VERTEX_UINT32X2: return MTL::VertexFormatUInt2;
+        case RT_VERTEX_UINT32X3: return MTL::VertexFormatUInt3;
+        case RT_VERTEX_UINT32X4: return MTL::VertexFormatUInt4;
+        case RT_VERTEX_SINT32: return MTL::VertexFormatInt;
+        case RT_VERTEX_SINT32X2: return MTL::VertexFormatInt2;
+        case RT_VERTEX_SINT32X3: return MTL::VertexFormatInt3;
+        case RT_VERTEX_SINT32X4: return MTL::VertexFormatInt4;
+        case RT_VERTEX_UNORM10_10_10_2: return MTL::VertexFormatUInt1010102Normalized;
+        case RT_VERTEX_UNORM8X4_BGRA: return MTL::VertexFormatUChar4Normalized_BGRA;
+        default: return MTL::VertexFormatInvalid;
     }
 }
 
@@ -283,39 +305,72 @@ static MTL::StencilOperation rt_to_mt_stencil_op(rt_stencil_op_t op)
     }
 }
 
-static uint32_t rt_to_mt_vertex_size(rt_type_t type, uint32_t count)
+static uint32_t rt_to_mt_vertex_size(rt_vertex_format_t format)
 {
-    switch (type)
+    switch (format)
     {
-        case RT_TYPE_NONE: return count * 4;
-        case RT_BYTE: return count;
-        case RT_UNSIGNED_BYTE: return count;
-        case RT_SHORT: return count * 2;
-        case RT_UNSIGNED_SHORT: return count * 2;
-        case RT_INT: return count * 4;
-        case RT_UNSIGNED_INT: return count * 4;
-        case RT_FLOAT: return count * 4;
-        case RT_DOUBLE: return count * 8;
-        case RT_HALF_FLOAT: return count * 2;
-        case RT_UNSIGNED_INT_24_8: return count * 4;
-        default: return count * 4;
+        case RT_VERTEX_NONE: return 0;
+        case RT_VERTEX_UINT8: return 1;
+        case RT_VERTEX_UINT8X2: return 2;
+        case RT_VERTEX_UINT8X4: return 4;
+        case RT_VERTEX_SINT8: return 1;
+        case RT_VERTEX_SINT8X2: return 2;
+        case RT_VERTEX_SINT8X4: return 4;
+        case RT_VERTEX_UNORM8: return 1;
+        case RT_VERTEX_UNORM8X2: return 2;
+        case RT_VERTEX_UNORM8X4: return 4;
+        case RT_VERTEX_SNORM8: return 1;
+        case RT_VERTEX_SNORM8X2: return 2;
+        case RT_VERTEX_SNORM8X4: return 4;
+        case RT_VERTEX_UINT16: return 2;
+        case RT_VERTEX_UINT16X2: return 4;
+        case RT_VERTEX_UINT16X4: return 8;
+        case RT_VERTEX_SINT16: return 2;
+        case RT_VERTEX_SINT16X2: return 4;
+        case RT_VERTEX_SINT16X4: return 8;
+        case RT_VERTEX_UNORM16: return 2;
+        case RT_VERTEX_UNORM16X2: return 4;
+        case RT_VERTEX_UNORM16X4: return 8;
+        case RT_VERTEX_SNORM16: return 2;
+        case RT_VERTEX_SNORM16X2: return 4;
+        case RT_VERTEX_SNORM16X4: return 8;
+        case RT_VERTEX_FLOAT16: return 2;
+        case RT_VERTEX_FLOAT16X2: return 4;
+        case RT_VERTEX_FLOAT16X4: return 8;
+        case RT_VERTEX_FLOAT32: return 4;
+        case RT_VERTEX_FLOAT32X2: return 8;
+        case RT_VERTEX_FLOAT32X3: return 12;
+        case RT_VERTEX_FLOAT32X4: return 16;
+        case RT_VERTEX_UINT32: return 4;
+        case RT_VERTEX_UINT32X2: return 8;
+        case RT_VERTEX_UINT32X3: return 12;
+        case RT_VERTEX_UINT32X4: return 16;
+        case RT_VERTEX_SINT32: return 4;
+        case RT_VERTEX_SINT32X2: return 8;
+        case RT_VERTEX_SINT32X3: return 12;
+        case RT_VERTEX_SINT32X4: return 16;
+        case RT_VERTEX_UNORM10_10_10_2:
+        case RT_VERTEX_UNORM8X4_BGRA: return 4;
+        default: return 0;
     }
 }
 
-static uint32_t rt_to_mt_index_size(rt_type_t type)
+static uint32_t rt_to_mt_index_size(rt_index_type_t type)
 {
     switch (type)
     {
-        case RT_UNSIGNED_SHORT: return 2;
+        case RT_INDEX_UINT16: return 2;
+        case RT_INDEX_UINT32: return 4;
         default: return 4;
     }
 }
 
-static MTL::IndexType rt_to_mt_index_type(rt_type_t type)
+static MTL::IndexType rt_to_mt_index_type(rt_index_type_t type)
 {
     switch (type)
     {
-        case RT_UNSIGNED_SHORT: return MTL::IndexTypeUInt16;
+        case RT_INDEX_UINT16: return MTL::IndexTypeUInt16;
+        case RT_INDEX_UINT32: return MTL::IndexTypeUInt32;
         default: return MTL::IndexTypeUInt32;
     }
 }
@@ -324,20 +379,70 @@ static uint32_t mt_format_bytes(MTL::PixelFormat format)
 {
     switch (format)
     {
-        case MTL::PixelFormatR8Unorm: return 1;
-        case MTL::PixelFormatRG8Unorm:
+        case MTL::PixelFormatR8Unorm:
+        case MTL::PixelFormatR8Snorm:
+        case MTL::PixelFormatR8Uint:
+        case MTL::PixelFormatR8Sint:
+            return 1;
+        case MTL::PixelFormatR16Unorm:
+        case MTL::PixelFormatR16Snorm:
+        case MTL::PixelFormatR16Uint:
+        case MTL::PixelFormatR16Sint:
         case MTL::PixelFormatR16Float:
-        case MTL::PixelFormatDepth16Unorm: return 2;
+            return 2;
+        case MTL::PixelFormatRG8Unorm:
+        case MTL::PixelFormatRG8Snorm:
+        case MTL::PixelFormatRG8Uint:
+        case MTL::PixelFormatRG8Sint:
+            return 2;
+        case MTL::PixelFormatR32Uint:
+        case MTL::PixelFormatR32Sint:
+        case MTL::PixelFormatR32Float:
+            return 4;
+        case MTL::PixelFormatRG16Unorm:
+        case MTL::PixelFormatRG16Snorm:
+        case MTL::PixelFormatRG16Uint:
+        case MTL::PixelFormatRG16Sint:
+        case MTL::PixelFormatRG16Float:
+            return 4;
         case MTL::PixelFormatRGBA8Unorm:
         case MTL::PixelFormatRGBA8Unorm_sRGB:
-        case MTL::PixelFormatR32Float:
-        case MTL::PixelFormatRG16Float:
-        case MTL::PixelFormatDepth32Float:
-        case MTL::PixelFormatDepth24Unorm_Stencil8: return 4;
-        case MTL::PixelFormatRGBA16Float:
+        case MTL::PixelFormatRGBA8Snorm:
+        case MTL::PixelFormatRGBA8Uint:
+        case MTL::PixelFormatRGBA8Sint:
+            return 4;
+        case MTL::PixelFormatBGRA8Unorm:
+        case MTL::PixelFormatBGRA8Unorm_sRGB:
+            return 4;
+        case MTL::PixelFormatRGB10A2Unorm:
+        case MTL::PixelFormatRGB10A2Uint:
+        case MTL::PixelFormatRG11B10Float:
+        case MTL::PixelFormatRGB9E5Float:
+            return 4;
+        case MTL::PixelFormatRG32Uint:
+        case MTL::PixelFormatRG32Sint:
         case MTL::PixelFormatRG32Float:
-        case MTL::PixelFormatDepth32Float_Stencil8: return 8;
-        case MTL::PixelFormatRGBA32Float: return 16;
+            return 8;
+        case MTL::PixelFormatRGBA16Unorm:
+        case MTL::PixelFormatRGBA16Snorm:
+        case MTL::PixelFormatRGBA16Uint:
+        case MTL::PixelFormatRGBA16Sint:
+        case MTL::PixelFormatRGBA16Float:
+            return 8;
+        case MTL::PixelFormatRGBA32Uint:
+        case MTL::PixelFormatRGBA32Sint:
+        case MTL::PixelFormatRGBA32Float:
+            return 16;
+        case MTL::PixelFormatDepth16Unorm:
+            return 2;
+        case MTL::PixelFormatDepth32Float:
+            return 4;
+        case MTL::PixelFormatStencil8:
+            return 1;
+        case MTL::PixelFormatDepth24Unorm_Stencil8:
+            return 4;
+        case MTL::PixelFormatDepth32Float_Stencil8:
+            return 8;
         default: return 4;
     }
 }
@@ -345,7 +450,8 @@ static uint32_t mt_format_bytes(MTL::PixelFormat format)
 static bool mt_is_depth(MTL::PixelFormat format)
 {
     return format == MTL::PixelFormatDepth16Unorm || format == MTL::PixelFormatDepth32Float ||
-           format == MTL::PixelFormatDepth24Unorm_Stencil8 || format == MTL::PixelFormatDepth32Float_Stencil8;
+           format == MTL::PixelFormatStencil8 || format == MTL::PixelFormatDepth24Unorm_Stencil8 ||
+           format == MTL::PixelFormatDepth32Float_Stencil8;
 }
 
 struct mt_buffer_native_t
@@ -809,12 +915,12 @@ static bool mt_create_graphics_pipeline(mt_module_native_t& native, rt_module_re
         MTL::VertexDescriptor* vd = MTL::VertexDescriptor::alloc()->init();
         for (uint32_t i = 0; i < RT_MAX_VERTEX_BUFFER_NUM; ++i)
         {
-            if (info.vertex[i].type == RT_TYPE_NONE || info.vertex[i].count == 0) continue;
+            if (info.vertex[i].format == RT_VERTEX_NONE) continue;
             uint32_t loc = info.vertex[i].location;
-            vd->attributes()->object(loc)->setFormat(rt_to_mt_vertex_format(info.vertex[i].type, info.vertex[i].count));
+            vd->attributes()->object(loc)->setFormat(rt_to_mt_vertex_format(info.vertex[i].format));
             vd->attributes()->object(loc)->setOffset(0);
             vd->attributes()->object(loc)->setBufferIndex(loc);
-            vd->layouts()->object(loc)->setStride(rt_to_mt_vertex_size(info.vertex[i].type, info.vertex[i].count));
+            vd->layouts()->object(loc)->setStride(rt_to_mt_vertex_size(info.vertex[i].format));
             vd->layouts()->object(loc)->setStepFunction(info.vertex[i].instance ? MTL::VertexStepFunctionPerInstance : MTL::VertexStepFunctionPerVertex);
             vd->layouts()->object(loc)->setStepRate(1);
         }
@@ -1178,7 +1284,7 @@ rt_texture_t mt_create_texture(rt_texture_info_t const& info)
 
     uint32_t handle = metal.textureID + 1;
     auto& native = metal.textures[handle];
-    native.format = rt_to_mt_format(info.format, info.type, info.internal_format);
+    native.format = rt_to_mt_texture_format(info.format);
     native.width = info.width;
     native.height = info.target == RT_TEXTURE_1D ? 1 : info.height;
     native.depth = info.depth ? info.depth : 1;
@@ -1240,8 +1346,6 @@ rt_texture_t mt_create_texture(rt_texture_info_t const& info)
     result.height = native.height;
     result.depth = info.depth;
     result.format = info.format;
-    result.internal_format = info.internal_format;
-    result.type = info.type;
     result.target = info.target;
     result.mipmaps = native.mipLevels;
     result.samples = info.samples ? info.samples : 1;
@@ -1253,7 +1357,7 @@ rt_texture_t mt_create_texture_color(uint32_t width, uint32_t height, const void
 {
     return mt_create_texture({
         .width = width, .height = height, .target = RT_TEXTURE_2D,
-        .format = RT_RGBA, .internal_format = RT_RGBA8, .type = RT_UNSIGNED_BYTE,
+        .format = RT_TEXTURE_RGBA8UNORM,
         .min_filter = RT_LINEAR, .mag_filter = RT_LINEAR,
         .wrap_s = RT_CLAMP_TO_EDGE, .wrap_t = RT_CLAMP_TO_EDGE, .wrap_r = RT_CLAMP_TO_EDGE,
         .data = data
@@ -1264,7 +1368,7 @@ rt_texture_t mt_create_texture_color_float(uint32_t width, uint32_t height, cons
 {
     return mt_create_texture({
         .width = width, .height = height, .target = RT_TEXTURE_2D,
-        .format = RT_RGBA, .internal_format = RT_RGBA32F, .type = RT_FLOAT,
+        .format = RT_TEXTURE_RGBA32FLOAT,
         .min_filter = RT_LINEAR, .mag_filter = RT_LINEAR,
         .wrap_s = RT_CLAMP_TO_EDGE, .wrap_t = RT_CLAMP_TO_EDGE, .wrap_r = RT_CLAMP_TO_EDGE,
         .data = data
@@ -1275,7 +1379,7 @@ rt_texture_t mt_create_texture_depth(uint32_t width, uint32_t height, const void
 {
     return mt_create_texture({
         .width = width, .height = height, .target = RT_TEXTURE_2D,
-        .format = RT_DEPTH_COMPONENT, .internal_format = RT_DEPTH_COMPONENT32F, .type = RT_FLOAT,
+        .format = RT_TEXTURE_DEPTH32FLOAT,
         .min_filter = RT_LINEAR, .mag_filter = RT_LINEAR,
         .wrap_s = RT_CLAMP_TO_EDGE, .wrap_t = RT_CLAMP_TO_EDGE, .wrap_r = RT_CLAMP_TO_EDGE,
         .data = data
@@ -1286,7 +1390,7 @@ rt_texture_t mt_create_texture_depth_stencil(uint32_t width, uint32_t height, co
 {
     return mt_create_texture({
         .width = width, .height = height, .target = RT_TEXTURE_2D,
-        .format = RT_DEPTH_STENCIL, .internal_format = RT_DEPTH32F_STENCIL8, .type = RT_FLOAT,
+        .format = RT_TEXTURE_DEPTH32FLOAT_STENCIL8,
         .min_filter = RT_LINEAR, .mag_filter = RT_LINEAR,
         .wrap_s = RT_CLAMP_TO_EDGE, .wrap_t = RT_CLAMP_TO_EDGE, .wrap_r = RT_CLAMP_TO_EDGE,
         .data = data
@@ -1598,7 +1702,7 @@ void mt_begin_render(rt_pass_render_t& pass)
         desc->depthAttachment()->setLoadAction(pass.depth.clear ? MTL::LoadActionClear : MTL::LoadActionLoad);
         desc->depthAttachment()->setStoreAction(MTL::StoreActionStore);
         desc->depthAttachment()->setClearDepth(pass.depth.value);
-        if (pass.depth.texture.format == RT_DEPTH_STENCIL)
+        if (rt_texture_has_stencil(pass.depth.texture.format))
         {
             desc->stencilAttachment()->setTexture(tex->handle);
             desc->stencilAttachment()->setLoadAction(pass.stencil.clear ? MTL::LoadActionClear : MTL::LoadActionLoad);
@@ -1938,7 +2042,7 @@ static void mt_draw_mesh_impl(rt_mesh_t& mesh, uint32_t instanceCount)
     for (uint32_t i = 0; i < std::size(module.vertex); ++i)
     {
         rt_vertex_t const& layout = module.vertex[i];
-        if (layout.type == RT_TYPE_NONE || layout.count == 0) continue;
+        if (layout.format == RT_VERTEX_NONE) continue;
         for (uint32_t k = 0; k < std::size(mesh.vertex); ++k)
         {
             if (mesh.vertex[k].handle == 0 || mesh.location[k] != layout.location) continue;
@@ -1946,7 +2050,7 @@ static void mt_draw_mesh_impl(rt_mesh_t& mesh, uint32_t instanceCount)
             if (!native) break;
             mt_transition_buffer(*native, MTL_STATE_VERTEX);
             metal.renderEncoder->setVertexBuffer(native->handle, 0, layout.location);
-            uint32_t stride = rt_to_mt_vertex_size(layout.type, layout.count);
+            uint32_t stride = rt_to_mt_vertex_size(layout.format);
             if (vertex_count == 0 && stride)
                 vertex_count = (uint32_t)(mesh.vertex[k].size / stride);
             break;
@@ -2026,7 +2130,7 @@ void mt_draw_meshlet(rt_meshlet_t& meshlet)
     for (uint32_t i = 0; i < std::size(module.vertex); ++i)
     {
         rt_vertex_t const& layout = module.vertex[i];
-        if (layout.type == RT_TYPE_NONE || layout.count == 0) continue;
+        if (layout.format == RT_VERTEX_NONE) continue;
         for (uint32_t k = 0; k < std::size(meshlet.vertex); ++k)
         {
             if (meshlet.vertex[k].handle == 0 || meshlet.location[k] != layout.location) continue;

@@ -97,89 +97,111 @@ static WGPUAddressMode rt_to_wg_address(rt_wrap_t wrap)
     }
 }
 
-static WGPUTextureFormat rt_to_wg_format(rt_format_t glFormat, rt_type_t glType, rt_internal_format_t internalFormat)
+static WGPUTextureFormat rt_to_wg_texture_format(rt_texture_format_t format)
 {
-    switch (internalFormat)
+    switch (format)
     {
-        case RT_R8: return WGPUTextureFormat_R8Unorm;
-        case RT_RG8: return WGPUTextureFormat_RG8Unorm;
-        case RT_R16F: return WGPUTextureFormat_R16Float;
-        case RT_R32F: return WGPUTextureFormat_R32Float;
-        case RT_RG16F: return WGPUTextureFormat_RG16Float;
-        case RT_RG32F: return WGPUTextureFormat_RG32Float;
-        case RT_RGB8: return WGPUTextureFormat_RGBA8Unorm;
-        case RT_RGBA8: return WGPUTextureFormat_RGBA8Unorm;
-        case RT_SRGB8_ALPHA8: return WGPUTextureFormat_RGBA8UnormSrgb;
-        case RT_RGBA16F: return WGPUTextureFormat_RGBA16Float;
-        case RT_RGBA32F: return WGPUTextureFormat_RGBA32Float;
-        case RT_DEPTH_COMPONENT16: return WGPUTextureFormat_Depth16Unorm;
-        case RT_DEPTH_COMPONENT24: return WGPUTextureFormat_Depth32Float;
-        case RT_DEPTH_COMPONENT32F: return WGPUTextureFormat_Depth32Float;
-        case RT_DEPTH24_STENCIL8: return WGPUTextureFormat_Depth24PlusStencil8;
-        case RT_DEPTH32F_STENCIL8: return WGPUTextureFormat_Depth32FloatStencil8;
-        default: break;
-    }
-    switch (glFormat)
-    {
-        case RT_STENCIL_INDEX: return WGPUTextureFormat_RGBA8Unorm;
-        case RT_DEPTH_COMPONENT: return WGPUTextureFormat_Depth32Float;
-        case RT_RED:
-            switch (glType)
-            {
-                case RT_FLOAT: return WGPUTextureFormat_R32Float;
-                default: return WGPUTextureFormat_R8Unorm;
-            }
-        case RT_RGB:
-        case RT_RGBA:
-            switch (glType)
-            {
-                case RT_FLOAT: return WGPUTextureFormat_RGBA32Float;
-                default: return WGPUTextureFormat_RGBA8Unorm;
-            }
-        case RT_RG:
-            switch (glType)
-            {
-                case RT_FLOAT: return WGPUTextureFormat_RG32Float;
-                default: return WGPUTextureFormat_RG8Unorm;
-            }
-        case RT_DEPTH_STENCIL: return WGPUTextureFormat_Depth32FloatStencil8;
-        default: return WGPUTextureFormat_RGBA8Unorm;
+        case RT_TEXTURE_UNDEFINED: return WGPUTextureFormat_Undefined;
+        case RT_TEXTURE_R8UNORM: return WGPUTextureFormat_R8Unorm;
+        case RT_TEXTURE_R8SNORM: return WGPUTextureFormat_R8Snorm;
+        case RT_TEXTURE_R8UINT: return WGPUTextureFormat_R8Uint;
+        case RT_TEXTURE_R8SINT: return WGPUTextureFormat_R8Sint;
+        case RT_TEXTURE_R16UNORM: return WGPUTextureFormat_R16Unorm;
+        case RT_TEXTURE_R16SNORM: return WGPUTextureFormat_R16Snorm;
+        case RT_TEXTURE_R16UINT: return WGPUTextureFormat_R16Uint;
+        case RT_TEXTURE_R16SINT: return WGPUTextureFormat_R16Sint;
+        case RT_TEXTURE_R16FLOAT: return WGPUTextureFormat_R16Float;
+        case RT_TEXTURE_RG8UNORM: return WGPUTextureFormat_RG8Unorm;
+        case RT_TEXTURE_RG8SNORM: return WGPUTextureFormat_RG8Snorm;
+        case RT_TEXTURE_RG8UINT: return WGPUTextureFormat_RG8Uint;
+        case RT_TEXTURE_RG8SINT: return WGPUTextureFormat_RG8Sint;
+        case RT_TEXTURE_R32UINT: return WGPUTextureFormat_R32Uint;
+        case RT_TEXTURE_R32SINT: return WGPUTextureFormat_R32Sint;
+        case RT_TEXTURE_R32FLOAT: return WGPUTextureFormat_R32Float;
+        case RT_TEXTURE_RG16UNORM: return WGPUTextureFormat_RG16Unorm;
+        case RT_TEXTURE_RG16SNORM: return WGPUTextureFormat_RG16Snorm;
+        case RT_TEXTURE_RG16UINT: return WGPUTextureFormat_RG16Uint;
+        case RT_TEXTURE_RG16SINT: return WGPUTextureFormat_RG16Sint;
+        case RT_TEXTURE_RG16FLOAT: return WGPUTextureFormat_RG16Float;
+        case RT_TEXTURE_RGBA8UNORM: return WGPUTextureFormat_RGBA8Unorm;
+        case RT_TEXTURE_RGBA8UNORM_SRGB: return WGPUTextureFormat_RGBA8UnormSrgb;
+        case RT_TEXTURE_RGBA8SNORM: return WGPUTextureFormat_RGBA8Snorm;
+        case RT_TEXTURE_RGBA8UINT: return WGPUTextureFormat_RGBA8Uint;
+        case RT_TEXTURE_RGBA8SINT: return WGPUTextureFormat_RGBA8Sint;
+        case RT_TEXTURE_BGRA8UNORM: return WGPUTextureFormat_BGRA8Unorm;
+        case RT_TEXTURE_BGRA8UNORM_SRGB: return WGPUTextureFormat_BGRA8UnormSrgb;
+        case RT_TEXTURE_RGB10A2UINT: return WGPUTextureFormat_RGB10A2Uint;
+        case RT_TEXTURE_RGB10A2UNORM: return WGPUTextureFormat_RGB10A2Unorm;
+        case RT_TEXTURE_RG11B10UFLOAT: return WGPUTextureFormat_RG11B10Ufloat;
+        case RT_TEXTURE_RGB9E5UFLOAT: return WGPUTextureFormat_RGB9E5Ufloat;
+        case RT_TEXTURE_RG32UINT: return WGPUTextureFormat_RG32Uint;
+        case RT_TEXTURE_RG32SINT: return WGPUTextureFormat_RG32Sint;
+        case RT_TEXTURE_RG32FLOAT: return WGPUTextureFormat_RG32Float;
+        case RT_TEXTURE_RGBA16UNORM: return WGPUTextureFormat_RGBA16Unorm;
+        case RT_TEXTURE_RGBA16SNORM: return WGPUTextureFormat_RGBA16Snorm;
+        case RT_TEXTURE_RGBA16UINT: return WGPUTextureFormat_RGBA16Uint;
+        case RT_TEXTURE_RGBA16SINT: return WGPUTextureFormat_RGBA16Sint;
+        case RT_TEXTURE_RGBA16FLOAT: return WGPUTextureFormat_RGBA16Float;
+        case RT_TEXTURE_RGBA32UINT: return WGPUTextureFormat_RGBA32Uint;
+        case RT_TEXTURE_RGBA32SINT: return WGPUTextureFormat_RGBA32Sint;
+        case RT_TEXTURE_RGBA32FLOAT: return WGPUTextureFormat_RGBA32Float;
+        case RT_TEXTURE_STENCIL8: return WGPUTextureFormat_Stencil8;
+        case RT_TEXTURE_DEPTH16UNORM: return WGPUTextureFormat_Depth16Unorm;
+        case RT_TEXTURE_DEPTH24PLUS: return WGPUTextureFormat_Depth24Plus;
+        case RT_TEXTURE_DEPTH24PLUS_STENCIL8: return WGPUTextureFormat_Depth24PlusStencil8;
+        case RT_TEXTURE_DEPTH32FLOAT: return WGPUTextureFormat_Depth32Float;
+        case RT_TEXTURE_DEPTH32FLOAT_STENCIL8: return WGPUTextureFormat_Depth32FloatStencil8;
+        default: return WGPUTextureFormat_Undefined;
     }
 }
 
-static WGPUVertexFormat rt_to_wg_vertex_format(rt_type_t type, uint32_t count)
+static WGPUVertexFormat rt_to_wg_vertex_format(rt_vertex_format_t format)
 {
-    switch (type)
+    switch (format)
     {
-        case RT_INT:
-            switch (count)
-            {
-                case 1: return WGPUVertexFormat_Sint32;
-                case 2: return WGPUVertexFormat_Sint32x2;
-                case 3: return WGPUVertexFormat_Sint32x3;
-                case 4: return WGPUVertexFormat_Sint32x4;
-                default: return WGPUVertexFormat_Sint32;
-            }
-        case RT_UNSIGNED_INT:
-            switch (count)
-            {
-                case 1: return WGPUVertexFormat_Uint32;
-                case 2: return WGPUVertexFormat_Uint32x2;
-                case 3: return WGPUVertexFormat_Uint32x3;
-                case 4: return WGPUVertexFormat_Uint32x4;
-                default: return WGPUVertexFormat_Uint32;
-            }
-        case RT_FLOAT:
-            switch (count)
-            {
-                case 1: return WGPUVertexFormat_Float32;
-                case 2: return WGPUVertexFormat_Float32x2;
-                case 3: return WGPUVertexFormat_Float32x3;
-                case 4: return WGPUVertexFormat_Float32x4;
-                default: return WGPUVertexFormat_Float32;
-            }
-        default:
-            return WGPUVertexFormat_Float32;
+        case RT_VERTEX_UNDEFINED: return WGPUVertexFormat_Undefined;
+        case RT_VERTEX_UINT8: return WGPUVertexFormat_Uint8;
+        case RT_VERTEX_UINT8X2: return WGPUVertexFormat_Uint8x2;
+        case RT_VERTEX_UINT8X4: return WGPUVertexFormat_Uint8x4;
+        case RT_VERTEX_SINT8: return WGPUVertexFormat_Sint8;
+        case RT_VERTEX_SINT8X2: return WGPUVertexFormat_Sint8x2;
+        case RT_VERTEX_SINT8X4: return WGPUVertexFormat_Sint8x4;
+        case RT_VERTEX_UNORM8: return WGPUVertexFormat_Unorm8;
+        case RT_VERTEX_UNORM8X2: return WGPUVertexFormat_Unorm8x2;
+        case RT_VERTEX_UNORM8X4: return WGPUVertexFormat_Unorm8x4;
+        case RT_VERTEX_SNORM8: return WGPUVertexFormat_Snorm8;
+        case RT_VERTEX_SNORM8X2: return WGPUVertexFormat_Snorm8x2;
+        case RT_VERTEX_SNORM8X4: return WGPUVertexFormat_Snorm8x4;
+        case RT_VERTEX_UINT16: return WGPUVertexFormat_Uint16;
+        case RT_VERTEX_UINT16X2: return WGPUVertexFormat_Uint16x2;
+        case RT_VERTEX_UINT16X4: return WGPUVertexFormat_Uint16x4;
+        case RT_VERTEX_SINT16: return WGPUVertexFormat_Sint16;
+        case RT_VERTEX_SINT16X2: return WGPUVertexFormat_Sint16x2;
+        case RT_VERTEX_SINT16X4: return WGPUVertexFormat_Sint16x4;
+        case RT_VERTEX_UNORM16: return WGPUVertexFormat_Unorm16;
+        case RT_VERTEX_UNORM16X2: return WGPUVertexFormat_Unorm16x2;
+        case RT_VERTEX_UNORM16X4: return WGPUVertexFormat_Unorm16x4;
+        case RT_VERTEX_SNORM16: return WGPUVertexFormat_Snorm16;
+        case RT_VERTEX_SNORM16X2: return WGPUVertexFormat_Snorm16x2;
+        case RT_VERTEX_SNORM16X4: return WGPUVertexFormat_Snorm16x4;
+        case RT_VERTEX_FLOAT16: return WGPUVertexFormat_Float16;
+        case RT_VERTEX_FLOAT16X2: return WGPUVertexFormat_Float16x2;
+        case RT_VERTEX_FLOAT16X4: return WGPUVertexFormat_Float16x4;
+        case RT_VERTEX_FLOAT32: return WGPUVertexFormat_Float32;
+        case RT_VERTEX_FLOAT32X2: return WGPUVertexFormat_Float32x2;
+        case RT_VERTEX_FLOAT32X3: return WGPUVertexFormat_Float32x3;
+        case RT_VERTEX_FLOAT32X4: return WGPUVertexFormat_Float32x4;
+        case RT_VERTEX_UINT32: return WGPUVertexFormat_Uint32;
+        case RT_VERTEX_UINT32X2: return WGPUVertexFormat_Uint32x2;
+        case RT_VERTEX_UINT32X3: return WGPUVertexFormat_Uint32x3;
+        case RT_VERTEX_UINT32X4: return WGPUVertexFormat_Uint32x4;
+        case RT_VERTEX_SINT32: return WGPUVertexFormat_Sint32;
+        case RT_VERTEX_SINT32X2: return WGPUVertexFormat_Sint32x2;
+        case RT_VERTEX_SINT32X3: return WGPUVertexFormat_Sint32x3;
+        case RT_VERTEX_SINT32X4: return WGPUVertexFormat_Sint32x4;
+        case RT_VERTEX_UNORM10_10_10_2: return WGPUVertexFormat_Unorm10_10_10_2;
+        case RT_VERTEX_UNORM8X4_BGRA: return WGPUVertexFormat_Unorm8x4BGRA;
+        default: return WGPUVertexFormat_Undefined;
     }
 }
 
@@ -262,39 +284,72 @@ static WGPUPrimitiveTopology rt_to_wg_primitive(rt_primitive_t primitive)
     }
 }
 
-static uint32_t rt_to_wg_vertex_size(rt_type_t type, uint32_t count)
+static uint32_t rt_to_wg_vertex_size(rt_vertex_format_t format)
 {
-    switch (type)
+    switch (format)
     {
-        case RT_TYPE_NONE: return count * 4;
-        case RT_BYTE: return count;
-        case RT_UNSIGNED_BYTE: return count;
-        case RT_SHORT: return count * 2;
-        case RT_UNSIGNED_SHORT: return count * 2;
-        case RT_INT: return count * 4;
-        case RT_UNSIGNED_INT: return count * 4;
-        case RT_FLOAT: return count * 4;
-        case RT_DOUBLE: return count * 8;
-        case RT_HALF_FLOAT: return count * 2;
-        case RT_UNSIGNED_INT_24_8: return count * 4;
-        default: return count * 4;
+        case RT_VERTEX_UNDEFINED: return 0;
+        case RT_VERTEX_UINT8: return 1;
+        case RT_VERTEX_UINT8X2: return 2;
+        case RT_VERTEX_UINT8X4: return 4;
+        case RT_VERTEX_SINT8: return 1;
+        case RT_VERTEX_SINT8X2: return 2;
+        case RT_VERTEX_SINT8X4: return 4;
+        case RT_VERTEX_UNORM8: return 1;
+        case RT_VERTEX_UNORM8X2: return 2;
+        case RT_VERTEX_UNORM8X4: return 4;
+        case RT_VERTEX_SNORM8: return 1;
+        case RT_VERTEX_SNORM8X2: return 2;
+        case RT_VERTEX_SNORM8X4: return 4;
+        case RT_VERTEX_UINT16: return 2;
+        case RT_VERTEX_UINT16X2: return 4;
+        case RT_VERTEX_UINT16X4: return 8;
+        case RT_VERTEX_SINT16: return 2;
+        case RT_VERTEX_SINT16X2: return 4;
+        case RT_VERTEX_SINT16X4: return 8;
+        case RT_VERTEX_UNORM16: return 2;
+        case RT_VERTEX_UNORM16X2: return 4;
+        case RT_VERTEX_UNORM16X4: return 8;
+        case RT_VERTEX_SNORM16: return 2;
+        case RT_VERTEX_SNORM16X2: return 4;
+        case RT_VERTEX_SNORM16X4: return 8;
+        case RT_VERTEX_FLOAT16: return 2;
+        case RT_VERTEX_FLOAT16X2: return 4;
+        case RT_VERTEX_FLOAT16X4: return 8;
+        case RT_VERTEX_FLOAT32: return 4;
+        case RT_VERTEX_FLOAT32X2: return 8;
+        case RT_VERTEX_FLOAT32X3: return 12;
+        case RT_VERTEX_FLOAT32X4: return 16;
+        case RT_VERTEX_UINT32: return 4;
+        case RT_VERTEX_UINT32X2: return 8;
+        case RT_VERTEX_UINT32X3: return 12;
+        case RT_VERTEX_UINT32X4: return 16;
+        case RT_VERTEX_SINT32: return 4;
+        case RT_VERTEX_SINT32X2: return 8;
+        case RT_VERTEX_SINT32X3: return 12;
+        case RT_VERTEX_SINT32X4: return 16;
+        case RT_VERTEX_UNORM10_10_10_2:
+        case RT_VERTEX_UNORM8X4_BGRA: return 4;
+        default: return 0;
     }
 }
 
-static uint32_t rt_to_wg_index_size(rt_type_t type)
+static uint32_t rt_to_wg_index_size(rt_index_type_t type)
 {
     switch (type)
     {
-        case RT_UNSIGNED_SHORT: return 2;
+        case RT_INDEX_UINT16: return 2;
+        case RT_INDEX_UINT32: return 4;
         default: return 4;
     }
 }
 
-static WGPUIndexFormat rt_to_wg_index_type(rt_type_t type)
+static WGPUIndexFormat rt_to_wg_index_type(rt_index_type_t type)
 {
     switch (type)
     {
-        case RT_UNSIGNED_SHORT: return WGPUIndexFormat_Uint16;
+        case RT_INDEX_UINT16: return WGPUIndexFormat_Uint16;
+        case RT_INDEX_UINT32: return WGPUIndexFormat_Uint32;
         default: return WGPUIndexFormat_Uint32;
     }
 }
@@ -303,28 +358,77 @@ static uint32_t wg_format_bytes(WGPUTextureFormat format)
 {
     switch (format)
     {
-        case WGPUTextureFormat_R8Unorm: return 1;
-        case WGPUTextureFormat_RG8Unorm:
+        case WGPUTextureFormat_R8Unorm:
+        case WGPUTextureFormat_R8Snorm:
+        case WGPUTextureFormat_R8Uint:
+        case WGPUTextureFormat_R8Sint:
+            return 1;
+        case WGPUTextureFormat_R16Unorm:
+        case WGPUTextureFormat_R16Snorm:
+        case WGPUTextureFormat_R16Uint:
+        case WGPUTextureFormat_R16Sint:
         case WGPUTextureFormat_R16Float:
-        case WGPUTextureFormat_Depth16Unorm: return 2;
+            return 2;
+        case WGPUTextureFormat_RG8Unorm:
+        case WGPUTextureFormat_RG8Snorm:
+        case WGPUTextureFormat_RG8Uint:
+        case WGPUTextureFormat_RG8Sint:
+            return 2;
+        case WGPUTextureFormat_R32Uint:
+        case WGPUTextureFormat_R32Sint:
+        case WGPUTextureFormat_R32Float:
+            return 4;
+        case WGPUTextureFormat_RG16Unorm:
+        case WGPUTextureFormat_RG16Snorm:
+        case WGPUTextureFormat_RG16Uint:
+        case WGPUTextureFormat_RG16Sint:
+        case WGPUTextureFormat_RG16Float:
+            return 4;
         case WGPUTextureFormat_RGBA8Unorm:
         case WGPUTextureFormat_RGBA8UnormSrgb:
-        case WGPUTextureFormat_R32Float:
-        case WGPUTextureFormat_RG16Float:
-        case WGPUTextureFormat_Depth32Float:
-        case WGPUTextureFormat_Depth24PlusStencil8: return 4;
-        case WGPUTextureFormat_RGBA16Float:
+        case WGPUTextureFormat_RGBA8Snorm:
+        case WGPUTextureFormat_RGBA8Uint:
+        case WGPUTextureFormat_RGBA8Sint:
+        case WGPUTextureFormat_BGRA8Unorm:
+        case WGPUTextureFormat_BGRA8UnormSrgb:
+        case WGPUTextureFormat_RGB10A2Uint:
+        case WGPUTextureFormat_RGB10A2Unorm:
+        case WGPUTextureFormat_RG11B10Ufloat:
+        case WGPUTextureFormat_RGB9E5Ufloat:
+            return 4;
+        case WGPUTextureFormat_RG32Uint:
+        case WGPUTextureFormat_RG32Sint:
         case WGPUTextureFormat_RG32Float:
-        case WGPUTextureFormat_Depth32FloatStencil8: return 8;
-        case WGPUTextureFormat_RGBA32Float: return 16;
+            return 8;
+        case WGPUTextureFormat_RGBA16Unorm:
+        case WGPUTextureFormat_RGBA16Snorm:
+        case WGPUTextureFormat_RGBA16Uint:
+        case WGPUTextureFormat_RGBA16Sint:
+        case WGPUTextureFormat_RGBA16Float:
+            return 8;
+        case WGPUTextureFormat_RGBA32Uint:
+        case WGPUTextureFormat_RGBA32Sint:
+        case WGPUTextureFormat_RGBA32Float:
+            return 16;
+        case WGPUTextureFormat_Stencil8:
+            return 1;
+        case WGPUTextureFormat_Depth16Unorm:
+            return 2;
+        case WGPUTextureFormat_Depth24Plus:
+        case WGPUTextureFormat_Depth24PlusStencil8:
+        case WGPUTextureFormat_Depth32Float:
+            return 4;
+        case WGPUTextureFormat_Depth32FloatStencil8:
+            return 8;
         default: return 4;
     }
 }
 
 static bool wg_is_depth(WGPUTextureFormat format)
 {
-    return format == WGPUTextureFormat_Depth16Unorm || format == WGPUTextureFormat_Depth32Float ||
-           format == WGPUTextureFormat_Depth24PlusStencil8 || format == WGPUTextureFormat_Depth32FloatStencil8;
+    return format == WGPUTextureFormat_Stencil8 || format == WGPUTextureFormat_Depth16Unorm ||
+           format == WGPUTextureFormat_Depth24Plus || format == WGPUTextureFormat_Depth24PlusStencil8 ||
+           format == WGPUTextureFormat_Depth32Float || format == WGPUTextureFormat_Depth32FloatStencil8;
 }
 
 struct wg_buffer_native_t
@@ -600,11 +704,11 @@ static bool wg_create_graphics_pipeline(wg_module_native_t& native, rt_module_re
     uint32_t attrCount = 0;
     for (uint32_t i = 0; i < RT_MAX_VERTEX_BUFFER_NUM; ++i)
     {
-        if (info.vertex[i].type == RT_TYPE_NONE || info.vertex[i].count == 0) continue;
-        attributes[attrCount].format = rt_to_wg_vertex_format(info.vertex[i].type, info.vertex[i].count);
+        if (info.vertex[i].format == RT_VERTEX_UNDEFINED) continue;
+        attributes[attrCount].format = rt_to_wg_vertex_format(info.vertex[i].format);
         attributes[attrCount].offset = 0;
         attributes[attrCount].shaderLocation = info.vertex[i].location;
-        layouts[attrCount].arrayStride = rt_to_wg_vertex_size(info.vertex[i].type, info.vertex[i].count);
+        layouts[attrCount].arrayStride = rt_to_wg_vertex_size(info.vertex[i].format);
         layouts[attrCount].stepMode = info.vertex[i].instance ? WGPUVertexStepMode_Instance : WGPUVertexStepMode_Vertex;
         layouts[attrCount].attributeCount = 1;
         layouts[attrCount].attributes = &attributes[attrCount];
@@ -1042,7 +1146,7 @@ rt_texture_t wg_create_texture(rt_texture_info_t const& info)
 
     uint32_t handle = webgpu.textureID + 1;
     auto& native = webgpu.textures[handle];
-    native.format = rt_to_wg_format(info.format, info.type, info.internal_format);
+    native.format = rt_to_wg_texture_format(info.format);
     native.width = info.width;
     native.height = info.target == RT_TEXTURE_1D ? 1 : info.height;
     native.depth = info.depth ? info.depth : 1;
@@ -1100,8 +1204,6 @@ rt_texture_t wg_create_texture(rt_texture_info_t const& info)
     result.height = native.height;
     result.depth = info.depth;
     result.format = info.format;
-    result.internal_format = info.internal_format;
-    result.type = info.type;
     result.target = info.target;
     result.mipmaps = native.mipLevels;
     result.samples = info.samples ? info.samples : 1;
@@ -1113,7 +1215,7 @@ rt_texture_t wg_create_texture_color(uint32_t width, uint32_t height, const void
 {
     return wg_create_texture({
         .width = width, .height = height, .target = RT_TEXTURE_2D,
-        .format = RT_RGBA, .internal_format = RT_RGBA8, .type = RT_UNSIGNED_BYTE,
+        .format = RT_TEXTURE_RGBA8UNORM,
         .min_filter = RT_LINEAR, .mag_filter = RT_LINEAR,
         .wrap_s = RT_CLAMP_TO_EDGE, .wrap_t = RT_CLAMP_TO_EDGE, .wrap_r = RT_CLAMP_TO_EDGE,
         .data = data
@@ -1124,7 +1226,7 @@ rt_texture_t wg_create_texture_color_float(uint32_t width, uint32_t height, cons
 {
     return wg_create_texture({
         .width = width, .height = height, .target = RT_TEXTURE_2D,
-        .format = RT_RGBA, .internal_format = RT_RGBA32F, .type = RT_FLOAT,
+        .format = RT_TEXTURE_RGBA32FLOAT,
         .min_filter = RT_LINEAR, .mag_filter = RT_LINEAR,
         .wrap_s = RT_CLAMP_TO_EDGE, .wrap_t = RT_CLAMP_TO_EDGE, .wrap_r = RT_CLAMP_TO_EDGE,
         .data = data
@@ -1135,7 +1237,7 @@ rt_texture_t wg_create_texture_depth(uint32_t width, uint32_t height, const void
 {
     return wg_create_texture({
         .width = width, .height = height, .target = RT_TEXTURE_2D,
-        .format = RT_DEPTH_COMPONENT, .internal_format = RT_DEPTH_COMPONENT32F, .type = RT_FLOAT,
+        .format = RT_TEXTURE_DEPTH32FLOAT,
         .min_filter = RT_LINEAR, .mag_filter = RT_LINEAR,
         .wrap_s = RT_CLAMP_TO_EDGE, .wrap_t = RT_CLAMP_TO_EDGE, .wrap_r = RT_CLAMP_TO_EDGE,
         .data = data
@@ -1146,7 +1248,7 @@ rt_texture_t wg_create_texture_depth_stencil(uint32_t width, uint32_t height, co
 {
     return wg_create_texture({
         .width = width, .height = height, .target = RT_TEXTURE_2D,
-        .format = RT_DEPTH_STENCIL, .internal_format = RT_DEPTH32F_STENCIL8, .type = RT_FLOAT,
+        .format = RT_TEXTURE_DEPTH32FLOAT_STENCIL8,
         .min_filter = RT_LINEAR, .mag_filter = RT_LINEAR,
         .wrap_s = RT_CLAMP_TO_EDGE, .wrap_t = RT_CLAMP_TO_EDGE, .wrap_r = RT_CLAMP_TO_EDGE,
         .data = data
@@ -1523,7 +1625,7 @@ void wg_begin_render(rt_pass_render_t& pass)
         depth.depthLoadOp = pass.depth.clear ? WGPULoadOp_Clear : WGPULoadOp_Load;
         depth.depthStoreOp = WGPUStoreOp_Store;
         depth.depthClearValue = pass.depth.value;
-        if (pass.depth.texture.format == RT_DEPTH_STENCIL)
+        if (rt_texture_has_stencil(pass.depth.texture.format))
         {
             depth.stencilLoadOp = pass.stencil.clear ? WGPULoadOp_Clear : WGPULoadOp_Load;
             depth.stencilStoreOp = WGPUStoreOp_Store;
@@ -1857,7 +1959,7 @@ static void wg_draw_mesh_impl(rt_mesh_t& mesh, uint32_t instanceCount)
     for (uint32_t i = 0; i < std::size(module.vertex); ++i)
     {
         rt_vertex_t const& layout = module.vertex[i];
-        if (layout.type == RT_TYPE_NONE || layout.count == 0) continue;
+        if (layout.format == RT_VERTEX_UNDEFINED) continue;
         for (uint32_t k = 0; k < std::size(mesh.vertex); ++k)
         {
             if (mesh.vertex[k].handle == 0 || mesh.location[k] != layout.location) continue;
@@ -1865,7 +1967,7 @@ static void wg_draw_mesh_impl(rt_mesh_t& mesh, uint32_t instanceCount)
             if (!native) break;
             wg_transition_buffer(*native, WG_STATE_VERTEX);
             wgpuRenderPassEncoderSetVertexBuffer(webgpu.renderPass, layout.location, native->handle, 0, mesh.vertex[k].size);
-            uint32_t stride = rt_to_wg_vertex_size(layout.type, layout.count);
+            uint32_t stride = rt_to_wg_vertex_size(layout.format);
             if (vertex_count == 0 && stride)
                 vertex_count = (uint32_t)(mesh.vertex[k].size / stride);
             break;
@@ -1944,7 +2046,7 @@ void wg_draw_meshlet(rt_meshlet_t& meshlet)
     for (uint32_t i = 0; i < std::size(module.vertex); ++i)
     {
         rt_vertex_t const& layout = module.vertex[i];
-        if (layout.type == RT_TYPE_NONE || layout.count == 0) continue;
+        if (layout.format == RT_VERTEX_UNDEFINED) continue;
         for (uint32_t k = 0; k < std::size(meshlet.vertex); ++k)
         {
             if (meshlet.vertex[k].handle == 0 || meshlet.location[k] != layout.location) continue;
