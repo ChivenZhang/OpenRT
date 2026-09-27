@@ -204,8 +204,6 @@ static MTL::VertexFormat rt_to_mt_vertex_format(rt_vertex_format_t format)
         case RT_VERTEX_SINT32X2: return MTL::VertexFormatInt2;
         case RT_VERTEX_SINT32X3: return MTL::VertexFormatInt3;
         case RT_VERTEX_SINT32X4: return MTL::VertexFormatInt4;
-        case RT_VERTEX_UNORM10_10_10_2: return MTL::VertexFormatUInt1010102Normalized;
-        case RT_VERTEX_UNORM8X4_BGRA: return MTL::VertexFormatUChar4Normalized_BGRA;
         default: return MTL::VertexFormatInvalid;
     }
 }
@@ -280,11 +278,9 @@ static MTL::PrimitiveType rt_to_mt_primitive(rt_primitive_t primitive)
     {
         case RT_POINTS: return MTL::PrimitiveTypePoint;
         case RT_LINES: return MTL::PrimitiveTypeLine;
-        case RT_LINE_LOOP: return MTL::PrimitiveTypeLineStrip;
         case RT_LINE_STRIP: return MTL::PrimitiveTypeLineStrip;
         case RT_TRIANGLES: return MTL::PrimitiveTypeTriangle;
         case RT_TRIANGLE_STRIP: return MTL::PrimitiveTypeTriangleStrip;
-        case RT_TRIANGLE_FAN: return MTL::PrimitiveTypeTriangle;
         default: return MTL::PrimitiveTypeTriangle;
     }
 }
@@ -349,8 +345,6 @@ static uint32_t rt_to_mt_vertex_size(rt_vertex_format_t format)
         case RT_VERTEX_SINT32X2: return 8;
         case RT_VERTEX_SINT32X3: return 12;
         case RT_VERTEX_SINT32X4: return 16;
-        case RT_VERTEX_UNORM10_10_10_2:
-        case RT_VERTEX_UNORM8X4_BGRA: return 4;
         default: return 0;
     }
 }
@@ -837,8 +831,8 @@ static void mt_fill_color_attachments(MTL::RenderPipelineColorAttachmentDescript
         attachment->setPixelFormat(MTL::PixelFormatRGBA8Unorm);
         bool blend =
             (info.colors[i].color.func != RT_FUNC_ADD || info.colors[i].color.src != RT_BLEND_ONE ||
-             info.colors[i].color.dst != GL_ZERO || info.colors[i].alpha.func != RT_FUNC_ADD ||
-             info.colors[i].alpha.src != RT_BLEND_ONE || info.colors[i].alpha.dst != GL_ZERO);
+             info.colors[i].color.dst != RT_BLEND_ZERO || info.colors[i].alpha.func != RT_FUNC_ADD ||
+             info.colors[i].alpha.src != RT_BLEND_ONE || info.colors[i].alpha.dst != RT_BLEND_ZERO);
         attachment->setBlendingEnabled(blend);
         attachment->setSourceRGBBlendFactor(rt_to_mt_blend(info.colors[i].color.src));
         attachment->setDestinationRGBBlendFactor(rt_to_mt_blend(info.colors[i].color.dst));
@@ -1470,11 +1464,11 @@ void mt_bind_sampler(rt_sampler_t& sampler, rt_sampler_bind_t bind)
 rt_module_compute_t mt_create_module_compute(rt_module_compute_info_t const& info)
 {
     rt_module_compute_t result = {};
-    if (!info.cshader || !info.clength || !metal.device) return result;
+    if (!info.cshader.code || !info.cshader.size || !metal.device) return result;
     uint32_t handle = metal.moduleID + 1;
     auto& native = metal.modules[handle];
-    native.clib = mt_create_library(info.cshader, info.clength);
-    native.cfn = mt_function_from_binary(native.clib, info.centry);
+    native.clib = mt_create_library(info.cshader.code, info.cshader.size);
+    native.cfn = mt_function_from_binary(native.clib, info.cshader.entry);
     if (!native.cfn)
     {
         metal.modules.erase(handle);
@@ -1500,15 +1494,15 @@ rt_module_render_t mt_create_module_render(rt_module_render_info_t const& info)
     if (!metal.device) return result;
     uint32_t handle = metal.moduleID + 1;
     auto& native = metal.modules[handle];
-    if (info.vshader)
+    if (info.vshader.code)
     {
-        native.vlib = mt_create_library(info.vshader, info.vlength);
-        native.vfn = mt_function_from_binary(native.vlib, info.ventry);
+        native.vlib = mt_create_library(info.vshader.code, info.vshader.size);
+        native.vfn = mt_function_from_binary(native.vlib, info.vshader.entry);
     }
-    if (info.fshader)
+    if (info.fshader.code)
     {
-        native.flib = mt_create_library(info.fshader, info.flength);
-        native.ffn = mt_function_from_binary(native.flib, info.fentry);
+        native.flib = mt_create_library(info.fshader.code, info.fshader.size);
+        native.ffn = mt_function_from_binary(native.flib, info.fshader.entry);
     }
     if (!mt_create_graphics_pipeline(native, info, false))
     {
@@ -1526,20 +1520,20 @@ rt_module_render_t mt_create_module_render(rt_module_render_info_t const& info)
 rt_module_render_t mt_create_module_meshlet(rt_module_render_info_t const& info)
 {
     rt_module_render_t result = {};
-    if (!info.mshader || !info.mlength || !metal.device) return result;
+    if (!info.mshader.code || !info.mshader.size || !metal.device) return result;
     uint32_t handle = metal.moduleID + 1;
     auto& native = metal.modules[handle];
-    if (info.tshader)
+    if (info.tshader.code)
     {
-        native.tlib = mt_create_library(info.tshader, info.tlength);
-        native.tfn = mt_function_from_binary(native.tlib, info.tentry);
+        native.tlib = mt_create_library(info.tshader.code, info.tshader.size);
+        native.tfn = mt_function_from_binary(native.tlib, info.tshader.entry);
     }
-    native.mlib = mt_create_library(info.mshader, info.mlength);
-    native.mfn = mt_function_from_binary(native.mlib, info.mentry);
-    if (info.fshader)
+    native.mlib = mt_create_library(info.mshader.code, info.mshader.size);
+    native.mfn = mt_function_from_binary(native.mlib, info.mshader.entry);
+    if (info.fshader.code)
     {
-        native.flib = mt_create_library(info.fshader, info.flength);
-        native.ffn = mt_function_from_binary(native.flib, info.fentry);
+        native.flib = mt_create_library(info.fshader.code, info.fshader.size);
+        native.ffn = mt_function_from_binary(native.flib, info.fshader.entry);
     }
     if (!native.mfn || !mt_create_graphics_pipeline(native, info, true))
     {

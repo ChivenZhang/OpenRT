@@ -199,8 +199,6 @@ static WGPUVertexFormat rt_to_wg_vertex_format(rt_vertex_format_t format)
         case RT_VERTEX_SINT32X2: return WGPUVertexFormat_Sint32x2;
         case RT_VERTEX_SINT32X3: return WGPUVertexFormat_Sint32x3;
         case RT_VERTEX_SINT32X4: return WGPUVertexFormat_Sint32x4;
-        case RT_VERTEX_UNORM10_10_10_2: return WGPUVertexFormat_Unorm10_10_10_2;
-        case RT_VERTEX_UNORM8X4_BGRA: return WGPUVertexFormat_Unorm8x4BGRA;
         default: return WGPUVertexFormat_Undefined;
     }
 }
@@ -275,11 +273,9 @@ static WGPUPrimitiveTopology rt_to_wg_primitive(rt_primitive_t primitive)
     {
         case RT_POINTS: return WGPUPrimitiveTopology_PointList;
         case RT_LINES: return WGPUPrimitiveTopology_LineList;
-        case RT_LINE_LOOP: return WGPUPrimitiveTopology_LineStrip;
         case RT_LINE_STRIP: return WGPUPrimitiveTopology_LineStrip;
         case RT_TRIANGLES: return WGPUPrimitiveTopology_TriangleList;
         case RT_TRIANGLE_STRIP: return WGPUPrimitiveTopology_TriangleStrip;
-        case RT_TRIANGLE_FAN: return WGPUPrimitiveTopology_TriangleList;
         default: return WGPUPrimitiveTopology_TriangleList;
     }
 }
@@ -328,8 +324,6 @@ static uint32_t rt_to_wg_vertex_size(rt_vertex_format_t format)
         case RT_VERTEX_SINT32X2: return 8;
         case RT_VERTEX_SINT32X3: return 12;
         case RT_VERTEX_SINT32X4: return 16;
-        case RT_VERTEX_UNORM10_10_10_2:
-        case RT_VERTEX_UNORM8X4_BGRA: return 4;
         default: return 0;
     }
 }
@@ -723,8 +717,8 @@ static bool wg_create_graphics_pipeline(wg_module_native_t& native, rt_module_re
         targets[i].writeMask = WGPUColorWriteMask_All;
         bool blend =
             (info.colors[i].color.func != RT_FUNC_ADD || info.colors[i].color.src != RT_BLEND_ONE ||
-             info.colors[i].color.dst != GL_ZERO || info.colors[i].alpha.func != RT_FUNC_ADD ||
-             info.colors[i].alpha.src != RT_BLEND_ONE || info.colors[i].alpha.dst != GL_ZERO);
+             info.colors[i].color.dst != RT_BLEND_ZERO || info.colors[i].alpha.func != RT_FUNC_ADD ||
+             info.colors[i].alpha.src != RT_BLEND_ONE || info.colors[i].alpha.dst != RT_BLEND_ZERO);
         if (blend)
         {
             blends[i].color.srcFactor = rt_to_wg_blend(info.colors[i].color.src);
@@ -739,7 +733,7 @@ static bool wg_create_graphics_pipeline(wg_module_native_t& native, rt_module_re
 
     WGPUFragmentState fragment = {};
     fragment.module = native.fshader;
-    fragment.entryPoint = (info.fentry && info.fentry[0]) ? info.fentry : "main";
+    fragment.entryPoint = (info.fshader.entry && info.fshader.entry[0]) ? info.fshader.entry : "main";
     fragment.targetCount = RT_MAX_COLOR_TEXTURE_NUM;
     fragment.targets = targets;
 
@@ -761,7 +755,7 @@ static bool wg_create_graphics_pipeline(wg_module_native_t& native, rt_module_re
     WGPURenderPipelineDescriptor desc = {};
     desc.layout = native.pipelineLayout;
     desc.vertex.module = native.vshader;
-    desc.vertex.entryPoint = (info.ventry && info.ventry[0]) ? info.ventry : "main";
+    desc.vertex.entryPoint = (info.vshader.entry && info.vshader.entry[0]) ? info.vshader.entry : "main";
     desc.vertex.bufferCount = attrCount;
     desc.vertex.buffers = layouts;
     desc.primitive.topology = rt_to_wg_primitive(info.primitive);
@@ -1340,10 +1334,10 @@ void wg_bind_sampler(rt_sampler_t& sampler, rt_sampler_bind_t bind)
 rt_module_compute_t wg_create_module_compute(rt_module_compute_info_t const& info)
 {
     rt_module_compute_t result = {};
-    if (!info.cshader || !info.clength || !webgpu.device) return result;
+    if (!info.cshader.code || !info.cshader.size || !webgpu.device) return result;
     uint32_t handle = webgpu.moduleID + 1;
     auto& native = webgpu.modules[handle];
-    native.cshader = wg_create_shader(info.cshader, info.clength);
+    native.cshader = wg_create_shader(info.cshader.code, info.cshader.size);
     if (!native.cshader || !wg_create_pipeline_layout(native, nullptr))
     {
         result.native = &native;
@@ -1353,7 +1347,7 @@ rt_module_compute_t wg_create_module_compute(rt_module_compute_info_t const& inf
     WGPUComputePipelineDescriptor desc = {};
     desc.layout = native.pipelineLayout;
     desc.compute.module = native.cshader;
-    desc.compute.entryPoint = (info.centry && info.centry[0]) ? info.centry : "main";
+    desc.compute.entryPoint = (info.cshader.entry && info.cshader.entry[0]) ? info.cshader.entry : "main";
     native.computePipeline = wgpuDeviceCreateComputePipeline(webgpu.device, &desc);
     if (!native.computePipeline)
     {
@@ -1373,8 +1367,8 @@ rt_module_render_t wg_create_module_render(rt_module_render_info_t const& info)
     if (!webgpu.device) return result;
     uint32_t handle = webgpu.moduleID + 1;
     auto& native = webgpu.modules[handle];
-    if (info.vshader) native.vshader = wg_create_shader(info.vshader, info.vlength);
-    if (info.fshader) native.fshader = wg_create_shader(info.fshader, info.flength);
+    if (info.vshader.code) native.vshader = wg_create_shader(info.vshader.code, info.vshader.size);
+    if (info.fshader.code) native.fshader = wg_create_shader(info.fshader.code, info.fshader.size);
     if (!wg_create_pipeline_layout(native, info.binding) || !wg_create_graphics_pipeline(native, info))
     {
         result.native = &native;
@@ -1423,12 +1417,12 @@ rt_module_render_t wg_create_module_render(rt_module_render_info_t const& info)
 rt_module_render_t wg_create_module_meshlet(rt_module_render_info_t const& info)
 {
     rt_module_render_t result = {};
-    if (!info.mshader || !info.mlength || !webgpu.device) return result;
+    if (!info.mshader.code || !info.mshader.size || !webgpu.device) return result;
     uint32_t handle = webgpu.moduleID + 1;
     auto& native = webgpu.modules[handle];
-    if (info.tshader) native.tshader = wg_create_shader(info.tshader, info.tlength);
-    native.mshader = wg_create_shader(info.mshader, info.mlength);
-    if (info.fshader) native.fshader = wg_create_shader(info.fshader, info.flength);
+    if (info.tshader.code) native.tshader = wg_create_shader(info.tshader.code, info.tshader.size);
+    native.mshader = wg_create_shader(info.mshader.code, info.mshader.size);
+    if (info.fshader.code) native.fshader = wg_create_shader(info.fshader.code, info.fshader.size);
     if (!native.mshader || !wg_create_pipeline_layout(native, info.binding))
     {
         result.native = &native;

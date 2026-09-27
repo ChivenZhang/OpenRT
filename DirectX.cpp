@@ -182,8 +182,6 @@ static DXGI_FORMAT rt_to_dx_vertex_format(rt_vertex_format_t format)
         case RT_VERTEX_SINT32X2: return DXGI_FORMAT_R32G32_SINT;
         case RT_VERTEX_SINT32X3: return DXGI_FORMAT_R32G32B32_SINT;
         case RT_VERTEX_SINT32X4: return DXGI_FORMAT_R32G32B32A32_SINT;
-        case RT_VERTEX_UNORM10_10_10_2: return DXGI_FORMAT_R10G10B10A2_UNORM;
-        case RT_VERTEX_UNORM8X4_BGRA: return DXGI_FORMAT_B8G8R8A8_UNORM;
         default: return DXGI_FORMAT_UNKNOWN;
     }
 }
@@ -269,11 +267,9 @@ static D3D12_PRIMITIVE_TOPOLOGY rt_to_dx_topology(rt_primitive_t primitive)
     {
         case RT_POINTS: return D3D_PRIMITIVE_TOPOLOGY_POINTLIST;
         case RT_LINES: return D3D_PRIMITIVE_TOPOLOGY_LINELIST;
-        case RT_LINE_LOOP: return D3D_PRIMITIVE_TOPOLOGY_LINESTRIP;
         case RT_LINE_STRIP: return D3D_PRIMITIVE_TOPOLOGY_LINESTRIP;
         case RT_TRIANGLES: return D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
         case RT_TRIANGLE_STRIP: return D3D_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP;
-        case RT_TRIANGLE_FAN: return D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
         default: return D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
     }
 }
@@ -283,12 +279,10 @@ static D3D12_PRIMITIVE_TOPOLOGY_TYPE rt_to_dx_topology_type(rt_primitive_t primi
     switch (primitive)
     {
         case RT_POINTS: return D3D12_PRIMITIVE_TOPOLOGY_TYPE_POINT;
-        case RT_LINES: return D3D12_PRIMITIVE_TOPOLOGY_TYPE_LINE;
-        case RT_LINE_LOOP: return D3D12_PRIMITIVE_TOPOLOGY_TYPE_LINE;
+        case RT_LINES:
         case RT_LINE_STRIP: return D3D12_PRIMITIVE_TOPOLOGY_TYPE_LINE;
-        case RT_TRIANGLES: return D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+        case RT_TRIANGLES:
         case RT_TRIANGLE_STRIP: return D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
-        case RT_TRIANGLE_FAN: return D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
         default: return D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
     }
 }
@@ -353,8 +347,6 @@ static uint32_t rt_to_dx_vertex_size(rt_vertex_format_t format)
         case RT_VERTEX_SINT32X2: return 8;
         case RT_VERTEX_SINT32X3: return 12;
         case RT_VERTEX_SINT32X4: return 16;
-        case RT_VERTEX_UNORM10_10_10_2:
-        case RT_VERTEX_UNORM8X4_BGRA: return 4;
         default: return 0;
     }
 }
@@ -824,8 +816,8 @@ static bool dx_create_graphics_pipeline(dx_module_native_t& native, rt_module_re
         auto& rt = pso.BlendState.RenderTarget[i];
         bool blend =
             (info.colors[i].color.func != RT_FUNC_ADD || info.colors[i].color.src != RT_BLEND_ONE ||
-             info.colors[i].color.dst != GL_ZERO || info.colors[i].alpha.func != RT_FUNC_ADD ||
-             info.colors[i].alpha.src != RT_BLEND_ONE || info.colors[i].alpha.dst != GL_ZERO);
+             info.colors[i].color.dst != RT_BLEND_ZERO || info.colors[i].alpha.func != RT_FUNC_ADD ||
+             info.colors[i].alpha.src != RT_BLEND_ONE || info.colors[i].alpha.dst != RT_BLEND_ZERO);
         rt.BlendEnable = blend;
         rt.SrcBlend = rt_to_dx_blend(info.colors[i].color.src);
         rt.DestBlend = rt_to_dx_blend(info.colors[i].color.dst);
@@ -1558,10 +1550,10 @@ void dx_bind_sampler(rt_sampler_t& sampler, rt_sampler_bind_t bind)
 rt_module_compute_t dx_create_module_compute(rt_module_compute_info_t const& info)
 {
     rt_module_compute_t result = {};
-    if (!info.cshader || !info.clength || !direct.device) return result;
+    if (!info.cshader.code || !info.cshader.size || !direct.device) return result;
     uint32_t handle = direct.moduleID + 1;
     auto& native = direct.modules[handle];
-    native.ccode.assign((const uint8_t*)info.cshader, (const uint8_t*)info.cshader + info.clength);
+    native.ccode.assign((const uint8_t*)info.cshader.code, (const uint8_t*)info.cshader.code + info.cshader.size);
     native.cshader.pShaderBytecode = native.ccode.data();
     native.cshader.BytecodeLength = native.ccode.size();
     if (!dx_setup_root(native, nullptr))
@@ -1590,15 +1582,15 @@ rt_module_render_t dx_create_module_render(rt_module_render_info_t const& info)
     if (!direct.device) return result;
     uint32_t handle = direct.moduleID + 1;
     auto& native = direct.modules[handle];
-    if (info.vshader && info.vlength)
+    if (info.vshader.code && info.vshader.size)
     {
-        native.vcode.assign((const uint8_t*)info.vshader, (const uint8_t*)info.vshader + info.vlength);
+        native.vcode.assign((const uint8_t*)info.vshader.code, (const uint8_t*)info.vshader.code + info.vshader.size);
         native.vshader.pShaderBytecode = native.vcode.data();
         native.vshader.BytecodeLength = native.vcode.size();
     }
-    if (info.fshader && info.flength)
+    if (info.fshader.code && info.fshader.size)
     {
-        native.fcode.assign((const uint8_t*)info.fshader, (const uint8_t*)info.fshader + info.flength);
+        native.fcode.assign((const uint8_t*)info.fshader.code, (const uint8_t*)info.fshader.code + info.fshader.size);
         native.fshader.pShaderBytecode = native.fcode.data();
         native.fshader.BytecodeLength = native.fcode.size();
     }
@@ -1650,21 +1642,21 @@ rt_module_render_t dx_create_module_render(rt_module_render_info_t const& info)
 rt_module_render_t dx_create_module_meshlet(rt_module_render_info_t const& info)
 {
     rt_module_render_t result = {};
-    if (!info.mshader || !info.mlength || !direct.device) return result;
+    if (!info.mshader.code || !info.mshader.size || !direct.device) return result;
     uint32_t handle = direct.moduleID + 1;
     auto& native = direct.modules[handle];
-    if (info.tshader && info.tlength)
+    if (info.tshader.code && info.tshader.size)
     {
-        native.tcode.assign((const uint8_t*)info.tshader, (const uint8_t*)info.tshader + info.tlength);
+        native.tcode.assign((const uint8_t*)info.tshader.code, (const uint8_t*)info.tshader.code + info.tshader.size);
         native.tshader.pShaderBytecode = native.tcode.data();
         native.tshader.BytecodeLength = native.tcode.size();
     }
-    native.mcode.assign((const uint8_t*)info.mshader, (const uint8_t*)info.mshader + info.mlength);
+    native.mcode.assign((const uint8_t*)info.mshader.code, (const uint8_t*)info.mshader.code + info.mshader.size);
     native.mshader.pShaderBytecode = native.mcode.data();
     native.mshader.BytecodeLength = native.mcode.size();
-    if (info.fshader && info.flength)
+    if (info.fshader.code && info.fshader.size)
     {
-        native.fcode.assign((const uint8_t*)info.fshader, (const uint8_t*)info.fshader + info.flength);
+        native.fcode.assign((const uint8_t*)info.fshader.code, (const uint8_t*)info.fshader.code + info.fshader.size);
         native.fshader.pShaderBytecode = native.fcode.data();
         native.fshader.BytecodeLength = native.fcode.size();
     }

@@ -302,12 +302,6 @@ static void rt_to_gl_vertex_format(GLuint index, rt_vertex_format_t format)
         case RT_VERTEX_SINT32X4:
             glVertexAttribIFormat(index, 4, GL_INT, 0);
             break;
-        case RT_VERTEX_UNORM10_10_10_2:
-            glVertexAttribFormat(index, 4, GL_UNSIGNED_INT_2_10_10_10_REV, GL_TRUE, 0);
-            break;
-        case RT_VERTEX_UNORM8X4_BGRA:
-            glVertexAttribFormat(index, 4, GL_UNSIGNED_BYTE, GL_TRUE, 0);
-            break;
         default:
             break;
     }
@@ -458,11 +452,9 @@ static GLenum rt_to_gl_primitive(rt_primitive_t primitive)
     {
         case RT_POINTS: return GL_POINTS;
         case RT_LINES: return GL_LINES;
-        case RT_LINE_LOOP: return GL_LINE_LOOP;
         case RT_LINE_STRIP: return GL_LINE_STRIP;
         case RT_TRIANGLES: return GL_TRIANGLES;
         case RT_TRIANGLE_STRIP: return GL_TRIANGLE_STRIP;
-        case RT_TRIANGLE_FAN: return GL_TRIANGLE_FAN;
         default: return GL_TRIANGLES;
     }
 }
@@ -1046,15 +1038,15 @@ rt_module_compute_t gl_create_module_compute(rt_module_compute_info_t const& inf
 {
     rt_module_compute_t result = {};
 
-    if (!info.cshader)
+    if (!info.cshader.code)
     {
         fprintf(stderr, "Compute shader source is empty\n");
         abort();
     }
 
     GLuint cs = glCreateShader(GL_COMPUTE_SHADER);
-    GLint clength = (GLint)info.clength;
-    glShaderSource(cs, 1, &info.cshader, info.clength ? &clength : nullptr);
+    GLint clength = (GLint)info.cshader.size;
+    glShaderSource(cs, 1, &info.cshader.code, info.cshader.size ? &clength : nullptr);
     glCompileShader(cs);
 
     GLint success = 0;
@@ -1091,11 +1083,11 @@ rt_module_render_t gl_create_module_render(rt_module_render_info_t const& info)
 
     // ---- Vertex Shader ----
     GLuint vs = 0;
-    if (info.vshader)
+    if (info.vshader.code)
     {
         vs = glCreateShader(GL_VERTEX_SHADER);
-        GLint vlength = (GLint)info.vlength;
-        glShaderSource(vs, 1, &info.vshader, info.vlength ? &vlength : nullptr);
+        GLint vlength = (GLint)info.vshader.size;
+        glShaderSource(vs, 1, &info.vshader.code, info.vshader.size ? &vlength : nullptr);
         glCompileShader(vs);
         GLint success = 0;
         glGetShaderiv(vs, GL_COMPILE_STATUS, &success);
@@ -1110,11 +1102,11 @@ rt_module_render_t gl_create_module_render(rt_module_render_info_t const& info)
 
     // ---- Fragment Shader ----
     GLuint fs = 0;
-    if (info.fshader)
+    if (info.fshader.code)
     {
         fs = glCreateShader(GL_FRAGMENT_SHADER);
-        GLint flength = (GLint)info.flength;
-        glShaderSource(fs, 1, &info.fshader, info.flength ? &flength : nullptr);
+        GLint flength = (GLint)info.fshader.size;
+        glShaderSource(fs, 1, &info.fshader.code, info.fshader.size ? &flength : nullptr);
         glCompileShader(fs);
         GLint success = 0;
         glGetShaderiv(fs, GL_COMPILE_STATUS, &success);
@@ -1213,11 +1205,11 @@ rt_module_render_t gl_create_module_meshlet(rt_module_render_info_t const& info)
 
     // ---- Task Shader（可选）----
     GLuint ts = 0;
-    if (info.tshader)
+    if (info.tshader.code)
     {
         ts = glCreateShader(GL_TASK_SHADER_NV);
-        GLint tlength = (GLint)info.tlength;
-        glShaderSource(ts, 1, &info.tshader, info.tlength ? &tlength : nullptr);
+        GLint tlength = (GLint)info.tshader.size;
+        glShaderSource(ts, 1, &info.tshader.code, info.tshader.size ? &tlength : nullptr);
         glCompileShader(ts);
         GLint success = 0;
         glGetShaderiv(ts, GL_COMPILE_STATUS, &success);
@@ -1231,14 +1223,14 @@ rt_module_render_t gl_create_module_meshlet(rt_module_render_info_t const& info)
     }
 
     // ---- Mesh Shader ----
-    if (!info.mshader)
+    if (!info.mshader.code)
     {
         fprintf(stderr, "Mesh shader source is empty\n");
         abort();
     }
     GLuint ms = glCreateShader(GL_MESH_SHADER_NV);
-    GLint mlength = (GLint)info.mlength;
-    glShaderSource(ms, 1, &info.mshader, info.mlength ? &mlength : nullptr);
+    GLint mlength = (GLint)info.mshader.size;
+    glShaderSource(ms, 1, &info.mshader.code, info.mshader.size ? &mlength : nullptr);
     glCompileShader(ms);
     GLint success = 0;
     glGetShaderiv(ms, GL_COMPILE_STATUS, &success);
@@ -1252,11 +1244,11 @@ rt_module_render_t gl_create_module_meshlet(rt_module_render_info_t const& info)
 
     // ---- Fragment Shader ----
     GLuint fs = 0;
-    if (info.fshader)
+    if (info.fshader.code)
     {
         fs = glCreateShader(GL_FRAGMENT_SHADER);
-        GLint flength = (GLint)info.flength;
-        glShaderSource(fs, 1, &info.fshader, info.flength ? &flength : nullptr);
+        GLint flength = (GLint)info.fshader.size;
+        glShaderSource(fs, 1, &info.fshader.code, info.fshader.size ? &flength : nullptr);
         glCompileShader(fs);
         glGetShaderiv(fs, GL_COMPILE_STATUS, &success);
         if (!success)
@@ -2335,8 +2327,6 @@ static GLsizei rt_to_gl_vertex_size(rt_vertex_format_t format)
         case RT_VERTEX_SINT32X2: return 8;
         case RT_VERTEX_SINT32X3: return 12;
         case RT_VERTEX_SINT32X4: return 16;
-        case RT_VERTEX_UNORM10_10_10_2:
-        case RT_VERTEX_UNORM8X4_BGRA: return 4;
         default: return 0;
     }
 }
@@ -2616,7 +2606,7 @@ void gl_draw_screen(int width, int height, rt_color_t clear, rt_texture_t& textu
             final = texture(texture0, uv);
         }
     )";
-    static auto module = gl_create_module_render({.vshader = VS, .fshader = FS, .vertex = {rt_vertex_vertex, {}, rt_vertex_uv,},});
+    static auto module = gl_create_module_render({.vshader = {.code = VS}, .fshader = {.code = FS}, .vertex = {rt_vertex_vertex, {}, rt_vertex_uv,},});
     rt_pass_render_t pass = {.module = module, .screen = {.color = { .clear = true, .value = clear,}}};
     gl_begin_render(pass);
     gl_set_viewport(0, 0, width, height);
@@ -2631,7 +2621,7 @@ void gl_draw_screen(int width, int height, rt_color_t clear, rt_texture_t& textu
 
 void gl_submit()
 {
-    glFlush();
+    glFinish();
 }
 
 #endif

@@ -126,8 +126,8 @@ static VkFence fence = nullptr;
 void frame(int width, int height)
 {
     static auto module = rt_create_module_render({
-        .vshader = (const char*)kVS, .vlength = sizeof(kVS),
-        .fshader = (const char*)kFS, .flength = sizeof(kFS),
+        .vshader = {.code = (const char*)kVS, .size = sizeof(kVS)},
+        .fshader = {.code = (const char*)kFS, .size = sizeof(kFS)},
         .vertex = {rt_vertex_vertex, rt_vertex_normal, rt_vertex_uv,},
     });
     static auto pass_color = rt_create_texture_color(width, height, nullptr);

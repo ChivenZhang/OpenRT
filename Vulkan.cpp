@@ -228,8 +228,6 @@ static VkFormat rt_to_vk_vertex_format(rt_vertex_format_t format)
         case RT_VERTEX_SINT32X2: return VK_FORMAT_R32G32_SINT;
         case RT_VERTEX_SINT32X3: return VK_FORMAT_R32G32B32_SINT;
         case RT_VERTEX_SINT32X4: return VK_FORMAT_R32G32B32A32_SINT;
-        case RT_VERTEX_UNORM10_10_10_2: return VK_FORMAT_A2B10G10R10_UNORM_PACK32;
-        case RT_VERTEX_UNORM8X4_BGRA: return VK_FORMAT_B8G8R8A8_UNORM;
         default: return VK_FORMAT_UNDEFINED;
     }
 }
@@ -338,11 +336,9 @@ static VkPrimitiveTopology rt_to_vk_primitive(rt_primitive_t primitive)
     {
         case RT_POINTS: return VK_PRIMITIVE_TOPOLOGY_POINT_LIST;
         case RT_LINES: return VK_PRIMITIVE_TOPOLOGY_LINE_LIST;
-        case RT_LINE_LOOP: return VK_PRIMITIVE_TOPOLOGY_LINE_STRIP;
         case RT_LINE_STRIP: return VK_PRIMITIVE_TOPOLOGY_LINE_STRIP;
         case RT_TRIANGLES: return VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
         case RT_TRIANGLE_STRIP: return VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP;
-        case RT_TRIANGLE_FAN: return VK_PRIMITIVE_TOPOLOGY_TRIANGLE_FAN;
         default: return VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
     }
 }
@@ -407,8 +403,6 @@ static uint32_t rt_to_vk_vertex_size(rt_vertex_format_t format)
         case RT_VERTEX_SINT32X2: return 8;
         case RT_VERTEX_SINT32X3: return 12;
         case RT_VERTEX_SINT32X4: return 16;
-        case RT_VERTEX_UNORM10_10_10_2:
-        case RT_VERTEX_UNORM8X4_BGRA: return 4;
         default: return 0;
     }
 }
@@ -938,7 +932,7 @@ static bool vk_create_graphics_pipeline(vk_module_native_t& native, rt_module_re
         shaderStages[shaderCount].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
         shaderStages[shaderCount].stage = VK_SHADER_STAGE_VERTEX_BIT;
         shaderStages[shaderCount].module = native.vshader;
-        shaderStages[shaderCount].pName = (info.ventry && info.ventry[0]) ? info.ventry : "main";
+        shaderStages[shaderCount].pName = (info.vshader.entry && info.vshader.entry[0]) ? info.vshader.entry : "main";
         shaderCount++;
     }
     if (native.tshader)
@@ -946,7 +940,7 @@ static bool vk_create_graphics_pipeline(vk_module_native_t& native, rt_module_re
         shaderStages[shaderCount].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
         shaderStages[shaderCount].stage = VK_SHADER_STAGE_TASK_BIT_NV;
         shaderStages[shaderCount].module = native.tshader;
-        shaderStages[shaderCount].pName = (info.tentry && info.tentry[0]) ? info.tentry : "main";
+        shaderStages[shaderCount].pName = (info.tshader.entry && info.tshader.entry[0]) ? info.tshader.entry : "main";
         shaderCount++;
     }
     if (native.mshader)
@@ -954,7 +948,7 @@ static bool vk_create_graphics_pipeline(vk_module_native_t& native, rt_module_re
         shaderStages[shaderCount].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
         shaderStages[shaderCount].stage = VK_SHADER_STAGE_MESH_BIT_NV;
         shaderStages[shaderCount].module = native.mshader;
-        shaderStages[shaderCount].pName = (info.mentry && info.mentry[0]) ? info.mentry : "main";
+        shaderStages[shaderCount].pName = (info.mshader.entry && info.mshader.entry[0]) ? info.mshader.entry : "main";
         shaderCount++;
     }
     if (native.fshader)
@@ -962,7 +956,7 @@ static bool vk_create_graphics_pipeline(vk_module_native_t& native, rt_module_re
         shaderStages[shaderCount].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
         shaderStages[shaderCount].stage = VK_SHADER_STAGE_FRAGMENT_BIT;
         shaderStages[shaderCount].module = native.fshader;
-        shaderStages[shaderCount].pName = (info.fentry && info.fentry[0]) ? info.fentry : "main";
+        shaderStages[shaderCount].pName = (info.fshader.entry && info.fshader.entry[0]) ? info.fshader.entry : "main";
         shaderCount++;
     }
 
@@ -1048,8 +1042,8 @@ static bool vk_create_graphics_pipeline(vk_module_native_t& native, rt_module_re
     {
         bool blendEnabled =
             (info.colors[i].color.func != RT_FUNC_ADD || info.colors[i].color.src != RT_BLEND_ONE ||
-             info.colors[i].color.dst != GL_ZERO || info.colors[i].alpha.func != RT_FUNC_ADD ||
-             info.colors[i].alpha.src != RT_BLEND_ONE || info.colors[i].alpha.dst != GL_ZERO);
+             info.colors[i].color.dst != RT_BLEND_ZERO || info.colors[i].alpha.func != RT_FUNC_ADD ||
+             info.colors[i].alpha.src != RT_BLEND_ONE || info.colors[i].alpha.dst != RT_BLEND_ZERO);
         colorBlendAttachments[i].blendEnable = blendEnabled ? VK_TRUE : VK_FALSE;
         colorBlendAttachments[i].srcColorBlendFactor = rt_to_vk_blend_factor(info.colors[i].color.src);
         colorBlendAttachments[i].dstColorBlendFactor = rt_to_vk_blend_factor(info.colors[i].color.dst);
@@ -1816,11 +1810,11 @@ void vk_bind_sampler(rt_sampler_t& sampler, rt_sampler_bind_t bind)
 rt_module_compute_t vk_create_module_compute(rt_module_compute_info_t const& info)
 {
     rt_module_compute_t result = {};
-    if (!info.cshader || !info.clength || !vulkan.device) return result;
+    if (!info.cshader.code || !info.cshader.size || !vulkan.device) return result;
     uint32_t handle = vulkan.moduleID + 1;
     auto& native = vulkan.modules[handle];
     native.shaderStages = VK_SHADER_STAGE_COMPUTE_BIT;
-    native.cshader = vk_create_shader_module(info.cshader, info.clength);
+    native.cshader = vk_create_shader_module(info.cshader.code, info.cshader.size);
     if (!native.cshader)
     {
         vulkan.modules.erase(handle);
@@ -1852,7 +1846,7 @@ rt_module_compute_t vk_create_module_compute(rt_module_compute_info_t const& inf
     pipelineInfo.stage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
     pipelineInfo.stage.stage = VK_SHADER_STAGE_COMPUTE_BIT;
     pipelineInfo.stage.module = native.cshader;
-    pipelineInfo.stage.pName = (info.centry && info.centry[0]) ? info.centry : "main";
+    pipelineInfo.stage.pName = (info.cshader.entry && info.cshader.entry[0]) ? info.cshader.entry : "main";
     if (vkCreateComputePipelines(vulkan.device, vulkan.pipelineCache, 1, &pipelineInfo, vulkan.allocator, &native.pipeline) != VK_SUCCESS)
     {
         result.native = &native;
@@ -1872,14 +1866,14 @@ rt_module_render_t vk_create_module_render(rt_module_render_info_t const& info)
     uint32_t handle = vulkan.moduleID + 1;
     auto& native = vulkan.modules[handle];
     native.shaderStages = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
-    if (info.vshader)
+    if (info.vshader.code)
     {
-        native.vshader = vk_create_shader_module(info.vshader, info.vlength);
+        native.vshader = vk_create_shader_module(info.vshader.code, info.vshader.size);
         if (!native.vshader) { vulkan.modules.erase(handle); return {}; }
     }
-    if (info.fshader)
+    if (info.fshader.code)
     {
-        native.fshader = vk_create_shader_module(info.fshader, info.flength);
+        native.fshader = vk_create_shader_module(info.fshader.code, info.fshader.size);
         if (!native.fshader)
         {
             result.native = &native;
@@ -1953,26 +1947,26 @@ rt_module_render_t vk_create_module_render(rt_module_render_info_t const& info)
 rt_module_render_t vk_create_module_meshlet(rt_module_render_info_t const& info)
 {
     rt_module_render_t result = {};
-    if (!info.mshader || !info.mlength || !vulkan.device) return result;
+    if (!info.mshader.code || !info.mshader.size || !vulkan.device) return result;
     uint32_t handle = vulkan.moduleID + 1;
     auto& native = vulkan.modules[handle];
     native.shaderStages = VK_SHADER_STAGE_MESH_BIT_NV | VK_SHADER_STAGE_FRAGMENT_BIT;
-    if (info.tshader)
+    if (info.tshader.code)
     {
         native.shaderStages |= VK_SHADER_STAGE_TASK_BIT_NV;
-        native.tshader = vk_create_shader_module(info.tshader, info.tlength);
+        native.tshader = vk_create_shader_module(info.tshader.code, info.tshader.size);
         if (!native.tshader) { vulkan.modules.erase(handle); return {}; }
     }
-    native.mshader = vk_create_shader_module(info.mshader, info.mlength);
+    native.mshader = vk_create_shader_module(info.mshader.code, info.mshader.size);
     if (!native.mshader)
     {
         result.native = &native;
         vk_destroy_module_native(handle, result.native);
         return {};
     }
-    if (info.fshader)
+    if (info.fshader.code)
     {
-        native.fshader = vk_create_shader_module(info.fshader, info.flength);
+        native.fshader = vk_create_shader_module(info.fshader.code, info.fshader.size);
         if (!native.fshader)
         {
             result.native = &native;

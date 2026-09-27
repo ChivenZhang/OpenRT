@@ -38,7 +38,7 @@ void frame(int width, int height)
         }
     )";
 
-    static auto module = rt_create_module_render({.vshader = VS, .fshader = FS, .depth = {.write = true, .func = RT_LEQUAL,}, .vertex = {rt_vertex_vertex, rt_vertex_normal, rt_vertex_uv,}, });
+    static auto module = rt_create_module_render({.vshader = {.code = VS}, .fshader = {.code = FS}, .depth = {.write = true, .func = RT_LEQUAL,}, .vertex = {rt_vertex_vertex, rt_vertex_normal, rt_vertex_uv,}, });
 
     static auto texture0 = []()
     {

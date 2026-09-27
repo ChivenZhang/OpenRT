@@ -9,7 +9,6 @@
 * Created by chivenzhang@gmail.com.
 *
 * =================================================*/
-#include <GL/glew.h>
 #include <cstdint>
 
 #ifndef OPENRT_API
@@ -206,8 +205,6 @@ enum rt_vertex_format_t : uint32_t
     RT_VERTEX_SINT32X2,
     RT_VERTEX_SINT32X3,
     RT_VERTEX_SINT32X4,
-    RT_VERTEX_UNORM10_10_10_2,
-    RT_VERTEX_UNORM8X4_BGRA,
 };
 
 enum rt_filter_t : uint32_t
@@ -322,11 +319,9 @@ enum rt_primitive_t : uint32_t
 {
     RT_POINTS = 0,
     RT_LINES,
-    RT_LINE_LOOP,
     RT_LINE_STRIP,
     RT_TRIANGLES,
     RT_TRIANGLE_STRIP,
-    RT_TRIANGLE_FAN,
 };
 
 enum rt_module_type_t : uint32_t
@@ -340,7 +335,7 @@ enum rt_module_type_t : uint32_t
 
 struct rt_buffer_t
 {
-    GLuint handle = 0;
+    uint32_t handle = 0;
     size_t size = 0;
     rt_buffer_usages_t usage = 0;
     void* native = nullptr;
@@ -363,7 +358,7 @@ struct rt_buffer_bind_t
 
 struct rt_texture_t
 {
-    GLuint handle = 0;
+    uint32_t handle = 0;
     uint32_t width = 0, height = 0, depth = 1;
     rt_texture_target_t target = RT_TEXTURE_2D;
     rt_texture_format_t format = RT_TEXTURE_RGBA8UNORM;
@@ -384,7 +379,7 @@ struct rt_texture_info_t
     rt_wrap_t wrap_r = RT_REPEAT;                    // RT_REPEAT / RT_MIRRORED_REPEAT / RT_CLAMP_TO_EDGE / RT_CLAMP_TO_BORDER / RT_MIRROR_CLAMP_TO_EDGE
     uint32_t mipmaps = 0;   // 0:auto generate
     uint32_t samples = 1;   // 1x / 4x
-    GLfloat border[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+    float border[4] = {0.0f, 0.0f, 0.0f, 0.0f};
     const void* data = nullptr;
 };
 
@@ -408,7 +403,7 @@ struct rt_texture_storage_bind_t
 
 struct rt_sampler_t
 {
-    GLuint handle = 0;
+    uint32_t handle = 0;
     void* native = nullptr;
 };
 
@@ -430,14 +425,17 @@ struct rt_sampler_bind_t
 
 struct rt_module_compute_info_t
 {
-    const char* centry = "main";
-    const char* cshader = nullptr;
-    uint32_t clength = 0;
+    struct
+    {
+        const char* entry = "main";
+        const char* code = nullptr;
+        uint32_t size = 0;
+    } cshader;
 };
 
 struct rt_module_compute_t
 {
-    GLuint handle = 0;
+    uint32_t handle = 0;
     void* native = nullptr;
 };
 
@@ -459,18 +457,12 @@ struct rt_binding_t
 
 struct rt_module_render_info_t
 {
-    const char* ventry = "main";
-    const char* vshader = nullptr;
-    uint32_t vlength = 0;
-    const char* tentry = "main";
-    const char* tshader = nullptr;
-    uint32_t tlength = 0;
-    const char* mentry = "main";
-    const char* mshader = nullptr;
-    uint32_t mlength = 0;
-    const char* fentry = "main";
-    const char* fshader = nullptr;
-    uint32_t flength = 0;
+    struct
+    {
+        const char* entry = "main";
+        const char* code = nullptr;
+        uint32_t size = 0;
+    } vshader, tshader, mshader, fshader;
 
     struct
     {
@@ -509,13 +501,13 @@ struct rt_module_render_info_t
     rt_cull_mode_t cull_mode = RT_CULL_BACK; // RT_CULL_NONE / RT_CULL_FRONT / RT_CULL_BACK / RT_CULL_FRONT_AND_BACK
     rt_front_face_t front_face = RT_CCW; // RT_CW / RT_CCW
     rt_fill_mode_t fill_mode = RT_FILL; // RT_POINT / RT_LINE / RT_FILL
-    rt_primitive_t primitive = RT_TRIANGLES; // RT_POINTS / RT_LINES / RT_LINE_LOOP / RT_LINE_STRIP / RT_TRIANGLES / RT_TRIANGLE_STRIP / RT_TRIANGLE_FAN
+    rt_primitive_t primitive = RT_TRIANGLES; // RT_POINTS / RT_LINES / RT_LINE_STRIP / RT_TRIANGLES / RT_TRIANGLE_STRIP
 };
 
 struct rt_module_render_t
 {
-    GLuint handle = 0;
-    GLuint vertex_vao = 0;   // VAO
+    uint32_t handle = 0;
+    uint32_t vertex_vao = 0;   // VAO
 
     struct
     {
@@ -563,7 +555,7 @@ struct rt_module_render_t
 
 struct rt_pass_compute_t
 {
-    GLuint handle = 0;
+    uint32_t handle = 0;
     rt_module_compute_t& module;
     void* native = nullptr;
 };
@@ -575,7 +567,7 @@ struct rt_color_t
 
 struct rt_pass_render_t
 {
-    GLuint handle = 0;
+    uint32_t handle = 0;
     rt_module_render_t& module;
 
     struct
@@ -641,7 +633,7 @@ struct rt_pass_render_t
 
 struct rt_pass_transfer_t
 {
-    GLuint handle = 0;
+    uint32_t handle = 0;
     void* native = nullptr;
 };
 
@@ -649,7 +641,7 @@ struct rt_pass_transfer_t
 
 struct rt_mesh_t
 {
-    GLuint handle = 0;
+    uint32_t handle = 0;
     rt_buffer_t index;
     rt_buffer_t vertex[RT_MAX_VERTEX_BUFFER_NUM];
     uint32_t location[RT_MAX_VERTEX_BUFFER_NUM] = {};
@@ -658,7 +650,7 @@ struct rt_mesh_t
 
 struct rt_meshlet_t
 {
-    GLuint handle = 0;
+    uint32_t handle = 0;
     rt_buffer_t index;
     rt_buffer_t vertex[RT_MAX_VERTEX_BUFFER_NUM];
     uint32_t location[RT_MAX_VERTEX_BUFFER_NUM + 1] = {};
