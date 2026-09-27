@@ -18,14 +18,6 @@
 #include <numeric>
 #include <vector>
 
-enum rt_module_type_t : uint32_t
-{
-    GL_MODULE_RENDER = 1,
-    GL_MODULE_COMPUTE = 2,
-    GL_MODULE_MESHLET = 3,
-    GL_MODULE_TRANSFER = 4,
-};
-
 static VkFilter rt_to_vk_filter(rt_filter_t filter)
 {
     switch (filter)
@@ -522,8 +514,8 @@ struct vk_module_native_t
     VkDescriptorSet descriptorSet = nullptr;
     VkShaderStageFlags shaderStages = 0;
 
-    VkDescriptorType descriptorTypes[GL_MAX_BINDING_HANDLE_NUM] = {};
-    uint32_t descriptorBindings[GL_MAX_BINDING_HANDLE_NUM] = {};
+    VkDescriptorType descriptorTypes[RT_MAX_BINDING_HANDLE_NUM] = {};
+    uint32_t descriptorBindings[RT_MAX_BINDING_HANDLE_NUM] = {};
     uint32_t descriptorCount = 0;
 };
 
@@ -553,7 +545,7 @@ struct vk_pass_render_native_t
     uint32_t colorCount = 0;
     bool hasDepth = false;
     bool hasStencil = false;
-    VkRenderingAttachmentInfo colorAttachments[GL_MAX_COLOR_TEXTURE_NUM] = {};
+    VkRenderingAttachmentInfo colorAttachments[RT_MAX_COLOR_TEXTURE_NUM] = {};
     VkRenderingAttachmentInfo depthAttachment = {};
 };
 
@@ -614,9 +606,9 @@ struct vk_native_t
         rt_texture_storage_bind_t storage_texture_bind = {};
         rt_sampler_t sampler = {};
         rt_sampler_bind_t sampler_bind = {};
-    } currentBinding[GL_MAX_BINDING_HANDLE_NUM] = {};
+    } currentBinding[RT_MAX_BINDING_HANDLE_NUM] = {};
 
-    GLenum currentPassType = GL_NONE;
+    rt_module_type_t currentPassType = RT_MODULE_NONE;
     union
     {
         void* currentPipeline = nullptr;
@@ -691,7 +683,7 @@ static bool vk_create_staging(VkDeviceSize size, vk_staging_t& staging, void** m
 
 static void vk_suspend_rendering()
 {
-    if (vulkan.currentPassType != GL_MODULE_RENDER || !vulkan.currentRenderPass || !vulkan.currentRenderPass->native)
+    if (vulkan.currentPassType != RT_MODULE_RENDER || !vulkan.currentRenderPass || !vulkan.currentRenderPass->native)
         return;
     auto* pass = (vk_pass_render_native_t*)vulkan.currentRenderPass->native;
     if (!pass->rendering)
@@ -816,9 +808,9 @@ static vk_sampler_native_t* vk_sampler_native(rt_sampler_t const& sampler)
 
 static vk_module_native_t* vk_current_module_native()
 {
-    if (vulkan.currentPassType == GL_MODULE_COMPUTE && vulkan.currentComputePass)
+    if (vulkan.currentPassType == RT_MODULE_COMPUTE && vulkan.currentComputePass)
         return (vk_module_native_t*)vulkan.currentComputePass->module.native;
-    if (vulkan.currentPassType == GL_MODULE_RENDER && vulkan.currentRenderPass)
+    if (vulkan.currentPassType == RT_MODULE_RENDER && vulkan.currentRenderPass)
         return (vk_module_native_t*)vulkan.currentRenderPass->module.native;
     return nullptr;
 }
@@ -840,9 +832,9 @@ static VkShaderModule vk_create_shader_module(const char* spirv, uint32_t length
 
 static bool vk_setup_descriptors(vk_module_native_t& native, rt_binding_t const* bindings, VkShaderStageFlags stages)
 {
-    VkDescriptorSetLayoutBinding layoutBindings[GL_MAX_BINDING_HANDLE_NUM] = {};
+    VkDescriptorSetLayoutBinding layoutBindings[RT_MAX_BINDING_HANDLE_NUM] = {};
     native.descriptorCount = 0;
-    for (uint32_t i = 0; i < GL_MAX_BINDING_HANDLE_NUM; ++i)
+    for (uint32_t i = 0; i < RT_MAX_BINDING_HANDLE_NUM; ++i)
     {
         if (!bindings || bindings[i].type == RT_BINDING_NONE)
             continue;
@@ -913,12 +905,12 @@ static bool vk_create_graphics_pipeline(vk_module_native_t& native, rt_module_re
         shaderCount++;
     }
 
-    VkVertexInputBindingDescription bindingDescs[GL_MAX_VERTEX_BUFFER_NUM] = {};
-    VkVertexInputAttributeDescription attrDescs[GL_MAX_VERTEX_BUFFER_NUM] = {};
+    VkVertexInputBindingDescription bindingDescs[RT_MAX_VERTEX_BUFFER_NUM] = {};
+    VkVertexInputAttributeDescription attrDescs[RT_MAX_VERTEX_BUFFER_NUM] = {};
     uint32_t attrCount = 0;
     if (!meshlet)
     {
-        for (uint32_t i = 0; i < GL_MAX_VERTEX_BUFFER_NUM; ++i)
+        for (uint32_t i = 0; i < RT_MAX_VERTEX_BUFFER_NUM; ++i)
         {
             if (info.vertex[i].type == RT_TYPE_NONE || info.vertex[i].count == 0)
                 continue;
@@ -990,8 +982,8 @@ static bool vk_create_graphics_pipeline(vk_module_native_t& native, rt_module_re
     depthStencil.back.compareMask = info.stencil.read;
     depthStencil.back.writeMask = info.stencil.write;
 
-    VkPipelineColorBlendAttachmentState colorBlendAttachments[GL_MAX_COLOR_TEXTURE_NUM] = {};
-    for (uint32_t i = 0; i < GL_MAX_COLOR_TEXTURE_NUM; ++i)
+    VkPipelineColorBlendAttachmentState colorBlendAttachments[RT_MAX_COLOR_TEXTURE_NUM] = {};
+    for (uint32_t i = 0; i < RT_MAX_COLOR_TEXTURE_NUM; ++i)
     {
         bool blendEnabled =
             (info.colors[i].color.func != RT_FUNC_ADD || info.colors[i].color.src != RT_BLEND_ONE ||
@@ -1010,7 +1002,7 @@ static bool vk_create_graphics_pipeline(vk_module_native_t& native, rt_module_re
 
     VkPipelineColorBlendStateCreateInfo colorBlending = {};
     colorBlending.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
-    colorBlending.attachmentCount = GL_MAX_COLOR_TEXTURE_NUM;
+    colorBlending.attachmentCount = RT_MAX_COLOR_TEXTURE_NUM;
     colorBlending.pAttachments = colorBlendAttachments;
 
     VkDynamicState dynamicStates[] = {VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR};
@@ -1019,8 +1011,8 @@ static bool vk_create_graphics_pipeline(vk_module_native_t& native, rt_module_re
     dynamicState.dynamicStateCount = 2;
     dynamicState.pDynamicStates = dynamicStates;
 
-    VkFormat colorFormats[GL_MAX_COLOR_TEXTURE_NUM];
-    for (uint32_t i = 0; i < GL_MAX_COLOR_TEXTURE_NUM; ++i)
+    VkFormat colorFormats[RT_MAX_COLOR_TEXTURE_NUM];
+    for (uint32_t i = 0; i < RT_MAX_COLOR_TEXTURE_NUM; ++i)
         colorFormats[i] = VK_FORMAT_R8G8B8A8_UNORM;
     VkFormat depthStencilFormat = VK_FORMAT_UNDEFINED;
     if (stencilEnabled) depthStencilFormat = VK_FORMAT_D24_UNORM_S8_UINT;
@@ -1028,7 +1020,7 @@ static bool vk_create_graphics_pipeline(vk_module_native_t& native, rt_module_re
 
     VkPipelineRenderingCreateInfo renderingInfo = {};
     renderingInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO;
-    renderingInfo.colorAttachmentCount = GL_MAX_COLOR_TEXTURE_NUM;
+    renderingInfo.colorAttachmentCount = RT_MAX_COLOR_TEXTURE_NUM;
     renderingInfo.pColorAttachmentFormats = colorFormats;
     renderingInfo.depthAttachmentFormat = depthStencilFormat;
     renderingInfo.stencilAttachmentFormat = stencilEnabled ? depthStencilFormat : VK_FORMAT_UNDEFINED;
@@ -1084,9 +1076,9 @@ static void vk_flush_descriptors()
     if (!mod || !mod->descriptorSet || !mod->pipelineLayout)
         return;
 
-    VkWriteDescriptorSet writes[GL_MAX_BINDING_HANDLE_NUM] = {};
-    VkDescriptorBufferInfo bufferInfos[GL_MAX_BINDING_HANDLE_NUM] = {};
-    VkDescriptorImageInfo imageInfos[GL_MAX_BINDING_HANDLE_NUM] = {};
+    VkWriteDescriptorSet writes[RT_MAX_BINDING_HANDLE_NUM] = {};
+    VkDescriptorBufferInfo bufferInfos[RT_MAX_BINDING_HANDLE_NUM] = {};
+    VkDescriptorImageInfo imageInfos[RT_MAX_BINDING_HANDLE_NUM] = {};
     uint32_t writeCount = 0;
 
     for (uint32_t i = 0; i < mod->descriptorCount; ++i)
@@ -1108,7 +1100,7 @@ static void vk_flush_descriptors()
                 writes[writeCount].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
             bufferInfos[writeCount] = {buf->handle, 0, VK_WHOLE_SIZE};
             writes[writeCount].pBufferInfo = &bufferInfos[writeCount];
-            VkPipelineStageFlags dstStage = (vulkan.currentPassType == GL_MODULE_COMPUTE) ?
+            VkPipelineStageFlags dstStage = (vulkan.currentPassType == RT_MODULE_COMPUTE) ?
                                            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT :
                                            (VK_PIPELINE_STAGE_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT |
                                             VK_PIPELINE_STAGE_TASK_SHADER_BIT_NV | VK_PIPELINE_STAGE_MESH_SHADER_BIT_NV);
@@ -1150,7 +1142,7 @@ static void vk_flush_descriptors()
     if (writeCount)
         vkUpdateDescriptorSets(vulkan.device, writeCount, writes, 0, nullptr);
 
-    VkPipelineBindPoint bindPoint = (vulkan.currentPassType == GL_MODULE_COMPUTE) ?
+    VkPipelineBindPoint bindPoint = (vulkan.currentPassType == RT_MODULE_COMPUTE) ?
                                     VK_PIPELINE_BIND_POINT_COMPUTE : VK_PIPELINE_BIND_POINT_GRAPHICS;
     vkCmdBindDescriptorSets(vulkan.cmdBuffer, bindPoint, mod->pipelineLayout, 0, 1, &mod->descriptorSet, 0, nullptr);
 }
@@ -1329,7 +1321,7 @@ void vk_unload_library()
     vulkan.physicalDevice = nullptr;
     vulkan.bufferID = vulkan.textureID = vulkan.samplerID = 0;
     vulkan.moduleID = vulkan.meshID = vulkan.meshletID = vulkan.passID = 0;
-    vulkan.currentPassType = GL_NONE;
+    vulkan.currentPassType = RT_MODULE_NONE;
     vulkan.currentPipeline = nullptr;
 
     if (rt_unload_library == vk_unload_library) rt_unload_library = nullptr;
@@ -2043,7 +2035,7 @@ void vk_begin_compute(rt_pass_compute_t& pass)
     auto& native = vulkan.computePasses[pass.handle];
     native.bindPoint = VK_PIPELINE_BIND_POINT_COMPUTE;
     pass.native = &native;
-    vulkan.currentPassType = GL_MODULE_COMPUTE;
+    vulkan.currentPassType = RT_MODULE_COMPUTE;
     vulkan.currentComputePass = &pass;
     auto* mod = (vk_module_native_t*)pass.module.native;
     if (mod && mod->pipeline)
@@ -2060,7 +2052,7 @@ void vk_end_compute(rt_pass_compute_t& pass)
     vulkan.computePasses.erase(pass.handle);
     pass.handle = 0;
     pass.native = nullptr;
-    vulkan.currentPassType = GL_NONE;
+    vulkan.currentPassType = RT_MODULE_NONE;
     vulkan.currentPipeline = nullptr;
     vk_clear_bindings();
 }
@@ -2072,7 +2064,7 @@ void vk_dispatch_compute(uint32_t groupX, uint32_t groupY, uint32_t groupZ)
         fprintf(stderr, "Pipeline not begin");
         abort();
     }
-    if (vulkan.currentPassType != GL_MODULE_COMPUTE)
+    if (vulkan.currentPassType != RT_MODULE_COMPUTE)
     {
         fprintf(stderr, "Pipeline not begin");
         abort();
@@ -2097,7 +2089,7 @@ void vk_begin_render(rt_pass_render_t& pass)
     pass.handle = ++vulkan.passID;
     auto& native = vulkan.renderPasses[pass.handle];
     pass.native = &native;
-    vulkan.currentPassType = GL_MODULE_RENDER;
+    vulkan.currentPassType = RT_MODULE_RENDER;
     vulkan.currentRenderPass = &pass;
 
     auto* mod = (vk_module_native_t*)pass.module.native;
@@ -2110,8 +2102,8 @@ void vk_begin_render(rt_pass_render_t& pass)
 
     uint32_t colorCount = 0;
     uint32_t width = 0, height = 0;
-    VkRenderingAttachmentInfo colorAttachments[GL_MAX_COLOR_TEXTURE_NUM] = {};
-    for (uint32_t i = 0; i < GL_MAX_COLOR_TEXTURE_NUM; ++i)
+    VkRenderingAttachmentInfo colorAttachments[RT_MAX_COLOR_TEXTURE_NUM] = {};
+    for (uint32_t i = 0; i < RT_MAX_COLOR_TEXTURE_NUM; ++i)
     {
         colorAttachments[i].sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
         colorAttachments[i].imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
@@ -2160,7 +2152,7 @@ void vk_begin_render(rt_pass_render_t& pass)
 
 static void vk_cmd_begin_rendering()
 {
-    if (vulkan.currentPassType != GL_MODULE_RENDER || !vulkan.currentRenderPass || !vulkan.currentRenderPass->native)
+    if (vulkan.currentPassType != RT_MODULE_RENDER || !vulkan.currentRenderPass || !vulkan.currentRenderPass->native)
         return;
     auto* native = (vk_pass_render_native_t*)vulkan.currentRenderPass->native;
     if (native->rendering)
@@ -2195,7 +2187,7 @@ void vk_end_render(rt_pass_render_t& pass)
     vulkan.renderPasses.erase(pass.handle);
     pass.handle = 0;
     pass.native = nullptr;
-    vulkan.currentPassType = GL_NONE;
+    vulkan.currentPassType = RT_MODULE_NONE;
     vulkan.currentPipeline = nullptr;
     vk_clear_bindings();
 }
@@ -2237,7 +2229,7 @@ void vk_draw_mesh_task(uint32_t groupX, uint32_t groupY, uint32_t groupZ)
         fprintf(stderr, "Pipeline not begin");
         abort();
     }
-    if (vulkan.currentPassType != GL_MODULE_RENDER)
+    if (vulkan.currentPassType != RT_MODULE_RENDER)
     {
         fprintf(stderr, "Pipeline not begin");
         abort();
@@ -2258,7 +2250,7 @@ void vk_begin_transfer(rt_pass_transfer_t& pass)
     pass.handle = ++vulkan.passID;
     auto& native = vulkan.transferPasses[pass.handle];
     pass.native = &native;
-    vulkan.currentPassType = GL_MODULE_TRANSFER;
+    vulkan.currentPassType = RT_MODULE_TRANSFER;
     vulkan.currentTransferPass = &pass;
 }
 
@@ -2272,7 +2264,7 @@ void vk_end_transfer(rt_pass_transfer_t& pass)
     vulkan.transferPasses.erase(pass.handle);
     pass.handle = 0;
     pass.native = nullptr;
-    vulkan.currentPassType = GL_NONE;
+    vulkan.currentPassType = RT_MODULE_NONE;
     vulkan.currentPipeline = nullptr;
 }
 
@@ -2283,7 +2275,7 @@ void vk_copy_buffer(rt_buffer_copy_t source, rt_buffer_copy_t destination, size_
         fprintf(stderr, "Pipeline not begin");
         abort();
     }
-    if (vulkan.currentPassType != GL_MODULE_TRANSFER)
+    if (vulkan.currentPassType != RT_MODULE_TRANSFER)
     {
         fprintf(stderr, "Pipeline not begin");
         abort();
@@ -2306,7 +2298,7 @@ void vk_copy_buffer_data(rt_buffer_data_t source, rt_buffer_copy_t destination, 
         fprintf(stderr, "Pipeline not begin");
         abort();
     }
-    if (vulkan.currentPassType != GL_MODULE_TRANSFER)
+    if (vulkan.currentPassType != RT_MODULE_TRANSFER)
     {
         fprintf(stderr, "Pipeline not begin");
         abort();
@@ -2345,7 +2337,7 @@ void vk_copy_buffer_texture(rt_texture_copy_t source, rt_buffer_texel_t destinat
         fprintf(stderr, "Pipeline not begin");
         abort();
     }
-    if (vulkan.currentPassType != GL_MODULE_TRANSFER)
+    if (vulkan.currentPassType != RT_MODULE_TRANSFER)
     {
         fprintf(stderr, "Pipeline not begin");
         abort();
@@ -2374,7 +2366,7 @@ void vk_copy_texture(rt_texture_copy_t source, rt_texture_copy_t destination, rt
         fprintf(stderr, "Pipeline not begin");
         abort();
     }
-    if (vulkan.currentPassType != GL_MODULE_TRANSFER)
+    if (vulkan.currentPassType != RT_MODULE_TRANSFER)
     {
         fprintf(stderr, "Pipeline not begin");
         abort();
@@ -2405,7 +2397,7 @@ void vk_copy_texture_data(rt_texture_data_t source, rt_texture_copy_t destinatio
         fprintf(stderr, "Pipeline not begin");
         abort();
     }
-    if (vulkan.currentPassType != GL_MODULE_TRANSFER)
+    if (vulkan.currentPassType != RT_MODULE_TRANSFER)
     {
         fprintf(stderr, "Pipeline not begin");
         abort();
@@ -2440,7 +2432,7 @@ void vk_copy_texture_buffer(rt_buffer_texel_t source, rt_texture_copy_t destinat
         fprintf(stderr, "Pipeline not begin");
         abort();
     }
-    if (vulkan.currentPassType != GL_MODULE_TRANSFER)
+    if (vulkan.currentPassType != RT_MODULE_TRANSFER)
     {
         fprintf(stderr, "Pipeline not begin");
         abort();
@@ -2502,7 +2494,7 @@ void vk_draw_mesh(rt_mesh_t& mesh)
         fprintf(stderr, "Pipeline not begin");
         abort();
     }
-    if (vulkan.currentPassType != GL_MODULE_RENDER)
+    if (vulkan.currentPassType != RT_MODULE_RENDER)
     {
         fprintf(stderr, "Pipeline not begin");
         abort();
@@ -2510,8 +2502,8 @@ void vk_draw_mesh(rt_mesh_t& mesh)
     vk_flush_descriptors();
     rt_module_render_t const& module = vulkan.currentRenderPass->module;
     uint32_t vertex_count = 0;
-    VkBuffer vertexBuffers[GL_MAX_VERTEX_BUFFER_NUM] = {};
-    uint32_t vertexBindings[GL_MAX_VERTEX_BUFFER_NUM] = {};
+    VkBuffer vertexBuffers[RT_MAX_VERTEX_BUFFER_NUM] = {};
+    uint32_t vertexBindings[RT_MAX_VERTEX_BUFFER_NUM] = {};
     uint32_t vertexBindCount = 0;
     for (uint32_t i = 0; i < std::size(module.vertex); ++i)
     {
@@ -2593,7 +2585,7 @@ void vk_draw_meshlet(rt_meshlet_t& meshlet)
         fprintf(stderr, "Pipeline not begin");
         abort();
     }
-    if (vulkan.currentPassType != GL_MODULE_RENDER)
+    if (vulkan.currentPassType != RT_MODULE_RENDER)
     {
         fprintf(stderr, "Pipeline not begin");
         abort();

@@ -13,14 +13,6 @@
 #include <iostream>
 #include <numeric>
 
-enum rt_module_type_t : uint32_t
-{
-    GL_MODULE_RENDER = 1,
-    GL_MODULE_COMPUTE = 2,
-    GL_MODULE_MESHLET = 3,
-    GL_MODULE_TRANSFER = 4,
-};
-
 static GLenum rt_to_gl_buffer_target(rt_buffer_target_t target)
 {
     switch (target)
@@ -264,7 +256,7 @@ static GLenum rt_to_gl_primitive(rt_primitive_t primitive)
 
 struct OpenGL
 {
-    GLenum currentPassType = GL_NONE;
+    rt_module_type_t currentPassType = RT_MODULE_NONE;
     union
     {
         void* currentPipeline = nullptr;
@@ -358,7 +350,7 @@ void gl_load_library()
 
 void gl_unload_library()
 {
-    opengl.currentPassType = GL_NONE;
+    opengl.currentPassType = RT_MODULE_NONE;
     opengl.currentPipeline = nullptr;
 
     // ====================================================================
@@ -1265,7 +1257,7 @@ void gl_begin_compute(rt_pass_compute_t& pass)
         abort();
     }
     opengl.currentComputePass = &pass;
-    opengl.currentPassType = GL_MODULE_COMPUTE;
+    opengl.currentPassType = RT_MODULE_COMPUTE;
 
     glUseProgram(pass.module.handle);
 }
@@ -1282,7 +1274,7 @@ void gl_end_compute(rt_pass_compute_t& pass)
         fprintf(stderr, "Pipeline not end\n");
         abort();
     }
-    opengl.currentPassType = GL_NONE;
+    opengl.currentPassType = RT_MODULE_NONE;
     opengl.currentComputePass = nullptr;
 
     glUseProgram(0);
@@ -1295,7 +1287,7 @@ void gl_dispatch_compute(uint32_t groupX, uint32_t groupY, uint32_t groupZ)
         fprintf(stderr, "Pipeline not begin\n");
         abort();
     }
-    if (opengl.currentPassType != GL_MODULE_COMPUTE)
+    if (opengl.currentPassType != RT_MODULE_COMPUTE)
     {
         fprintf(stderr, "Pipeline not begin\n");
         abort();
@@ -1316,7 +1308,7 @@ void gl_begin_render(rt_pass_render_t& pass)
         fprintf(stderr, "Pipeline module is not created\n");
         abort();
     }
-    opengl.currentPassType = GL_MODULE_RENDER;
+    opengl.currentPassType = RT_MODULE_RENDER;
     opengl.currentRenderPass = &pass;
 
     pass.handle = 0;
@@ -1340,7 +1332,7 @@ void gl_begin_render(rt_pass_render_t& pass)
 
         int32_t colorCount = 0;
         uint32_t width = 0, height = 0;
-        GLenum colorAttachments[GL_MAX_COLOR_TEXTURE_NUM] = {};
+        GLenum colorAttachments[RT_MAX_COLOR_TEXTURE_NUM] = {};
         for (size_t i = 0; i < std::size(pass.colors); ++i)
         {
             if (pass.colors[i].texture.handle)
@@ -1562,7 +1554,7 @@ void gl_end_render(rt_pass_render_t& pass)
         fprintf(stderr, "Pipeline not end\n");
         abort();
     }
-    opengl.currentPassType = GL_NONE;
+    opengl.currentPassType = RT_MODULE_NONE;
     opengl.currentRenderPass = nullptr;
 
     bool offscreen = pass.depth.texture.handle;
@@ -1588,7 +1580,7 @@ void gl_set_viewport(int32_t x, int32_t y, int32_t width, int32_t height)
         fprintf(stderr, "Pipeline not begin\n");
         abort();
     }
-    if (opengl.currentPassType != GL_MODULE_RENDER)
+    if (opengl.currentPassType != RT_MODULE_RENDER)
     {
         fprintf(stderr, "Pipeline not begin\n");
         abort();
@@ -1604,7 +1596,7 @@ void gl_set_scissor(int32_t x, int32_t y, int32_t width, int32_t height)
         fprintf(stderr, "Pipeline not begin\n");
         abort();
     }
-    if (opengl.currentPassType != GL_MODULE_RENDER)
+    if (opengl.currentPassType != RT_MODULE_RENDER)
     {
         fprintf(stderr, "Pipeline not begin\n");
         abort();
@@ -1621,7 +1613,7 @@ void gl_draw_mesh_task(uint32_t groupX, uint32_t groupY, uint32_t groupZ)
         fprintf(stderr, "Pipeline not begin\n");
         abort();
     }
-    if (opengl.currentPassType != GL_MODULE_RENDER)
+    if (opengl.currentPassType != RT_MODULE_RENDER)
     {
         fprintf(stderr, "Pipeline not begin\n");
         abort();
@@ -1955,7 +1947,7 @@ void gl_begin_transfer(rt_pass_transfer_t& pass)
         fprintf(stderr, "Pipeline not end\n");
         abort();
     }
-    opengl.currentPassType = GL_MODULE_TRANSFER;
+    opengl.currentPassType = RT_MODULE_TRANSFER;
     opengl.currentTransferPass = &pass;
 }
 
@@ -1966,7 +1958,7 @@ void gl_end_transfer(rt_pass_transfer_t& pass)
         fprintf(stderr, "Pipeline not end\n");
         abort();
     }
-    opengl.currentPassType = GL_NONE;
+    opengl.currentPassType = RT_MODULE_NONE;
     opengl.currentTransferPass = nullptr;
 
     // 保证传输结果对后续的着色器读取、顶点拉取和纹理采样可见
@@ -1982,7 +1974,7 @@ void gl_copy_buffer(rt_buffer_copy_t source, rt_buffer_copy_t destination, size_
         fprintf(stderr, "Pipeline not begin\n");
         abort();
     }
-    if (opengl.currentPassType != GL_MODULE_TRANSFER)
+    if (opengl.currentPassType != RT_MODULE_TRANSFER)
     {
         fprintf(stderr, "Pipeline not begin\n");
         abort();
@@ -2005,7 +1997,7 @@ void gl_copy_buffer_data(rt_buffer_data_t source, rt_buffer_copy_t destination, 
         fprintf(stderr, "Pipeline not begin\n");
         abort();
     }
-    if (opengl.currentPassType != GL_MODULE_TRANSFER)
+    if (opengl.currentPassType != RT_MODULE_TRANSFER)
     {
         fprintf(stderr, "Pipeline not begin\n");
         abort();
@@ -2028,7 +2020,7 @@ void gl_copy_buffer_texture(rt_texture_copy_t source, rt_buffer_texel_t destinat
         fprintf(stderr, "Pipeline not begin\n");
         abort();
     }
-    if (opengl.currentPassType != GL_MODULE_TRANSFER)
+    if (opengl.currentPassType != RT_MODULE_TRANSFER)
     {
         fprintf(stderr, "Pipeline not begin\n");
         abort();
@@ -2068,7 +2060,7 @@ void gl_copy_texture(rt_texture_copy_t source, rt_texture_copy_t destination, rt
         fprintf(stderr, "Pipeline not begin\n");
         abort();
     }
-    if (opengl.currentPassType != GL_MODULE_TRANSFER)
+    if (opengl.currentPassType != RT_MODULE_TRANSFER)
     {
         fprintf(stderr, "Pipeline not begin\n");
         abort();
@@ -2095,7 +2087,7 @@ void gl_copy_texture_data(rt_texture_data_t source, rt_texture_copy_t destinatio
         fprintf(stderr, "Pipeline not begin\n");
         abort();
     }
-    if (opengl.currentPassType != GL_MODULE_TRANSFER)
+    if (opengl.currentPassType != RT_MODULE_TRANSFER)
     {
         fprintf(stderr, "Pipeline not begin\n");
         abort();
@@ -2158,7 +2150,7 @@ void gl_copy_texture_buffer(rt_buffer_texel_t source, rt_texture_copy_t destinat
         fprintf(stderr, "Pipeline not begin\n");
         abort();
     }
-    if (opengl.currentPassType != GL_MODULE_TRANSFER)
+    if (opengl.currentPassType != RT_MODULE_TRANSFER)
     {
         fprintf(stderr, "Pipeline not begin\n");
         abort();
@@ -2292,7 +2284,7 @@ void gl_draw_mesh(rt_mesh_t& mesh)
         fprintf(stderr, "Pipeline not begin\n");
         abort();
     }
-    if (opengl.currentPassType != GL_MODULE_RENDER)
+    if (opengl.currentPassType != RT_MODULE_RENDER)
     {
         fprintf(stderr, "Pipeline not begin\n");
         abort();
@@ -2342,7 +2334,7 @@ void gl_draw_mesh_multi(rt_mesh_t& mesh, uint32_t count)
         fprintf(stderr, "Pipeline not begin\n");
         abort();
     }
-    if (opengl.currentPassType != GL_MODULE_RENDER)
+    if (opengl.currentPassType != RT_MODULE_RENDER)
     {
         fprintf(stderr, "Pipeline not begin\n");
         abort();
@@ -2424,7 +2416,7 @@ void gl_draw_meshlet(rt_meshlet_t& meshlet)
         fprintf(stderr, "Pipeline not begin\n");
         abort();
     }
-    if (opengl.currentPassType != GL_MODULE_RENDER)
+    if (opengl.currentPassType != RT_MODULE_RENDER)
     {
         fprintf(stderr, "Pipeline not begin\n");
         abort();

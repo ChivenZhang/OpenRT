@@ -23,14 +23,6 @@
 #include <utility>
 #include <vector>
 
-enum rt_module_type_t : uint32_t
-{
-    GL_MODULE_RENDER = 1,
-    GL_MODULE_COMPUTE = 2,
-    GL_MODULE_MESHLET = 3,
-    GL_MODULE_TRANSFER = 4,
-};
-
 enum mt_res_state_t : uint32_t
 {
     MTL_STATE_UNKNOWN = 0,
@@ -472,7 +464,7 @@ struct mt_module_native_t
     MTL::PrimitiveType primitive = MTL::PrimitiveTypeTriangle;
     MTL::CullMode cull = MTL::CullModeBack;
     MTL::Winding winding = MTL::WindingCounterClockwise;
-    rt_binding_t bindings[GL_MAX_BINDING_HANDLE_NUM] = {};
+    rt_binding_t bindings[RT_MAX_BINDING_HANDLE_NUM] = {};
 
     mt_module_native_t() = default;
     mt_module_native_t(const mt_module_native_t&) = delete;
@@ -569,9 +561,9 @@ struct mt_native_t
         rt_texture_storage_bind_t storage_texture_bind = {};
         rt_sampler_t sampler = {};
         rt_sampler_bind_t sampler_bind = {};
-    } currentBinding[GL_MAX_BINDING_HANDLE_NUM] = {};
+    } currentBinding[RT_MAX_BINDING_HANDLE_NUM] = {};
 
-    GLenum currentPassType = GL_NONE;
+    rt_module_type_t currentPassType = RT_MODULE_NONE;
     union
     {
         void* currentPipeline = nullptr;
@@ -650,9 +642,9 @@ static mt_sampler_native_t* mt_sampler_native(rt_sampler_t const& sampler)
 
 static mt_module_native_t* mt_current_module_native()
 {
-    if (metal.currentPassType == GL_MODULE_COMPUTE && metal.currentComputePass)
+    if (metal.currentPassType == RT_MODULE_COMPUTE && metal.currentComputePass)
         return (mt_module_native_t*)metal.currentComputePass->module.native;
-    if (metal.currentPassType == GL_MODULE_RENDER && metal.currentRenderPass)
+    if (metal.currentPassType == RT_MODULE_RENDER && metal.currentRenderPass)
         return (mt_module_native_t*)metal.currentRenderPass->module.native;
     return nullptr;
 }
@@ -733,7 +725,7 @@ static void mt_fill_render_state(rt_module_render_t& result, rt_module_render_in
 
 static void mt_fill_color_attachments(MTL::RenderPipelineColorAttachmentDescriptorArray* colors, rt_module_render_info_t const& info)
 {
-    for (uint32_t i = 0; i < GL_MAX_COLOR_TEXTURE_NUM; ++i)
+    for (uint32_t i = 0; i < RT_MAX_COLOR_TEXTURE_NUM; ++i)
     {
         auto* attachment = colors->object(i);
         attachment->setPixelFormat(MTL::PixelFormatRGBA8Unorm);
@@ -782,7 +774,7 @@ static bool mt_create_depth_stencil(mt_module_native_t& native, rt_module_render
     native.primitive = rt_to_mt_primitive(info.primitive);
     native.cull = rt_to_mt_cull(info.cull_mode);
     native.winding = (info.front_face == RT_CW) ? MTL::WindingClockwise : MTL::WindingCounterClockwise;
-    for (uint32_t i = 0; i < GL_MAX_BINDING_HANDLE_NUM; ++i)
+    for (uint32_t i = 0; i < RT_MAX_BINDING_HANDLE_NUM; ++i)
         native.bindings[i] = info.binding[i];
     return native.depthStencil != nullptr;
 }
@@ -815,7 +807,7 @@ static bool mt_create_graphics_pipeline(mt_module_native_t& native, rt_module_re
         desc->setVertexFunction(native.vfn);
         desc->setFragmentFunction(native.ffn);
         MTL::VertexDescriptor* vd = MTL::VertexDescriptor::alloc()->init();
-        for (uint32_t i = 0; i < GL_MAX_VERTEX_BUFFER_NUM; ++i)
+        for (uint32_t i = 0; i < RT_MAX_VERTEX_BUFFER_NUM; ++i)
         {
             if (info.vertex[i].type == RT_TYPE_NONE || info.vertex[i].count == 0) continue;
             uint32_t loc = info.vertex[i].location;
@@ -861,7 +853,7 @@ static void mt_flush_descriptors()
     auto* mod = mt_current_module_native();
     if (!mod) return;
     mt_apply_push();
-    for (uint32_t i = 0; i < GL_MAX_BINDING_HANDLE_NUM; ++i)
+    for (uint32_t i = 0; i < RT_MAX_BINDING_HANDLE_NUM; ++i)
     {
         auto& slot = metal.currentBinding[i];
         if (slot.type == RT_BINDING_NONE) continue;
@@ -1025,7 +1017,7 @@ void mt_unload_library()
     metal.ownsQueue = false;
     metal.bufferID = metal.textureID = metal.samplerID = metal.moduleID = 0;
     metal.meshID = metal.meshletID = metal.passID = 0;
-    metal.currentPassType = GL_NONE;
+    metal.currentPassType = RT_MODULE_NONE;
     metal.currentPipeline = nullptr;
 
     if (rt_unload_library == mt_unload_library) rt_unload_library = nullptr;
@@ -1509,7 +1501,7 @@ void mt_begin_compute(rt_pass_compute_t& pass)
     pass.handle = ++metal.passID;
     auto& native = metal.computePasses[pass.handle];
     pass.native = &native;
-    metal.currentPassType = GL_MODULE_COMPUTE;
+    metal.currentPassType = RT_MODULE_COMPUTE;
     metal.currentComputePass = &pass;
     mt_end_encoder();
     metal.computeEncoder = metal.cmd->computeCommandEncoder();
@@ -1534,7 +1526,7 @@ void mt_end_compute(rt_pass_compute_t& pass)
     metal.computePasses.erase(pass.handle);
     pass.handle = 0;
     pass.native = nullptr;
-    metal.currentPassType = GL_NONE;
+    metal.currentPassType = RT_MODULE_NONE;
     metal.currentPipeline = nullptr;
     mt_clear_bindings();
 }
@@ -1546,7 +1538,7 @@ void mt_dispatch_compute(uint32_t groupX, uint32_t groupY, uint32_t groupZ)
         fprintf(stderr, "Pipeline not begin");
         abort();
     }
-    if (metal.currentPassType != GL_MODULE_COMPUTE)
+    if (metal.currentPassType != RT_MODULE_COMPUTE)
     {
         fprintf(stderr, "Pipeline not begin");
         abort();
@@ -1576,7 +1568,7 @@ void mt_begin_render(rt_pass_render_t& pass)
     pass.handle = ++metal.passID;
     auto& native = metal.renderPasses[pass.handle];
     pass.native = &native;
-    metal.currentPassType = GL_MODULE_RENDER;
+    metal.currentPassType = RT_MODULE_RENDER;
     metal.currentRenderPass = &pass;
 
     native.offscreen = pass.depth.texture.handle != 0;
@@ -1585,7 +1577,7 @@ void mt_begin_render(rt_pass_render_t& pass)
 
     MTL::RenderPassDescriptor* desc = MTL::RenderPassDescriptor::renderPassDescriptor();
     uint32_t width = 0, height = 0;
-    for (uint32_t i = 0; i < GL_MAX_COLOR_TEXTURE_NUM; ++i)
+    for (uint32_t i = 0; i < RT_MAX_COLOR_TEXTURE_NUM; ++i)
     {
         if (auto* tex = mt_texture_native(pass.colors[i].texture))
         {
@@ -1655,7 +1647,7 @@ void mt_end_render(rt_pass_render_t& pass)
     metal.renderPasses.erase(pass.handle);
     pass.handle = 0;
     pass.native = nullptr;
-    metal.currentPassType = GL_NONE;
+    metal.currentPassType = RT_MODULE_NONE;
     metal.currentPipeline = nullptr;
     mt_clear_bindings();
 }
@@ -1691,7 +1683,7 @@ void mt_draw_mesh_task(uint32_t groupX, uint32_t groupY, uint32_t groupZ)
         fprintf(stderr, "Pipeline not begin");
         abort();
     }
-    if (metal.currentPassType != GL_MODULE_RENDER)
+    if (metal.currentPassType != RT_MODULE_RENDER)
     {
         fprintf(stderr, "Pipeline not begin");
         abort();
@@ -1711,7 +1703,7 @@ void mt_begin_transfer(rt_pass_transfer_t& pass)
     pass.handle = ++metal.passID;
     auto& native = metal.transferPasses[pass.handle];
     pass.native = &native;
-    metal.currentPassType = GL_MODULE_TRANSFER;
+    metal.currentPassType = RT_MODULE_TRANSFER;
     metal.currentTransferPass = &pass;
     mt_ensure_blit();
 }
@@ -1731,7 +1723,7 @@ void mt_end_transfer(rt_pass_transfer_t& pass)
     metal.transferPasses.erase(pass.handle);
     pass.handle = 0;
     pass.native = nullptr;
-    metal.currentPassType = GL_NONE;
+    metal.currentPassType = RT_MODULE_NONE;
     metal.currentPipeline = nullptr;
 }
 
@@ -1742,7 +1734,7 @@ void mt_copy_buffer(rt_buffer_copy_t source, rt_buffer_copy_t destination, size_
         fprintf(stderr, "Pipeline not begin");
         abort();
     }
-    if (metal.currentPassType != GL_MODULE_TRANSFER)
+    if (metal.currentPassType != RT_MODULE_TRANSFER)
     {
         fprintf(stderr, "Pipeline not begin");
         abort();
@@ -1764,7 +1756,7 @@ void mt_copy_buffer_data(rt_buffer_data_t source, rt_buffer_copy_t destination, 
         fprintf(stderr, "Pipeline not begin");
         abort();
     }
-    if (metal.currentPassType != GL_MODULE_TRANSFER)
+    if (metal.currentPassType != RT_MODULE_TRANSFER)
     {
         fprintf(stderr, "Pipeline not begin");
         abort();
@@ -1795,7 +1787,7 @@ void mt_copy_buffer_texture(rt_texture_copy_t source, rt_buffer_texel_t destinat
         fprintf(stderr, "Pipeline not begin");
         abort();
     }
-    if (metal.currentPassType != GL_MODULE_TRANSFER)
+    if (metal.currentPassType != RT_MODULE_TRANSFER)
     {
         fprintf(stderr, "Pipeline not begin");
         abort();
@@ -1821,7 +1813,7 @@ void mt_copy_texture(rt_texture_copy_t source, rt_texture_copy_t destination, rt
         fprintf(stderr, "Pipeline not begin");
         abort();
     }
-    if (metal.currentPassType != GL_MODULE_TRANSFER)
+    if (metal.currentPassType != RT_MODULE_TRANSFER)
     {
         fprintf(stderr, "Pipeline not begin");
         abort();
@@ -1845,7 +1837,7 @@ void mt_copy_texture_data(rt_texture_data_t source, rt_texture_copy_t destinatio
         fprintf(stderr, "Pipeline not begin");
         abort();
     }
-    if (metal.currentPassType != GL_MODULE_TRANSFER)
+    if (metal.currentPassType != RT_MODULE_TRANSFER)
     {
         fprintf(stderr, "Pipeline not begin");
         abort();
@@ -1875,7 +1867,7 @@ void mt_copy_texture_buffer(rt_buffer_texel_t source, rt_texture_copy_t destinat
         fprintf(stderr, "Pipeline not begin");
         abort();
     }
-    if (metal.currentPassType != GL_MODULE_TRANSFER)
+    if (metal.currentPassType != RT_MODULE_TRANSFER)
     {
         fprintf(stderr, "Pipeline not begin");
         abort();
@@ -1934,7 +1926,7 @@ static void mt_draw_mesh_impl(rt_mesh_t& mesh, uint32_t instanceCount)
         fprintf(stderr, "Pipeline not begin");
         abort();
     }
-    if (metal.currentPassType != GL_MODULE_RENDER)
+    if (metal.currentPassType != RT_MODULE_RENDER)
     {
         fprintf(stderr, "Pipeline not begin");
         abort();
@@ -2024,7 +2016,7 @@ void mt_draw_meshlet(rt_meshlet_t& meshlet)
         fprintf(stderr, "Pipeline not begin");
         abort();
     }
-    if (metal.currentPassType != GL_MODULE_RENDER)
+    if (metal.currentPassType != RT_MODULE_RENDER)
     {
         fprintf(stderr, "Pipeline not begin");
         abort();

@@ -18,14 +18,6 @@
 #include <string>
 #include <vector>
 
-enum rt_module_type_t : uint32_t
-{
-    GL_MODULE_RENDER = 1,
-    GL_MODULE_COMPUTE = 2,
-    GL_MODULE_MESHLET = 3,
-    GL_MODULE_TRANSFER = 4,
-};
-
 enum wg_res_state_t : uint32_t
 {
     WG_STATE_UNKNOWN = 0,
@@ -382,8 +374,8 @@ struct wg_module_native_t
     WGPUPipelineLayout pipelineLayout = nullptr;
     WGPUBindGroup bindGroup = nullptr;
     WGPUPrimitiveTopology topology = WGPUPrimitiveTopology_TriangleList;
-    wg_binding_kind_t kinds[GL_MAX_BINDING_HANDLE_NUM] = {};
-    uint32_t descriptorBindings[GL_MAX_BINDING_HANDLE_NUM] = {};
+    wg_binding_kind_t kinds[RT_MAX_BINDING_HANDLE_NUM] = {};
+    uint32_t descriptorBindings[RT_MAX_BINDING_HANDLE_NUM] = {};
     uint32_t descriptorCount = 0;
 };
 
@@ -429,9 +421,9 @@ struct wg_native_t
         rt_texture_storage_bind_t storage_texture_bind = {};
         rt_sampler_t sampler = {};
         rt_sampler_bind_t sampler_bind = {};
-    } currentBinding[GL_MAX_BINDING_HANDLE_NUM] = {};
+    } currentBinding[RT_MAX_BINDING_HANDLE_NUM] = {};
 
-    GLenum currentPassType = GL_NONE;
+    rt_module_type_t currentPassType = RT_MODULE_NONE;
     union
     {
         void* currentPipeline = nullptr;
@@ -525,9 +517,9 @@ static wg_sampler_native_t* wg_sampler_native(rt_sampler_t const& sampler)
 
 static wg_module_native_t* wg_current_module_native()
 {
-    if (webgpu.currentPassType == GL_MODULE_COMPUTE && webgpu.currentComputePass)
+    if (webgpu.currentPassType == RT_MODULE_COMPUTE && webgpu.currentComputePass)
         return (wg_module_native_t*)webgpu.currentComputePass->module.native;
-    if (webgpu.currentPassType == GL_MODULE_RENDER && webgpu.currentRenderPass)
+    if (webgpu.currentPassType == RT_MODULE_RENDER && webgpu.currentRenderPass)
         return (wg_module_native_t*)webgpu.currentRenderPass->module.native;
     return nullptr;
 }
@@ -540,12 +532,12 @@ static void wg_clear_bindings()
 
 static bool wg_create_pipeline_layout(wg_module_native_t& native, rt_binding_t const* bindings)
 {
-    WGPUBindGroupLayoutEntry entries[GL_MAX_BINDING_HANDLE_NUM + 1] = {};
+    WGPUBindGroupLayoutEntry entries[RT_MAX_BINDING_HANDLE_NUM + 1] = {};
     native.descriptorCount = 0;
     WGPUShaderStage visibility = (WGPUShaderStage)(WGPUShaderStage_Vertex | WGPUShaderStage_Fragment | WGPUShaderStage_Compute);
     if (bindings)
     {
-        for (uint32_t i = 0; i < GL_MAX_BINDING_HANDLE_NUM; ++i)
+        for (uint32_t i = 0; i < RT_MAX_BINDING_HANDLE_NUM; ++i)
         {
             if (bindings[i].type == RT_BINDING_NONE) continue;
             auto& entry = entries[native.descriptorCount];
@@ -603,10 +595,10 @@ static bool wg_create_pipeline_layout(wg_module_native_t& native, rt_binding_t c
 static bool wg_create_graphics_pipeline(wg_module_native_t& native, rt_module_render_info_t const& info)
 {
     if (!native.vshader) return false;
-    WGPUVertexAttribute attributes[GL_MAX_VERTEX_BUFFER_NUM] = {};
-    WGPUVertexBufferLayout layouts[GL_MAX_VERTEX_BUFFER_NUM] = {};
+    WGPUVertexAttribute attributes[RT_MAX_VERTEX_BUFFER_NUM] = {};
+    WGPUVertexBufferLayout layouts[RT_MAX_VERTEX_BUFFER_NUM] = {};
     uint32_t attrCount = 0;
-    for (uint32_t i = 0; i < GL_MAX_VERTEX_BUFFER_NUM; ++i)
+    for (uint32_t i = 0; i < RT_MAX_VERTEX_BUFFER_NUM; ++i)
     {
         if (info.vertex[i].type == RT_TYPE_NONE || info.vertex[i].count == 0) continue;
         attributes[attrCount].format = rt_to_wg_vertex_format(info.vertex[i].type, info.vertex[i].count);
@@ -619,9 +611,9 @@ static bool wg_create_graphics_pipeline(wg_module_native_t& native, rt_module_re
         attrCount++;
     }
 
-    WGPUColorTargetState targets[GL_MAX_COLOR_TEXTURE_NUM] = {};
-    WGPUBlendState blends[GL_MAX_COLOR_TEXTURE_NUM] = {};
-    for (uint32_t i = 0; i < GL_MAX_COLOR_TEXTURE_NUM; ++i)
+    WGPUColorTargetState targets[RT_MAX_COLOR_TEXTURE_NUM] = {};
+    WGPUBlendState blends[RT_MAX_COLOR_TEXTURE_NUM] = {};
+    for (uint32_t i = 0; i < RT_MAX_COLOR_TEXTURE_NUM; ++i)
     {
         targets[i].format = WGPUTextureFormat_RGBA8Unorm;
         targets[i].writeMask = WGPUColorWriteMask_All;
@@ -644,7 +636,7 @@ static bool wg_create_graphics_pipeline(wg_module_native_t& native, rt_module_re
     WGPUFragmentState fragment = {};
     fragment.module = native.fshader;
     fragment.entryPoint = (info.fentry && info.fentry[0]) ? info.fentry : "main";
-    fragment.targetCount = GL_MAX_COLOR_TEXTURE_NUM;
+    fragment.targetCount = RT_MAX_COLOR_TEXTURE_NUM;
     fragment.targets = targets;
 
     const bool depthEnabled = (info.depth.func != RT_ALWAYS || info.depth.write);
@@ -711,7 +703,7 @@ static void wg_flush_descriptors()
         mod->bindGroup = nullptr;
     }
 
-    WGPUBindGroupEntry entries[GL_MAX_BINDING_HANDLE_NUM + 1] = {};
+    WGPUBindGroupEntry entries[RT_MAX_BINDING_HANDLE_NUM + 1] = {};
     uint32_t count = 0;
     for (uint32_t i = 0; i < mod->descriptorCount; ++i)
     {
@@ -886,7 +878,7 @@ void wg_unload_library()
     webgpu.device = nullptr;
     webgpu.bufferID = webgpu.textureID = webgpu.samplerID = webgpu.moduleID = 0;
     webgpu.meshID = webgpu.meshletID = webgpu.passID = 0;
-    webgpu.currentPassType = GL_NONE;
+    webgpu.currentPassType = RT_MODULE_NONE;
     webgpu.currentPipeline = nullptr;
 
     if (rt_unload_library == wg_unload_library) rt_unload_library = nullptr;
@@ -1433,7 +1425,7 @@ void wg_begin_compute(rt_pass_compute_t& pass)
     pass.handle = ++webgpu.passID;
     auto& native = webgpu.computePasses[pass.handle];
     pass.native = &native;
-    webgpu.currentPassType = GL_MODULE_COMPUTE;
+    webgpu.currentPassType = RT_MODULE_COMPUTE;
     webgpu.currentComputePass = &pass;
     wg_end_pass_encoders();
     wg_ensure_encoder();
@@ -1459,7 +1451,7 @@ void wg_end_compute(rt_pass_compute_t& pass)
     webgpu.computePasses.erase(pass.handle);
     pass.handle = 0;
     pass.native = nullptr;
-    webgpu.currentPassType = GL_NONE;
+    webgpu.currentPassType = RT_MODULE_NONE;
     webgpu.currentPipeline = nullptr;
     wg_clear_bindings();
 }
@@ -1471,7 +1463,7 @@ void wg_dispatch_compute(uint32_t groupX, uint32_t groupY, uint32_t groupZ)
         fprintf(stderr, "Pipeline not begin");
         abort();
     }
-    if (webgpu.currentPassType != GL_MODULE_COMPUTE)
+    if (webgpu.currentPassType != RT_MODULE_COMPUTE)
     {
         fprintf(stderr, "Pipeline not begin");
         abort();
@@ -1497,17 +1489,17 @@ void wg_begin_render(rt_pass_render_t& pass)
     pass.handle = ++webgpu.passID;
     auto& native = webgpu.renderPasses[pass.handle];
     pass.native = &native;
-    webgpu.currentPassType = GL_MODULE_RENDER;
+    webgpu.currentPassType = RT_MODULE_RENDER;
     webgpu.currentRenderPass = &pass;
 
     native.offscreen = pass.depth.texture.handle != 0;
     for (auto& color : pass.colors)
         if (color.texture.handle) native.offscreen = true;
 
-    WGPURenderPassColorAttachment colors[GL_MAX_COLOR_TEXTURE_NUM] = {};
+    WGPURenderPassColorAttachment colors[RT_MAX_COLOR_TEXTURE_NUM] = {};
     uint32_t colorCount = 0;
     uint32_t width = 0, height = 0;
-    for (uint32_t i = 0; i < GL_MAX_COLOR_TEXTURE_NUM; ++i)
+    for (uint32_t i = 0; i < RT_MAX_COLOR_TEXTURE_NUM; ++i)
     {
         if (auto* tex = wg_texture_native(pass.colors[i].texture))
         {
@@ -1579,7 +1571,7 @@ void wg_end_render(rt_pass_render_t& pass)
     webgpu.renderPasses.erase(pass.handle);
     pass.handle = 0;
     pass.native = nullptr;
-    webgpu.currentPassType = GL_NONE;
+    webgpu.currentPassType = RT_MODULE_NONE;
     webgpu.currentPipeline = nullptr;
     wg_clear_bindings();
 }
@@ -1614,7 +1606,7 @@ void wg_draw_mesh_task(uint32_t, uint32_t, uint32_t)
         fprintf(stderr, "Pipeline not begin");
         abort();
     }
-    if (webgpu.currentPassType != GL_MODULE_RENDER)
+    if (webgpu.currentPassType != RT_MODULE_RENDER)
     {
         fprintf(stderr, "Pipeline not begin");
         abort();
@@ -1632,7 +1624,7 @@ void wg_begin_transfer(rt_pass_transfer_t& pass)
     pass.handle = ++webgpu.passID;
     auto& native = webgpu.transferPasses[pass.handle];
     pass.native = &native;
-    webgpu.currentPassType = GL_MODULE_TRANSFER;
+    webgpu.currentPassType = RT_MODULE_TRANSFER;
     webgpu.currentTransferPass = &pass;
     wg_end_pass_encoders();
     wg_ensure_encoder();
@@ -1648,7 +1640,7 @@ void wg_end_transfer(rt_pass_transfer_t& pass)
     webgpu.transferPasses.erase(pass.handle);
     pass.handle = 0;
     pass.native = nullptr;
-    webgpu.currentPassType = GL_NONE;
+    webgpu.currentPassType = RT_MODULE_NONE;
     webgpu.currentPipeline = nullptr;
 }
 
@@ -1659,7 +1651,7 @@ void wg_copy_buffer(rt_buffer_copy_t source, rt_buffer_copy_t destination, size_
         fprintf(stderr, "Pipeline not begin");
         abort();
     }
-    if (webgpu.currentPassType != GL_MODULE_TRANSFER)
+    if (webgpu.currentPassType != RT_MODULE_TRANSFER)
     {
         fprintf(stderr, "Pipeline not begin");
         abort();
@@ -1681,7 +1673,7 @@ void wg_copy_buffer_data(rt_buffer_data_t source, rt_buffer_copy_t destination, 
         fprintf(stderr, "Pipeline not begin");
         abort();
     }
-    if (webgpu.currentPassType != GL_MODULE_TRANSFER)
+    if (webgpu.currentPassType != RT_MODULE_TRANSFER)
     {
         fprintf(stderr, "Pipeline not begin");
         abort();
@@ -1701,7 +1693,7 @@ void wg_copy_buffer_texture(rt_texture_copy_t source, rt_buffer_texel_t destinat
         fprintf(stderr, "Pipeline not begin");
         abort();
     }
-    if (webgpu.currentPassType != GL_MODULE_TRANSFER)
+    if (webgpu.currentPassType != RT_MODULE_TRANSFER)
     {
         fprintf(stderr, "Pipeline not begin");
         abort();
@@ -1732,7 +1724,7 @@ void wg_copy_texture(rt_texture_copy_t source, rt_texture_copy_t destination, rt
         fprintf(stderr, "Pipeline not begin");
         abort();
     }
-    if (webgpu.currentPassType != GL_MODULE_TRANSFER)
+    if (webgpu.currentPassType != RT_MODULE_TRANSFER)
     {
         fprintf(stderr, "Pipeline not begin");
         abort();
@@ -1761,7 +1753,7 @@ void wg_copy_texture_data(rt_texture_data_t source, rt_texture_copy_t destinatio
         fprintf(stderr, "Pipeline not begin");
         abort();
     }
-    if (webgpu.currentPassType != GL_MODULE_TRANSFER)
+    if (webgpu.currentPassType != RT_MODULE_TRANSFER)
     {
         fprintf(stderr, "Pipeline not begin");
         abort();
@@ -1790,7 +1782,7 @@ void wg_copy_texture_buffer(rt_buffer_texel_t source, rt_texture_copy_t destinat
         fprintf(stderr, "Pipeline not begin");
         abort();
     }
-    if (webgpu.currentPassType != GL_MODULE_TRANSFER)
+    if (webgpu.currentPassType != RT_MODULE_TRANSFER)
     {
         fprintf(stderr, "Pipeline not begin");
         abort();
@@ -1854,7 +1846,7 @@ static void wg_draw_mesh_impl(rt_mesh_t& mesh, uint32_t instanceCount)
         fprintf(stderr, "Pipeline not begin");
         abort();
     }
-    if (webgpu.currentPassType != GL_MODULE_RENDER)
+    if (webgpu.currentPassType != RT_MODULE_RENDER)
     {
         fprintf(stderr, "Pipeline not begin");
         abort();
@@ -1942,7 +1934,7 @@ void wg_draw_meshlet(rt_meshlet_t& meshlet)
         fprintf(stderr, "Pipeline not begin");
         abort();
     }
-    if (webgpu.currentPassType != GL_MODULE_RENDER)
+    if (webgpu.currentPassType != RT_MODULE_RENDER)
     {
         fprintf(stderr, "Pipeline not begin");
         abort();

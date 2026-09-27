@@ -28,14 +28,14 @@
 #  endif
 #endif
 
-#define GL_MAX_COLOR_TEXTURE_NUM 8
-#define GL_MAX_VERTEX_BUFFER_NUM 10
-#define GL_MAX_BINDING_HANDLE_NUM 16
-#define GL_PI 3.14159265358979323846    // pi
-#define GL_PI_2 1.57079632679489661923  // pi/2
-#define GL_PI_4 0.785398163397448309616 // pi/4
-#define GL_1_PI 0.318309886183790671538 // 1/pi
-#define GL_2_PI 0.636619772367581343076 // 2/pi
+#define RT_MAX_COLOR_TEXTURE_NUM 8
+#define RT_MAX_VERTEX_BUFFER_NUM 10
+#define RT_MAX_BINDING_HANDLE_NUM 16
+#define RT_PI 3.14159265358979323846    // pi
+#define RT_PI_2 1.57079632679489661923  // pi/2
+#define RT_PI_4 0.785398163397448309616 // pi/4
+#define RT_1_PI 0.318309886183790671538 // 1/pi
+#define RT_2_PI 0.636619772367581343076 // 2/pi
 
 // ====================================================================
 
@@ -240,6 +240,15 @@ enum rt_primitive_t : uint32_t
     RT_TRIANGLE_FAN,
 };
 
+enum rt_module_type_t : uint32_t
+{
+    RT_MODULE_NONE = 0,
+    RT_MODULE_RENDER,
+    RT_MODULE_COMPUTE,
+    RT_MODULE_MESHLET,
+    RT_MODULE_TRANSFER,
+};
+
 struct rt_buffer_t
 {
     GLuint handle = 0;
@@ -387,7 +396,7 @@ struct rt_module_render_info_t
             rt_blend_factor_t src = RT_BLEND_ONE; // RT_BLEND_ZERO / RT_BLEND_ONE / RT_BLEND_SRC_COLOR / RT_BLEND_ONE_MINUS_SRC_COLOR / RT_BLEND_DST_COLOR / RT_BLEND_ONE_MINUS_DST_COLOR / RT_BLEND_SRC_ALPHA / RT_BLEND_ONE_MINUS_SRC_ALPHA / RT_BLEND_DST_ALPHA / RT_BLEND_ONE_MINUS_DST_ALPHA / RT_BLEND_CONSTANT_COLOR / RT_BLEND_ONE_MINUS_CONSTANT_COLOR / RT_BLEND_CONSTANT_ALPHA / RT_BLEND_ONE_MINUS_CONSTANT_ALPHA / RT_BLEND_SRC_ALPHA_SATURATE
             rt_blend_factor_t dst = RT_BLEND_ZERO; // RT_BLEND_ZERO / RT_BLEND_ONE / RT_BLEND_SRC_COLOR / RT_BLEND_ONE_MINUS_SRC_COLOR / RT_BLEND_DST_COLOR / RT_BLEND_ONE_MINUS_DST_COLOR / RT_BLEND_SRC_ALPHA / RT_BLEND_ONE_MINUS_SRC_ALPHA / RT_BLEND_DST_ALPHA / RT_BLEND_ONE_MINUS_DST_ALPHA / RT_BLEND_CONSTANT_COLOR / RT_BLEND_ONE_MINUS_CONSTANT_COLOR / RT_BLEND_CONSTANT_ALPHA / RT_BLEND_ONE_MINUS_CONSTANT_ALPHA / RT_BLEND_SRC_ALPHA_SATURATE
         } color, alpha;
-    } colors[GL_MAX_COLOR_TEXTURE_NUM];
+    } colors[RT_MAX_COLOR_TEXTURE_NUM];
     struct
     {
         bool write = false;
@@ -410,8 +419,8 @@ struct rt_module_render_info_t
     } stencil;
 
     rt_type_t index_type = RT_UNSIGNED_INT;    // RT_UNSIGNED_SHORT / RT_UNSIGNED_INT
-    rt_vertex_t vertex[GL_MAX_VERTEX_BUFFER_NUM];
-    rt_binding_t binding[GL_MAX_BINDING_HANDLE_NUM];
+    rt_vertex_t vertex[RT_MAX_VERTEX_BUFFER_NUM];
+    rt_binding_t binding[RT_MAX_BINDING_HANDLE_NUM];
 
     rt_cull_mode_t cull_mode = RT_CULL_BACK; // RT_CULL_NONE / RT_CULL_FRONT / RT_CULL_BACK / RT_CULL_FRONT_AND_BACK
     rt_front_face_t front_face = RT_CCW; // RT_CW / RT_CCW
@@ -432,7 +441,7 @@ struct rt_module_render_t
             rt_blend_factor_t src = RT_BLEND_ONE;
             rt_blend_factor_t dst = RT_BLEND_ZERO;
         } color, alpha;
-    } colors[GL_MAX_COLOR_TEXTURE_NUM];
+    } colors[RT_MAX_COLOR_TEXTURE_NUM];
     struct
     {
         bool write = false;
@@ -455,8 +464,8 @@ struct rt_module_render_t
     } stencil;
 
     rt_type_t index_type = RT_UNSIGNED_INT;
-    rt_vertex_t vertex[GL_MAX_VERTEX_BUFFER_NUM];
-    rt_binding_t binding[GL_MAX_BINDING_HANDLE_NUM];
+    rt_vertex_t vertex[RT_MAX_VERTEX_BUFFER_NUM];
+    rt_binding_t binding[RT_MAX_BINDING_HANDLE_NUM];
 
     rt_cull_mode_t cull_mode = RT_CULL_BACK;
     rt_front_face_t front_face = RT_CCW;
@@ -490,7 +499,7 @@ struct rt_pass_render_t
         rt_texture_t texture;
         bool clear = false;
         rt_color_t value;
-    } colors[GL_MAX_COLOR_TEXTURE_NUM];
+    } colors[RT_MAX_COLOR_TEXTURE_NUM];
     struct
     {
         rt_texture_t texture;
@@ -558,8 +567,8 @@ struct rt_mesh_t
 {
     GLuint handle = 0;
     rt_buffer_t index;
-    rt_buffer_t vertex[GL_MAX_VERTEX_BUFFER_NUM];
-    uint32_t location[GL_MAX_VERTEX_BUFFER_NUM] = {};
+    rt_buffer_t vertex[RT_MAX_VERTEX_BUFFER_NUM];
+    uint32_t location[RT_MAX_VERTEX_BUFFER_NUM] = {};
     void* native = nullptr;
 };
 
@@ -567,8 +576,8 @@ struct rt_meshlet_t
 {
     GLuint handle = 0;
     rt_buffer_t index;
-    rt_buffer_t vertex[GL_MAX_VERTEX_BUFFER_NUM];
-    uint32_t location[GL_MAX_VERTEX_BUFFER_NUM + 1] = {};
+    rt_buffer_t vertex[RT_MAX_VERTEX_BUFFER_NUM];
+    uint32_t location[RT_MAX_VERTEX_BUFFER_NUM + 1] = {};
     void* native = nullptr;
 };
 

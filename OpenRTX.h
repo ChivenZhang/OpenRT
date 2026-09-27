@@ -684,9 +684,9 @@ static rt_mesh_t rt_create_mesh_triangle(float size)
 
     // 三个顶点的角度：90度（上）、210度（左下）、330度（右下）
     float angles[3] = {
-        GL_PI / 2.0f,           // 90度 - 上方顶点
-        7.0f * GL_PI / 6.0f,    // 210度 - 左下角
-        11.0f * GL_PI / 6.0f    // 330度 - 右下角
+        RT_PI / 2.0f,           // 90度 - 上方顶点
+        7.0f * RT_PI / 6.0f,    // 210度 - 左下角
+        11.0f * RT_PI / 6.0f    // 330度 - 右下角
     };
 
     for (int i = 0; i < 3; i++)
@@ -795,7 +795,7 @@ static rt_mesh_t rt_create_mesh_circle(float radius, int segments)
     normals[0] = 0; normals[1] = 0; normals[2] = 1;
     uvs[0] = 0.5f; uvs[1] = 0.5f;
 
-    float angle_step = 2.0f * GL_PI / segments;
+    float angle_step = 2.0f * RT_PI / segments;
 
     for (int i = 0; i < segments; i++)
     {
@@ -847,7 +847,7 @@ static rt_mesh_t rt_create_mesh_ring(
     std::vector<float> uvs(vertex_count * 2);
     std::vector<unsigned int> indices(index_count);
 
-    float angle_step = 2.0f * GL_PI / segments;
+    float angle_step = 2.0f * RT_PI / segments;
 
     for (int i = 0; i < segments; i++)
     {

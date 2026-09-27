@@ -24,14 +24,6 @@
 
 using Microsoft::WRL::ComPtr;
 
-enum rt_module_type_t : uint32_t
-{
-    GL_MODULE_RENDER = 1,
-    GL_MODULE_COMPUTE = 2,
-    GL_MODULE_MESHLET = 3,
-    GL_MODULE_TRANSFER = 4,
-};
-
 static D3D12_FILTER rt_to_dx_filter(rt_filter_t minFilter, rt_filter_t magFilter)
 {
     switch (minFilter)
@@ -431,8 +423,8 @@ struct dx_module_native_t
     std::vector<uint8_t> vcode, tcode, mcode, fcode, ccode;
     D3D12_PRIMITIVE_TOPOLOGY topology = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
 
-    dx_binding_kind_t kinds[GL_MAX_BINDING_HANDLE_NUM] = {};
-    uint32_t descriptorBindings[GL_MAX_BINDING_HANDLE_NUM] = {};
+    dx_binding_kind_t kinds[RT_MAX_BINDING_HANDLE_NUM] = {};
+    uint32_t descriptorBindings[RT_MAX_BINDING_HANDLE_NUM] = {};
     uint32_t descriptorCount = 0;
 };
 
@@ -500,9 +492,9 @@ struct dx_native_t
         rt_texture_storage_bind_t storage_texture_bind = {};
         rt_sampler_t sampler = {};
         rt_sampler_bind_t sampler_bind = {};
-    } currentBinding[GL_MAX_BINDING_HANDLE_NUM] = {};
+    } currentBinding[RT_MAX_BINDING_HANDLE_NUM] = {};
 
-    GLenum currentPassType = GL_NONE;
+    rt_module_type_t currentPassType = RT_MODULE_NONE;
     union
     {
         void* currentPipeline = nullptr;
@@ -602,9 +594,9 @@ static dx_sampler_native_t* dx_sampler_native(rt_sampler_t const& sampler)
 
 static dx_module_native_t* dx_current_module_native()
 {
-    if (direct.currentPassType == GL_MODULE_COMPUTE && direct.currentComputePass)
+    if (direct.currentPassType == RT_MODULE_COMPUTE && direct.currentComputePass)
         return (dx_module_native_t*)direct.currentComputePass->module.native;
-    if (direct.currentPassType == GL_MODULE_RENDER && direct.currentRenderPass)
+    if (direct.currentPassType == RT_MODULE_RENDER && direct.currentRenderPass)
         return (dx_module_native_t*)direct.currentRenderPass->module.native;
     return nullptr;
 }
@@ -618,8 +610,8 @@ static void dx_clear_bindings()
 static bool dx_setup_root(dx_module_native_t& native, rt_binding_t const* bindings)
 {
     native.descriptorCount = 0;
-    D3D12_DESCRIPTOR_RANGE ranges[GL_MAX_BINDING_HANDLE_NUM] = {};
-    D3D12_ROOT_PARAMETER params[1 + GL_MAX_BINDING_HANDLE_NUM] = {};
+    D3D12_DESCRIPTOR_RANGE ranges[RT_MAX_BINDING_HANDLE_NUM] = {};
+    D3D12_ROOT_PARAMETER params[1 + RT_MAX_BINDING_HANDLE_NUM] = {};
     params[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
     params[0].Constants.ShaderRegister = 16;
     params[0].Constants.RegisterSpace = 0;
@@ -629,7 +621,7 @@ static bool dx_setup_root(dx_module_native_t& native, rt_binding_t const* bindin
     uint32_t paramCount = 1;
     if (bindings)
     {
-        for (uint32_t i = 0; i < GL_MAX_BINDING_HANDLE_NUM; ++i)
+        for (uint32_t i = 0; i < RT_MAX_BINDING_HANDLE_NUM; ++i)
         {
             dx_binding_kind_t kind = DX_KIND_NONE;
             D3D12_DESCRIPTOR_RANGE_TYPE rangeType = D3D12_DESCRIPTOR_RANGE_TYPE_CBV;
@@ -685,11 +677,11 @@ static bool dx_setup_root(dx_module_native_t& native, rt_binding_t const* bindin
 
 static bool dx_create_graphics_pipeline(dx_module_native_t& native, rt_module_render_info_t const& info, bool meshlet)
 {
-    D3D12_INPUT_ELEMENT_DESC elements[GL_MAX_VERTEX_BUFFER_NUM] = {};
+    D3D12_INPUT_ELEMENT_DESC elements[RT_MAX_VERTEX_BUFFER_NUM] = {};
     uint32_t attrCount = 0;
     if (!meshlet)
     {
-        for (uint32_t i = 0; i < GL_MAX_VERTEX_BUFFER_NUM; ++i)
+        for (uint32_t i = 0; i < RT_MAX_VERTEX_BUFFER_NUM; ++i)
         {
             if (info.vertex[i].type == RT_TYPE_NONE || info.vertex[i].count == 0) continue;
             elements[attrCount].SemanticName = "TEXCOORD";
@@ -726,7 +718,7 @@ static bool dx_create_graphics_pipeline(dx_module_native_t& native, rt_module_re
     pso.RasterizerState.DepthClipEnable = TRUE;
     pso.BlendState.AlphaToCoverageEnable = FALSE;
     pso.BlendState.IndependentBlendEnable = TRUE;
-    for (uint32_t i = 0; i < GL_MAX_COLOR_TEXTURE_NUM; ++i)
+    for (uint32_t i = 0; i < RT_MAX_COLOR_TEXTURE_NUM; ++i)
     {
         auto& rt = pso.BlendState.RenderTarget[i];
         bool blend =
@@ -743,7 +735,7 @@ static bool dx_create_graphics_pipeline(dx_module_native_t& native, rt_module_re
         rt.RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
         pso.RTVFormats[i] = DXGI_FORMAT_R8G8B8A8_UNORM;
     }
-    pso.NumRenderTargets = GL_MAX_COLOR_TEXTURE_NUM;
+    pso.NumRenderTargets = RT_MAX_COLOR_TEXTURE_NUM;
     pso.SampleMask = UINT_MAX;
     pso.SampleDesc.Count = 1;
     pso.DepthStencilState.DepthEnable = depthEnabled;
@@ -1064,7 +1056,7 @@ void dx_unload_library()
     direct.device.Reset();
     direct.bufferID = direct.textureID = direct.samplerID = direct.moduleID = 0;
     direct.meshID = direct.meshletID = direct.passID = 0;
-    direct.currentPassType = GL_NONE;
+    direct.currentPassType = RT_MODULE_NONE;
     direct.currentPipeline = nullptr;
 
     if (rt_unload_library == dx_unload_library) rt_unload_library = nullptr;
@@ -1676,7 +1668,7 @@ void dx_begin_compute(rt_pass_compute_t& pass)
     pass.handle = ++direct.passID;
     auto& native = direct.computePasses[pass.handle];
     pass.native = &native;
-    direct.currentPassType = GL_MODULE_COMPUTE;
+    direct.currentPassType = RT_MODULE_COMPUTE;
     direct.currentComputePass = &pass;
     auto* mod = (dx_module_native_t*)pass.module.native;
     if (mod && mod->pipeline)
@@ -1695,7 +1687,7 @@ void dx_end_compute(rt_pass_compute_t& pass)
     direct.computePasses.erase(pass.handle);
     pass.handle = 0;
     pass.native = nullptr;
-    direct.currentPassType = GL_NONE;
+    direct.currentPassType = RT_MODULE_NONE;
     direct.currentPipeline = nullptr;
     dx_clear_bindings();
 }
@@ -1707,7 +1699,7 @@ void dx_dispatch_compute(uint32_t groupX, uint32_t groupY, uint32_t groupZ)
         fprintf(stderr, "Pipeline not begin");
         abort();
     }
-    if (direct.currentPassType != GL_MODULE_COMPUTE)
+    if (direct.currentPassType != RT_MODULE_COMPUTE)
     {
         fprintf(stderr, "Pipeline not begin");
         abort();
@@ -1732,7 +1724,7 @@ void dx_begin_render(rt_pass_render_t& pass)
     pass.handle = ++direct.passID;
     auto& native = direct.renderPasses[pass.handle];
     pass.native = &native;
-    direct.currentPassType = GL_MODULE_RENDER;
+    direct.currentPassType = RT_MODULE_RENDER;
     direct.currentRenderPass = &pass;
 
     auto* mod = (dx_module_native_t*)pass.module.native;
@@ -1747,11 +1739,11 @@ void dx_begin_render(rt_pass_render_t& pass)
     for (auto& color : pass.colors)
         if (color.texture.handle) native.offscreen = true;
 
-    D3D12_CPU_DESCRIPTOR_HANDLE rtvs[GL_MAX_COLOR_TEXTURE_NUM] = {};
+    D3D12_CPU_DESCRIPTOR_HANDLE rtvs[RT_MAX_COLOR_TEXTURE_NUM] = {};
     uint32_t colorCount = 0;
     uint32_t width = 0, height = 0;
     D3D12_CPU_DESCRIPTOR_HANDLE rtvStart = direct.rtvHeap->GetCPUDescriptorHandleForHeapStart();
-    for (uint32_t i = 0; i < GL_MAX_COLOR_TEXTURE_NUM; ++i)
+    for (uint32_t i = 0; i < RT_MAX_COLOR_TEXTURE_NUM; ++i)
     {
         if (auto* tex = dx_texture_native(pass.colors[i].texture))
         {
@@ -1798,7 +1790,7 @@ void dx_begin_render(rt_pass_render_t& pass)
 
     native.width = width;
     native.height = height;
-    direct.cmd->OMSetRenderTargets(max(colorCount, (uint32_t)GL_MAX_COLOR_TEXTURE_NUM), rtvs, FALSE, hasDepth ? &dsv : nullptr);
+    direct.cmd->OMSetRenderTargets(max(colorCount, (uint32_t)RT_MAX_COLOR_TEXTURE_NUM), rtvs, FALSE, hasDepth ? &dsv : nullptr);
     dx_set_viewport(0, 0, (int32_t)width, (int32_t)height);
     dx_set_scissor(0, 0, (int32_t)width, (int32_t)height);
 }
@@ -1818,7 +1810,7 @@ void dx_end_render(rt_pass_render_t& pass)
     direct.renderPasses.erase(pass.handle);
     pass.handle = 0;
     pass.native = nullptr;
-    direct.currentPassType = GL_NONE;
+    direct.currentPassType = RT_MODULE_NONE;
     direct.currentPipeline = nullptr;
     dx_clear_bindings();
 }
@@ -1852,7 +1844,7 @@ void dx_draw_mesh_task(uint32_t groupX, uint32_t groupY, uint32_t groupZ)
         fprintf(stderr, "Pipeline not begin");
         abort();
     }
-    if (direct.currentPassType != GL_MODULE_RENDER)
+    if (direct.currentPassType != RT_MODULE_RENDER)
     {
         fprintf(stderr, "Pipeline not begin");
         abort();
@@ -1872,7 +1864,7 @@ void dx_begin_transfer(rt_pass_transfer_t& pass)
     pass.handle = ++direct.passID;
     auto& native = direct.transferPasses[pass.handle];
     pass.native = &native;
-    direct.currentPassType = GL_MODULE_TRANSFER;
+    direct.currentPassType = RT_MODULE_TRANSFER;
     direct.currentTransferPass = &pass;
 }
 
@@ -1886,7 +1878,7 @@ void dx_end_transfer(rt_pass_transfer_t& pass)
     direct.transferPasses.erase(pass.handle);
     pass.handle = 0;
     pass.native = nullptr;
-    direct.currentPassType = GL_NONE;
+    direct.currentPassType = RT_MODULE_NONE;
     direct.currentPipeline = nullptr;
 }
 
@@ -1897,7 +1889,7 @@ void dx_copy_buffer(rt_buffer_copy_t source, rt_buffer_copy_t destination, size_
         fprintf(stderr, "Pipeline not begin");
         abort();
     }
-    if (direct.currentPassType != GL_MODULE_TRANSFER)
+    if (direct.currentPassType != RT_MODULE_TRANSFER)
     {
         fprintf(stderr, "Pipeline not begin");
         abort();
@@ -1919,7 +1911,7 @@ void dx_copy_buffer_data(rt_buffer_data_t source, rt_buffer_copy_t destination, 
         fprintf(stderr, "Pipeline not begin");
         abort();
     }
-    if (direct.currentPassType != GL_MODULE_TRANSFER)
+    if (direct.currentPassType != RT_MODULE_TRANSFER)
     {
         fprintf(stderr, "Pipeline not begin");
         abort();
@@ -1965,7 +1957,7 @@ void dx_copy_buffer_texture(rt_texture_copy_t source, rt_buffer_texel_t destinat
         fprintf(stderr, "Pipeline not begin");
         abort();
     }
-    if (direct.currentPassType != GL_MODULE_TRANSFER)
+    if (direct.currentPassType != RT_MODULE_TRANSFER)
     {
         fprintf(stderr, "Pipeline not begin");
         abort();
@@ -1997,7 +1989,7 @@ void dx_copy_texture(rt_texture_copy_t source, rt_texture_copy_t destination, rt
         fprintf(stderr, "Pipeline not begin");
         abort();
     }
-    if (direct.currentPassType != GL_MODULE_TRANSFER)
+    if (direct.currentPassType != RT_MODULE_TRANSFER)
     {
         fprintf(stderr, "Pipeline not begin");
         abort();
@@ -2028,7 +2020,7 @@ void dx_copy_texture_data(rt_texture_data_t source, rt_texture_copy_t destinatio
         fprintf(stderr, "Pipeline not begin");
         abort();
     }
-    if (direct.currentPassType != GL_MODULE_TRANSFER)
+    if (direct.currentPassType != RT_MODULE_TRANSFER)
     {
         fprintf(stderr, "Pipeline not begin");
         abort();
@@ -2062,7 +2054,7 @@ void dx_copy_texture_buffer(rt_buffer_texel_t source, rt_texture_copy_t destinat
         fprintf(stderr, "Pipeline not begin");
         abort();
     }
-    if (direct.currentPassType != GL_MODULE_TRANSFER)
+    if (direct.currentPassType != RT_MODULE_TRANSFER)
     {
         fprintf(stderr, "Pipeline not begin");
         abort();
@@ -2124,7 +2116,7 @@ static void dx_draw_mesh_impl(rt_mesh_t& mesh, uint32_t instanceCount)
         fprintf(stderr, "Pipeline not begin");
         abort();
     }
-    if (direct.currentPassType != GL_MODULE_RENDER)
+    if (direct.currentPassType != RT_MODULE_RENDER)
     {
         fprintf(stderr, "Pipeline not begin");
         abort();
@@ -2220,7 +2212,7 @@ void dx_draw_meshlet(rt_meshlet_t& meshlet)
         fprintf(stderr, "Pipeline not begin");
         abort();
     }
-    if (direct.currentPassType != GL_MODULE_RENDER)
+    if (direct.currentPassType != RT_MODULE_RENDER)
     {
         fprintf(stderr, "Pipeline not begin");
         abort();
