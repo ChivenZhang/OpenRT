@@ -1254,14 +1254,14 @@ void gl_push_const_mat4(const char* name, const float* value)
 
 void gl_begin_compute(rt_pass_compute_t& pass)
 {
-    if (pass.module.handle == 0)
-    {
-        fprintf(stderr, "Pipeline module is not created\n");
-        abort();
-    }
     if (opengl.currentPipeline != nullptr)
     {
         fprintf(stderr, "Pipeline not end\n");
+        abort();
+    }
+    if (pass.module.handle == 0)
+    {
+        fprintf(stderr, "Pipeline module is not created\n");
         abort();
     }
     opengl.currentComputePass = &pass;
@@ -1306,14 +1306,14 @@ void gl_dispatch_compute(uint32_t groupX, uint32_t groupY, uint32_t groupZ)
 
 void gl_begin_render(rt_pass_render_t& pass)
 {
-    if (pass.module.handle == 0)
-    {
-        fprintf(stderr, "Pipeline module is not created\n");
-        abort();
-    }
     if (opengl.currentPipeline != nullptr)
     {
         fprintf(stderr, "Pipeline not end\n");
+        abort();
+    }
+    if (pass.module.handle == 0)
+    {
+        fprintf(stderr, "Pipeline module is not created\n");
         abort();
     }
     opengl.currentPassType = GL_MODULE_RENDER;
