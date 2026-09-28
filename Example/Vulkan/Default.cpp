@@ -289,13 +289,13 @@ int main()
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2,
         .pNext = &features14,
     };
-    const char* deviceExts[] = {VK_KHR_SWAPCHAIN_EXTENSION_NAME};
+    const char* deviceExts[] = {VK_KHR_SWAPCHAIN_EXTENSION_NAME, VK_KHR_SWAPCHAIN_MUTABLE_FORMAT_EXTENSION_NAME,};
     VkDeviceCreateInfo deviceInfo = {
         .sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
         .pNext = &features2,
         .queueCreateInfoCount = 1,
         .pQueueCreateInfos = &queueInfo,
-        .enabledExtensionCount = 1,
+        .enabledExtensionCount = std::size(deviceExts),
         .ppEnabledExtensionNames = deviceExts
     };
     if (vkCreateDevice(physical, &deviceInfo, nullptr, &device) != VK_SUCCESS)

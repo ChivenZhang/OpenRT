@@ -163,13 +163,16 @@ static VkImageAspectFlags vk_format_aspect(VkFormat format)
     }
 }
 
-static VkImageUsageFlags rt_to_vk_image_usage(rt_texture_format_t format)
+static VkImageUsageFlags rt_to_vk_image_usage(rt_texture_usages_t usage, rt_texture_format_t format)
 {
-    VkImageUsageFlags flags = VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
-    if (rt_texture_has_depth(format) || rt_texture_has_stencil(format))
-        flags |= VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
-    else
-        flags |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_STORAGE_BIT;
+    VkImageUsageFlags flags = 0;
+    bool depthStencil = rt_texture_has_depth(format) || rt_texture_has_stencil(format);
+    if (usage & RT_TEXTURE_USAGE_COPY_SRC) flags |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+    if (usage & RT_TEXTURE_USAGE_COPY_DST) flags |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+    if (usage & RT_TEXTURE_USAGE_TEXTURE_BINDING) flags |= VK_IMAGE_USAGE_SAMPLED_BIT;
+    if ((usage & RT_TEXTURE_USAGE_STORAGE_BINDING) && !depthStencil) flags |= VK_IMAGE_USAGE_STORAGE_BIT;
+    if (usage & RT_TEXTURE_USAGE_RENDER_ATTACHMENT)
+        flags |= depthStencil ? VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT : VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
     return flags;
 }
 
@@ -1419,6 +1422,11 @@ void vk_unmap_buffer(rt_buffer_t& buffer)
 
 rt_texture_t vk_create_texture(rt_texture_info_t const& info)
 {
+    if (info.usage == 0)
+    {
+        fprintf(stderr, "Texture usage must not be 0");
+        abort();
+    }
     rt_texture_t result = {};
     if (!vulkan.device || info.width == 0 || info.height == 0) return result;
 
@@ -1445,7 +1453,9 @@ rt_texture_t vk_create_texture(rt_texture_info_t const& info)
     vkInfo.format = native.format;
     vkInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
     vkInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    vkInfo.usage = rt_to_vk_image_usage(info.format);
+    vkInfo.usage = rt_to_vk_image_usage(info.usage, info.format);
+    if (info.data)
+        vkInfo.usage |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;
     vkInfo.samples = VK_SAMPLE_COUNT_1_BIT;
     vkInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
     if (vkCreateImage(vulkan.device, &vkInfo, vulkan.allocator, &native.handle) != VK_SUCCESS)
@@ -1533,6 +1543,7 @@ rt_texture_t vk_create_texture(rt_texture_info_t const& info)
     result.height = info.height;
     result.depth = info.depth;
     result.format = info.format;
+    result.usage = info.usage;
     result.target = info.target;
     result.mipmaps = native.mipLevels;
     result.samples = info.samples ? info.samples : 1;

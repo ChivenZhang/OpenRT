@@ -786,6 +786,12 @@ void gl_unmap_buffer(rt_buffer_t& buffer)
 
 rt_texture_t gl_create_texture(rt_texture_info_t const& info)
 {
+    if (info.usage == 0)
+    {
+        fprintf(stderr, "Texture usage must not be 0");
+        abort();
+    }
+
     rt_texture_t result = {};
 
     uint32_t mipmaps = 1;
@@ -939,6 +945,7 @@ rt_texture_t gl_create_texture(rt_texture_info_t const& info)
     result.depth = depth;
     result.target = target;
     result.format = info.format;
+    result.usage = info.usage;
     result.mipmaps = mipmaps;
     result.samples = samples;
     return result;

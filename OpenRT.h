@@ -53,6 +53,16 @@ enum rt_buffer_usage_t : uint32_t
 };
 using rt_buffer_usages_t = uint32_t;
 
+enum rt_texture_usage_t : uint32_t
+{
+    RT_TEXTURE_USAGE_COPY_SRC          = 0x0001,
+    RT_TEXTURE_USAGE_COPY_DST          = 0x0002,
+    RT_TEXTURE_USAGE_TEXTURE_BINDING   = 0x0004,
+    RT_TEXTURE_USAGE_STORAGE_BINDING   = 0x0008,
+    RT_TEXTURE_USAGE_RENDER_ATTACHMENT = 0x0010,
+};
+using rt_texture_usages_t = uint32_t;
+
 enum rt_buffer_target_t : uint32_t
 {
     RT_UNIFORM_BUFFER = 0,
@@ -362,6 +372,7 @@ struct rt_texture_t
     uint32_t width = 0, height = 0, depth = 1;
     rt_texture_target_t target = RT_TEXTURE_2D;
     rt_texture_format_t format = RT_TEXTURE_NONE;
+    rt_texture_usages_t usage = 0;
     uint32_t mipmaps = 0;
     uint32_t samples = 1;
     void* native = nullptr;
@@ -372,6 +383,7 @@ struct rt_texture_info_t
     uint32_t width = 0, height = 0, depth = 1;
     rt_texture_target_t target = RT_TEXTURE_2D;          // RT_TEXTURE_1D / RT_TEXTURE_2D / RT_TEXTURE_3D / RT_TEXTURE_2D_ARRAY / RT_TEXTURE_2D_MULTISAMPLE
     rt_texture_format_t format = RT_TEXTURE_RGBA8UNORM;
+    rt_texture_usages_t usage = RT_TEXTURE_USAGE_COPY_SRC | RT_TEXTURE_USAGE_COPY_DST | RT_TEXTURE_USAGE_TEXTURE_BINDING | RT_TEXTURE_USAGE_STORAGE_BINDING | RT_TEXTURE_USAGE_RENDER_ATTACHMENT; // rt_texture_usage_t
     rt_filter_t min_filter = RT_LINEAR_MIPMAP_LINEAR;  // RT_NEAREST / RT_LINEAR / RT_NEAREST_MIPMAP_NEAREST / RT_LINEAR_MIPMAP_NEAREST / RT_NEAREST_MIPMAP_LINEAR / RT_LINEAR_MIPMAP_LINEAR
     rt_filter_t mag_filter = RT_LINEAR;                // RT_NEAREST / RT_LINEAR
     rt_wrap_t wrap_s = RT_REPEAT;                    // RT_REPEAT / RT_MIRRORED_REPEAT / RT_CLAMP_TO_EDGE / RT_CLAMP_TO_BORDER / RT_MIRROR_CLAMP_TO_EDGE

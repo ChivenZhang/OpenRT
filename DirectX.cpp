@@ -1364,6 +1364,11 @@ void dx_unmap_buffer(rt_buffer_t& buffer)
 
 rt_texture_t dx_create_texture(rt_texture_info_t const& info)
 {
+    if (info.usage == 0)
+    {
+        fprintf(stderr, "Texture usage must not be 0");
+        abort();
+    }
     rt_texture_t result = {};
     if (!direct.device || info.width == 0) return result;
     if (info.target != RT_TEXTURE_1D && info.height == 0) return result;
@@ -1398,11 +1403,21 @@ rt_texture_t dx_create_texture(rt_texture_info_t const& info)
     desc.MipLevels = (UINT16)native.mipLevels;
     desc.Format = dx_typeless(native.format);
     desc.SampleDesc.Count = native.samples;
-    desc.Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
+    desc.Flags = D3D12_RESOURCE_FLAG_NONE;
     if (dx_is_depth(native.format))
-        desc.Flags = D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL;
+    {
+        if (info.usage & RT_TEXTURE_USAGE_RENDER_ATTACHMENT)
+            desc.Flags |= D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL;
+    }
     else
-        desc.Flags |= D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
+    {
+        if (info.usage & RT_TEXTURE_USAGE_STORAGE_BINDING)
+            desc.Flags |= D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
+        if (info.usage & RT_TEXTURE_USAGE_RENDER_ATTACHMENT)
+            desc.Flags |= D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
+    }
+    if ((info.usage & (RT_TEXTURE_USAGE_TEXTURE_BINDING | RT_TEXTURE_USAGE_STORAGE_BINDING)) == 0)
+        desc.Flags |= D3D12_RESOURCE_FLAG_DENY_SHADER_RESOURCE;
 
     D3D12_CLEAR_VALUE clear = {};
     clear.Format = native.format;
@@ -1454,6 +1469,7 @@ rt_texture_t dx_create_texture(rt_texture_info_t const& info)
     result.height = native.height;
     result.depth = info.depth;
     result.format = info.format;
+    result.usage = info.usage;
     result.target = info.target;
     result.mipmaps = native.mipLevels;
     result.samples = native.samples;

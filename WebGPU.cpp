@@ -558,6 +558,17 @@ static WGPUBufferUsage wg_buffer_usage(rt_buffer_usages_t usage)
     return flags;
 }
 
+static WGPUTextureUsage wg_texture_usage(rt_texture_usages_t usage)
+{
+    WGPUTextureUsage flags = WGPUTextureUsage_None;
+    if (usage & RT_TEXTURE_USAGE_COPY_SRC) flags = (WGPUTextureUsage)(flags | WGPUTextureUsage_CopySrc);
+    if (usage & RT_TEXTURE_USAGE_COPY_DST) flags = (WGPUTextureUsage)(flags | WGPUTextureUsage_CopyDst);
+    if (usage & RT_TEXTURE_USAGE_TEXTURE_BINDING) flags = (WGPUTextureUsage)(flags | WGPUTextureUsage_TextureBinding);
+    if (usage & RT_TEXTURE_USAGE_STORAGE_BINDING) flags = (WGPUTextureUsage)(flags | WGPUTextureUsage_StorageBinding);
+    if (usage & RT_TEXTURE_USAGE_RENDER_ATTACHMENT) flags = (WGPUTextureUsage)(flags | WGPUTextureUsage_RenderAttachment);
+    return flags;
+}
+
 static void wg_end_pass_encoders()
 {
     if (webgpu.renderPass)
@@ -1167,6 +1178,11 @@ void wg_unmap_buffer(rt_buffer_t& buffer)
 
 rt_texture_t wg_create_texture(rt_texture_info_t const& info)
 {
+    if (info.usage == 0)
+    {
+        fprintf(stderr, "Texture usage must not be 0");
+        abort();
+    }
     rt_texture_t result = {};
     if (!webgpu.device || info.width == 0) return result;
     if (info.target != RT_TEXTURE_1D && info.height == 0) return result;
@@ -1198,9 +1214,9 @@ rt_texture_t wg_create_texture(rt_texture_info_t const& info)
                      (info.target == RT_TEXTURE_1D) ? WGPUTextureDimension_1D :
                      WGPUTextureDimension_2D;
     desc.format = native.format;
-    desc.usage = (WGPUTextureUsage)(WGPUTextureUsage_TextureBinding | WGPUTextureUsage_CopyDst |
-                                    WGPUTextureUsage_CopySrc | WGPUTextureUsage_RenderAttachment |
-                                    WGPUTextureUsage_StorageBinding);
+    desc.usage = wg_texture_usage(info.usage);
+    if (info.data)
+        desc.usage = (WGPUTextureUsage)(desc.usage | WGPUTextureUsage_CopyDst);
     native.handle = wgpuDeviceCreateTexture(webgpu.device, &desc);
     if (!native.handle)
     {
@@ -1231,6 +1247,7 @@ rt_texture_t wg_create_texture(rt_texture_info_t const& info)
     result.height = native.height;
     result.depth = info.depth;
     result.format = info.format;
+    result.usage = info.usage;
     result.target = info.target;
     result.mipmaps = native.mipLevels;
     result.samples = info.samples ? info.samples : 1;

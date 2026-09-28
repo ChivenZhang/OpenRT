@@ -1290,6 +1290,11 @@ void mt_unmap_buffer(rt_buffer_t& buffer)
 
 rt_texture_t mt_create_texture(rt_texture_info_t const& info)
 {
+    if (info.usage == 0)
+    {
+        fprintf(stderr, "Texture usage must not be 0");
+        abort();
+    }
     rt_texture_t result = {};
     if (!metal.device || info.width == 0) return result;
     if (info.target != RT_TEXTURE_1D && info.height == 0) return result;
@@ -1316,7 +1321,11 @@ rt_texture_t mt_create_texture(rt_texture_info_t const& info)
     desc->setWidth(native.width);
     desc->setHeight(native.height);
     desc->setMipmapLevelCount(native.mipLevels);
-    desc->setUsage(MTL::TextureUsageShaderRead | MTL::TextureUsageShaderWrite | MTL::TextureUsageRenderTarget);
+    MTL::TextureUsage usage = MTL::TextureUsageUnknown;
+    if (info.usage & RT_TEXTURE_USAGE_TEXTURE_BINDING) usage |= MTL::TextureUsageShaderRead;
+    if (info.usage & RT_TEXTURE_USAGE_STORAGE_BINDING) usage |= MTL::TextureUsageShaderWrite;
+    if (info.usage & RT_TEXTURE_USAGE_RENDER_ATTACHMENT) usage |= MTL::TextureUsageRenderTarget;
+    desc->setUsage(usage);
     desc->setStorageMode(MTL::StorageModePrivate);
     if (info.target == RT_TEXTURE_1D) desc->setTextureType(MTL::TextureType1D);
     else if (info.target == RT_TEXTURE_3D) { desc->setTextureType(MTL::TextureType3D); desc->setDepth(native.depth); }
@@ -1358,6 +1367,7 @@ rt_texture_t mt_create_texture(rt_texture_info_t const& info)
     result.height = native.height;
     result.depth = info.depth;
     result.format = info.format;
+    result.usage = info.usage;
     result.target = info.target;
     result.mipmaps = native.mipLevels;
     result.samples = info.samples ? info.samples : 1;
