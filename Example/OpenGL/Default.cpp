@@ -1,3 +1,13 @@
+/*=================================================
+* Copyright © 2020-2026 ChivenZhang.
+* All Rights Reserved.
+* =====================Note=========================
+*
+*
+* ====================History=======================
+* Created by chivenzhang@gmail.com.
+*
+* =================================================*/
 #include <SDL3/SDL.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
