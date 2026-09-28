@@ -361,7 +361,7 @@ struct rt_texture_t
     uint32_t handle = 0;
     uint32_t width = 0, height = 0, depth = 1;
     rt_texture_target_t target = RT_TEXTURE_2D;
-    rt_texture_format_t format = RT_TEXTURE_RGBA8UNORM;
+    rt_texture_format_t format = RT_TEXTURE_NONE;
     uint32_t mipmaps = 0;
     uint32_t samples = 1;
     void* native = nullptr;
@@ -428,8 +428,8 @@ struct rt_module_compute_info_t
     struct
     {
         const char* code = nullptr;
-        const char* entry = "main";
         uint32_t size = 0;
+        const char* entry = "main";
     } cshader;
 };
 
@@ -466,7 +466,7 @@ struct rt_module_render_info_t
 
     struct
     {
-        rt_texture_format_t format = RT_TEXTURE_RGBA8UNORM;
+        rt_texture_format_t format = RT_TEXTURE_NONE;
         struct
         {
             rt_blend_op_t func = RT_FUNC_ADD; // RT_FUNC_ADD / RT_FUNC_SUBTRACT / RT_FUNC_REVERSE_SUBTRACT / RT_MIN / RT_MAX
@@ -512,6 +512,7 @@ struct rt_module_render_t
 
     struct
     {
+        rt_texture_format_t format = RT_TEXTURE_NONE;
         struct
         {
             rt_blend_op_t func = RT_FUNC_ADD;

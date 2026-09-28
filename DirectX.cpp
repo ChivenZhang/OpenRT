@@ -1614,6 +1614,7 @@ rt_module_render_t dx_create_module_render(rt_module_render_info_t const& info)
     result.native = &native;
     for (size_t i = 0; i < std::size(info.colors); ++i)
     {
+        result.colors[i].format = info.colors[i].format;
         result.colors[i].color.func = info.colors[i].color.func;
         result.colors[i].color.src = info.colors[i].color.src;
         result.colors[i].color.dst = info.colors[i].color.dst;
@@ -1680,6 +1681,7 @@ rt_module_render_t dx_create_module_meshlet(rt_module_render_info_t const& info)
     result.native = &native;
     for (size_t i = 0; i < std::size(info.colors); ++i)
     {
+        result.colors[i].format = info.colors[i].format;
         result.colors[i].color.func = info.colors[i].color.func;
         result.colors[i].color.src = info.colors[i].color.src;
         result.colors[i].color.dst = info.colors[i].color.dst;

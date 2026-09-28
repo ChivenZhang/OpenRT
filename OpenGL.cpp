@@ -1158,6 +1158,7 @@ rt_module_render_t gl_create_module_render(rt_module_render_info_t const& info)
 
     for (size_t i = 0; i < std::size(info.colors); ++i)
     {
+        result.colors[i].format = info.colors[i].format;
         result.colors[i].color.func = info.colors[i].color.func;
         result.colors[i].color.src = info.colors[i].color.src;
         result.colors[i].color.dst = info.colors[i].color.dst;
@@ -1285,6 +1286,7 @@ rt_module_render_t gl_create_module_meshlet(rt_module_render_info_t const& info)
 
     for (size_t i = 0; i < std::size(info.colors); ++i)
     {
+        result.colors[i].format = info.colors[i].format;
         result.colors[i].color.func = info.colors[i].color.func;
         result.colors[i].color.src = info.colors[i].color.src;
         result.colors[i].color.dst = info.colors[i].color.dst;
@@ -1515,8 +1517,6 @@ void gl_begin_render(rt_pass_render_t& pass)
         int32_t colorCount = 0;
         uint32_t width = 0, height = 0;
         GLenum colorAttachments[RT_MAX_COLOR_TEXTURE_NUM] = {};
-        for (size_t i = 0; i < std::size(pass.colors); ++i)
-            colorAttachments[i] = GL_NONE;
         for (size_t i = 0; i < std::size(pass.colors); ++i)
         {
             if (pass.colors[i].texture.handle == 0 || pass.colors[i].texture.format == RT_TEXTURE_NONE)
