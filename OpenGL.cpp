@@ -12,6 +12,7 @@
 #include "OpenGL.h"
 #include <iostream>
 #include <numeric>
+#include <vector>
 
 static GLenum rt_to_gl_buffer_target(rt_buffer_target_t target)
 {
@@ -469,7 +470,31 @@ struct OpenGL
         rt_pass_compute_t* currentComputePass;
         rt_pass_transfer_t* currentTransferPass;
     };
+    std::vector<GLuint> buffers;
+    std::vector<GLuint> textures;
+    std::vector<GLuint> samplers;
+    std::vector<GLuint> programs;
+    std::vector<GLuint> vertexArrays;
+    std::vector<GLuint> framebuffers;
 } static thread_local opengl;
+
+static void gl_track(std::vector<GLuint>& objects, GLuint handle)
+{
+    if (handle) objects.push_back(handle);
+}
+
+static void gl_untrack(std::vector<GLuint>& objects, GLuint handle)
+{
+    if (!handle) return;
+    for (auto it = objects.begin(); it != objects.end(); ++it)
+    {
+        if (*it == handle)
+        {
+            objects.erase(it);
+            return;
+        }
+    }
+}
 
 void gl_load_library()
 {
@@ -555,6 +580,41 @@ void gl_load_library()
 
 void gl_unload_library()
 {
+    glUseProgram(0);
+    glBindVertexArray(0);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glBindTexture(GL_TEXTURE_2D, 0);
+
+    if (!opengl.framebuffers.empty())
+    {
+        glDeleteFramebuffers((GLsizei)opengl.framebuffers.size(), opengl.framebuffers.data());
+        opengl.framebuffers.clear();
+    }
+    if (!opengl.vertexArrays.empty())
+    {
+        glDeleteVertexArrays((GLsizei)opengl.vertexArrays.size(), opengl.vertexArrays.data());
+        opengl.vertexArrays.clear();
+    }
+    for (GLuint program : opengl.programs)
+        glDeleteProgram(program);
+    opengl.programs.clear();
+    if (!opengl.samplers.empty())
+    {
+        glDeleteSamplers((GLsizei)opengl.samplers.size(), opengl.samplers.data());
+        opengl.samplers.clear();
+    }
+    if (!opengl.textures.empty())
+    {
+        glDeleteTextures((GLsizei)opengl.textures.size(), opengl.textures.data());
+        opengl.textures.clear();
+    }
+    if (!opengl.buffers.empty())
+    {
+        glDeleteBuffers((GLsizei)opengl.buffers.size(), opengl.buffers.data());
+        opengl.buffers.clear();
+    }
+
     opengl.currentPassType = RT_MODULE_NONE;
     opengl.currentPipeline = nullptr;
 
@@ -630,6 +690,7 @@ rt_buffer_t gl_create_buffer(rt_buffer_info_t const& info)
 
     rt_buffer_t result = {};
     glGenBuffers(1, &result.handle);
+    gl_track(opengl.buffers, result.handle);
     glBindBuffer(GL_ARRAY_BUFFER, result.handle);
 
     GLbitfield flags = 0;
@@ -649,6 +710,7 @@ rt_buffer_t gl_create_buffer(rt_buffer_info_t const& info)
 
 void gl_destroy_buffer(rt_buffer_t& buffer)
 {
+    gl_untrack(opengl.buffers, buffer.handle);
     glDeleteBuffers(1, &buffer.handle);
     buffer.handle = 0;
 }
@@ -762,6 +824,7 @@ rt_texture_t gl_create_texture(rt_texture_info_t const& info)
     rt_to_gl_transfer(info.format, RT_TEXTURE_ASPECT_ALL, false, glFormat, glType);
 
     glGenTextures(1, &result.handle);
+    gl_track(opengl.textures, result.handle);
     glBindTexture(glTarget, result.handle);
 
     if (target == RT_TEXTURE_1D)
@@ -954,6 +1017,7 @@ rt_texture_t gl_create_texture_depth_stencil(uint32_t width, uint32_t height, co
 
 void gl_destroy_texture(rt_texture_t& texture)
 {
+    gl_untrack(opengl.textures, texture.handle);
     glDeleteTextures(1, &texture.handle);
     texture.handle = 0;
 }
@@ -1002,6 +1066,7 @@ rt_sampler_t gl_create_sampler(rt_sampler_info_t const& info)
     rt_sampler_t result = {};
 
     glGenSamplers(1, &result.handle);
+    gl_track(opengl.samplers, result.handle);
 
     // 设置过滤方式
     glSamplerParameteri(result.handle, GL_TEXTURE_MIN_FILTER, rt_to_gl_filter(info.min_filter));
@@ -1017,6 +1082,7 @@ rt_sampler_t gl_create_sampler(rt_sampler_info_t const& info)
 
 void gl_destroy_sampler(rt_sampler_t& sampler)
 {
+    gl_untrack(opengl.samplers, sampler.handle);
     glDeleteSamplers(1, &sampler.handle);
     sampler.handle = 0;
 }
@@ -1060,6 +1126,7 @@ rt_module_compute_t gl_create_module_compute(rt_module_compute_info_t const& inf
     }
 
     result.handle = glCreateProgram();
+    gl_track(opengl.programs, result.handle);
     glAttachShader(result.handle, cs);
     glLinkProgram(result.handle);
 
@@ -1121,6 +1188,7 @@ rt_module_render_t gl_create_module_render(rt_module_render_info_t const& info)
 
     // ---- Program ----
     result.handle = glCreateProgram();
+    gl_track(opengl.programs, result.handle);
     if (vs)
         glAttachShader(result.handle, vs);
     if (fs)
@@ -1142,6 +1210,7 @@ rt_module_render_t gl_create_module_render(rt_module_render_info_t const& info)
 
     // ---- Vertex Array ----
     glGenVertexArrays(1, &result.vertex_vao);
+    gl_track(opengl.vertexArrays, result.vertex_vao);
     glBindVertexArray(result.vertex_vao);
     for (uint32_t i = 0; i < std::size(info.vertex); ++i)
     {
@@ -1263,6 +1332,7 @@ rt_module_render_t gl_create_module_meshlet(rt_module_render_info_t const& info)
 
     // ---- Program ----
     result.handle = glCreateProgram();
+    gl_track(opengl.programs, result.handle);
     if (ts)
         glAttachShader(result.handle, ts);
     glAttachShader(result.handle, ms);
@@ -1330,14 +1400,20 @@ rt_module_render_t gl_create_module_meshlet(rt_module_render_info_t const& info)
 
 void gl_destroy_module_render(rt_module_render_t& module)
 {
-    if (module.vertex_vao) glDeleteVertexArrays(1, &module.vertex_vao);
-    module.vertex_vao = 0;
+    if (module.vertex_vao)
+    {
+        gl_untrack(opengl.vertexArrays, module.vertex_vao);
+        glDeleteVertexArrays(1, &module.vertex_vao);
+        module.vertex_vao = 0;
+    }
+    gl_untrack(opengl.programs, module.handle);
     glDeleteProgram(module.handle);
     module.handle = 0;
 }
 
 void gl_destroy_module_compute(rt_module_compute_t& module)
 {
+    gl_untrack(opengl.programs, module.handle);
     glDeleteProgram(module.handle);
     module.handle = 0;
 }
@@ -1510,6 +1586,7 @@ void gl_begin_render(rt_pass_render_t& pass)
     if (offscreen)
     {
         glGenFramebuffers(1, &pass.handle);
+        gl_track(opengl.framebuffers, pass.handle);
         glBindFramebuffer(GL_FRAMEBUFFER, pass.handle);
 
         // Render State
@@ -1754,6 +1831,7 @@ void gl_end_render(rt_pass_render_t& pass)
     if (offscreen)
     {
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        gl_untrack(opengl.framebuffers, pass.handle);
         glDeleteFramebuffers(1, &pass.handle);
         pass.handle = 0;
     }

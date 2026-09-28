@@ -1131,16 +1131,32 @@ void dx_unload_library()
     if (!direct.device) return;
     if (direct.cmd) direct.cmd->Close();
     dx_wait_gpu();
-    dx_flush_staging();
     if (direct.fenceEvent)
     {
         CloseHandle(direct.fenceEvent);
         direct.fenceEvent = nullptr;
     }
+    for (auto& staging : direct.pendingStaging)
+        staging.buffer.Reset();
+    dx_flush_staging();
+    for (auto& item : direct.modules)
+    {
+        item.second.pipeline.Reset();
+        item.second.rootSignature.Reset();
+    }
+    direct.modules.clear();
+    for (auto& item : direct.buffers)
+    {
+        if (item.second.mapped && item.second.handle)
+            item.second.handle->Unmap(0, nullptr);
+        item.second.mapped = nullptr;
+        item.second.handle.Reset();
+    }
     direct.buffers.clear();
+    for (auto& item : direct.textures)
+        item.second.handle.Reset();
     direct.textures.clear();
     direct.samplers.clear();
-    direct.modules.clear();
     direct.meshes.clear();
     direct.meshlets.clear();
     direct.computePasses.clear();

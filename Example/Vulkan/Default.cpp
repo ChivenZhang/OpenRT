@@ -3,9 +3,9 @@
 #include <cstdio>
 #include <cstring>
 #include <vector>
-#include "../Vulkan.h"
 #define OPENRTX_IMPLEMENTATION
-#include "../OpenRTX.h"
+#include "../../OpenRTX.h"
+#include "../../Vulkan.h"
 
 [[maybe_unused]] static constexpr auto VS = R"(
     #version 450

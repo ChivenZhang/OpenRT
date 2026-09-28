@@ -2,7 +2,7 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #define OPENRTX_IMPLEMENTATION
-#include "../OpenRTX.h"
+#include "../../OpenRTX.h"
 
 void frame(int width, int height)
 {

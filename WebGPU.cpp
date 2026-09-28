@@ -960,15 +960,44 @@ void wg_unload_library()
         wgpuCommandEncoderRelease(webgpu.encoder);
         webgpu.encoder = nullptr;
     }
-    webgpu.buffers.clear();
-    webgpu.textures.clear();
-    webgpu.samplers.clear();
     while (!webgpu.modules.empty())
     {
         uint32_t handle = webgpu.modules.begin()->first;
         void* dummy = nullptr;
         wg_destroy_module_native(handle, dummy);
     }
+    for (auto& item : webgpu.buffers)
+    {
+        if (item.second.handle)
+        {
+            wgpuBufferRelease(item.second.handle);
+            item.second.handle = nullptr;
+        }
+    }
+    webgpu.buffers.clear();
+    for (auto& item : webgpu.textures)
+    {
+        if (item.second.view)
+        {
+            wgpuTextureViewRelease(item.second.view);
+            item.second.view = nullptr;
+        }
+        if (item.second.handle)
+        {
+            wgpuTextureRelease(item.second.handle);
+            item.second.handle = nullptr;
+        }
+    }
+    webgpu.textures.clear();
+    for (auto& item : webgpu.samplers)
+    {
+        if (item.second.handle)
+        {
+            wgpuSamplerRelease(item.second.handle);
+            item.second.handle = nullptr;
+        }
+    }
+    webgpu.samplers.clear();
     webgpu.meshes.clear();
     webgpu.meshlets.clear();
     webgpu.computePasses.clear();

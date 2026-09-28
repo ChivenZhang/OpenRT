@@ -1103,11 +1103,26 @@ void mt_unload_library()
 {
     mt_end_encoder();
     mt_release(metal.cmd);
+    for (auto& staging : metal.pendingStaging)
+        mt_release(staging.buffer);
     mt_flush_staging();
-    metal.buffers.clear();
-    metal.textures.clear();
-    metal.samplers.clear();
+    for (auto& item : metal.modules)
+    {
+        auto& module = item.second;
+        mt_release(module.vlib); mt_release(module.tlib); mt_release(module.mlib); mt_release(module.flib); mt_release(module.clib);
+        mt_release(module.vfn); mt_release(module.tfn); mt_release(module.mfn); mt_release(module.ffn); mt_release(module.cfn);
+        mt_release(module.renderPipeline); mt_release(module.computePipeline); mt_release(module.depthStencil);
+    }
     metal.modules.clear();
+    for (auto& item : metal.buffers)
+        mt_release(item.second.handle);
+    metal.buffers.clear();
+    for (auto& item : metal.textures)
+        mt_release(item.second.handle);
+    metal.textures.clear();
+    for (auto& item : metal.samplers)
+        mt_release(item.second.handle);
+    metal.samplers.clear();
     metal.meshes.clear();
     metal.meshlets.clear();
     metal.computePasses.clear();

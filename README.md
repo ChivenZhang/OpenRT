@@ -6,7 +6,7 @@
 
 # Have a good day !
 
-<img src="./Example/Example.png"/>
-<img src="./Example/Default.png"/>
-<img src="./Example/Render.png"/>
-<img src="./Example/Meshlet.png"/>
+<img src="Example/OpenGL/Example.png"/>
+<img src="Example/OpenGL/Default.png"/>
+<img src="Example/OpenGL/Render.png"/>
+<img src="Example/OpenGL/Meshlet.png"/>
