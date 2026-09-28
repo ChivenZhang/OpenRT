@@ -515,6 +515,7 @@ struct dx_module_native_t
     D3D12_SHADER_BYTECODE vshader = {}, tshader = {}, mshader = {}, fshader = {}, cshader = {};
     std::vector<uint8_t> vcode, tcode, mcode, fcode, ccode;
     D3D12_PRIMITIVE_TOPOLOGY topology = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
+    uint32_t colorCount = 0;
 
     dx_binding_kind_t kinds[RT_MAX_BINDING_HANDLE_NUM] = {};
     uint32_t descriptorBindings[RT_MAX_BINDING_HANDLE_NUM] = {};
@@ -811,8 +812,15 @@ static bool dx_create_graphics_pipeline(dx_module_native_t& native, rt_module_re
     pso.RasterizerState.DepthClipEnable = TRUE;
     pso.BlendState.AlphaToCoverageEnable = FALSE;
     pso.BlendState.IndependentBlendEnable = TRUE;
+    uint32_t colorCount = 0;
     for (uint32_t i = 0; i < RT_MAX_COLOR_TEXTURE_NUM; ++i)
     {
+        if (info.colors[i].format == RT_TEXTURE_NONE)
+        {
+            pso.RTVFormats[i] = DXGI_FORMAT_UNKNOWN;
+            continue;
+        }
+        colorCount = i + 1;
         auto& rt = pso.BlendState.RenderTarget[i];
         bool blend =
             (info.colors[i].color.func != RT_FUNC_ADD || info.colors[i].color.src != RT_BLEND_ONE ||
@@ -826,9 +834,10 @@ static bool dx_create_graphics_pipeline(dx_module_native_t& native, rt_module_re
         rt.DestBlendAlpha = rt_to_dx_blend(info.colors[i].alpha.dst);
         rt.BlendOpAlpha = rt_to_dx_blend_op(info.colors[i].alpha.func);
         rt.RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
-        pso.RTVFormats[i] = DXGI_FORMAT_R8G8B8A8_UNORM;
+        pso.RTVFormats[i] = rt_to_dx_texture_format(info.colors[i].format);
     }
-    pso.NumRenderTargets = RT_MAX_COLOR_TEXTURE_NUM;
+    native.colorCount = colorCount;
+    pso.NumRenderTargets = colorCount;
     pso.SampleMask = UINT_MAX;
     pso.SampleDesc.Count = 1;
     pso.DepthStencilState.DepthEnable = depthEnabled;
@@ -1836,6 +1845,8 @@ void dx_begin_render(rt_pass_render_t& pass)
     D3D12_CPU_DESCRIPTOR_HANDLE rtvStart = direct.rtvHeap->GetCPUDescriptorHandleForHeapStart();
     for (uint32_t i = 0; i < RT_MAX_COLOR_TEXTURE_NUM; ++i)
     {
+        if (pass.colors[i].texture.format == RT_TEXTURE_NONE)
+            continue;
         if (auto* tex = dx_texture_native(pass.colors[i].texture))
         {
             dx_transition_image(*tex, D3D12_RESOURCE_STATE_RENDER_TARGET);
@@ -1881,7 +1892,8 @@ void dx_begin_render(rt_pass_render_t& pass)
 
     native.width = width;
     native.height = height;
-    direct.cmd->OMSetRenderTargets(max(colorCount, (uint32_t)RT_MAX_COLOR_TEXTURE_NUM), rtvs, FALSE, hasDepth ? &dsv : nullptr);
+    uint32_t rtvCount = mod ? mod->colorCount : colorCount;
+    direct.cmd->OMSetRenderTargets(rtvCount, rtvCount ? rtvs : nullptr, FALSE, hasDepth ? &dsv : nullptr);
     dx_set_viewport(0, 0, (int32_t)width, (int32_t)height);
     dx_set_scissor(0, 0, (int32_t)width, (int32_t)height);
 }

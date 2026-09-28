@@ -1037,9 +1037,15 @@ static bool vk_create_graphics_pipeline(vk_module_native_t& native, rt_module_re
     depthStencil.back.compareMask = info.stencil.read;
     depthStencil.back.writeMask = info.stencil.write;
 
+    uint32_t colorCount = 0;
     VkPipelineColorBlendAttachmentState colorBlendAttachments[RT_MAX_COLOR_TEXTURE_NUM] = {};
+    VkFormat colorFormats[RT_MAX_COLOR_TEXTURE_NUM] = {};
     for (uint32_t i = 0; i < RT_MAX_COLOR_TEXTURE_NUM; ++i)
     {
+        colorFormats[i] = rt_to_vk_texture_format(info.colors[i].format);
+        if (info.colors[i].format == RT_TEXTURE_NONE)
+            continue;
+        colorCount = i + 1;
         bool blendEnabled =
             (info.colors[i].color.func != RT_FUNC_ADD || info.colors[i].color.src != RT_BLEND_ONE ||
              info.colors[i].color.dst != RT_BLEND_ZERO || info.colors[i].alpha.func != RT_FUNC_ADD ||
@@ -1057,8 +1063,8 @@ static bool vk_create_graphics_pipeline(vk_module_native_t& native, rt_module_re
 
     VkPipelineColorBlendStateCreateInfo colorBlending = {};
     colorBlending.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
-    colorBlending.attachmentCount = RT_MAX_COLOR_TEXTURE_NUM;
-    colorBlending.pAttachments = colorBlendAttachments;
+    colorBlending.attachmentCount = colorCount;
+    colorBlending.pAttachments = colorCount ? colorBlendAttachments : nullptr;
 
     VkDynamicState dynamicStates[] = {VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR};
     VkPipelineDynamicStateCreateInfo dynamicState = {};
@@ -1066,17 +1072,14 @@ static bool vk_create_graphics_pipeline(vk_module_native_t& native, rt_module_re
     dynamicState.dynamicStateCount = 2;
     dynamicState.pDynamicStates = dynamicStates;
 
-    VkFormat colorFormats[RT_MAX_COLOR_TEXTURE_NUM];
-    for (uint32_t i = 0; i < RT_MAX_COLOR_TEXTURE_NUM; ++i)
-        colorFormats[i] = VK_FORMAT_R8G8B8A8_UNORM;
     VkFormat depthStencilFormat = VK_FORMAT_UNDEFINED;
     if (stencilEnabled) depthStencilFormat = VK_FORMAT_D24_UNORM_S8_UINT;
     else if (depthEnabled) depthStencilFormat = VK_FORMAT_D32_SFLOAT;
 
     VkPipelineRenderingCreateInfo renderingInfo = {};
     renderingInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO;
-    renderingInfo.colorAttachmentCount = RT_MAX_COLOR_TEXTURE_NUM;
-    renderingInfo.pColorAttachmentFormats = colorFormats;
+    renderingInfo.colorAttachmentCount = colorCount;
+    renderingInfo.pColorAttachmentFormats = colorCount ? colorFormats : nullptr;
     renderingInfo.depthAttachmentFormat = depthStencilFormat;
     renderingInfo.stencilAttachmentFormat = stencilEnabled ? depthStencilFormat : VK_FORMAT_UNDEFINED;
 
@@ -2162,6 +2165,8 @@ void vk_begin_render(rt_pass_render_t& pass)
         colorAttachments[i].imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
         colorAttachments[i].loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
         colorAttachments[i].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+        if (pass.colors[i].texture.format == RT_TEXTURE_NONE)
+            continue;
         if (auto* tex = vk_texture_native(pass.colors[i].texture))
         {
             vk_transition_image(*tex, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);

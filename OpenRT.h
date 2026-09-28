@@ -466,6 +466,7 @@ struct rt_module_render_info_t
 
     struct
     {
+        rt_texture_format_t format = RT_TEXTURE_RGBA8UNORM;
         struct
         {
             rt_blend_op_t func = RT_FUNC_ADD; // RT_FUNC_ADD / RT_FUNC_SUBTRACT / RT_FUNC_REVERSE_SUBTRACT / RT_MIN / RT_MAX

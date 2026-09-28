@@ -828,7 +828,9 @@ static void mt_fill_color_attachments(MTL::RenderPipelineColorAttachmentDescript
     for (uint32_t i = 0; i < RT_MAX_COLOR_TEXTURE_NUM; ++i)
     {
         auto* attachment = colors->object(i);
-        attachment->setPixelFormat(MTL::PixelFormatRGBA8Unorm);
+        attachment->setPixelFormat(rt_to_mt_texture_format(info.colors[i].format));
+        if (info.colors[i].format == RT_TEXTURE_NONE)
+            continue;
         bool blend =
             (info.colors[i].color.func != RT_FUNC_ADD || info.colors[i].color.src != RT_BLEND_ONE ||
              info.colors[i].color.dst != RT_BLEND_ZERO || info.colors[i].alpha.func != RT_FUNC_ADD ||
@@ -1677,6 +1679,8 @@ void mt_begin_render(rt_pass_render_t& pass)
     uint32_t width = 0, height = 0;
     for (uint32_t i = 0; i < RT_MAX_COLOR_TEXTURE_NUM; ++i)
     {
+        if (pass.colors[i].texture.format == RT_TEXTURE_NONE)
+            continue;
         if (auto* tex = mt_texture_native(pass.colors[i].texture))
         {
             mt_transition_image(*tex, MTL_STATE_COLOR);

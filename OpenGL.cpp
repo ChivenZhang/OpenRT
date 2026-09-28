@@ -1516,15 +1516,17 @@ void gl_begin_render(rt_pass_render_t& pass)
         uint32_t width = 0, height = 0;
         GLenum colorAttachments[RT_MAX_COLOR_TEXTURE_NUM] = {};
         for (size_t i = 0; i < std::size(pass.colors); ++i)
+            colorAttachments[i] = GL_NONE;
+        for (size_t i = 0; i < std::size(pass.colors); ++i)
         {
-            if (pass.colors[i].texture.handle)
-            {
-                glBindTexture(rt_to_gl_texture_target(pass.colors[i].texture.target), pass.colors[i].texture.handle);
-                glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + i, rt_to_gl_texture_target(pass.colors[i].texture.target), pass.colors[i].texture.handle, 0);
-                colorAttachments[colorCount++] = GL_COLOR_ATTACHMENT0 + i;
-                width = std::max(width, pass.colors[i].texture.width);
-                height = std::max(height, pass.colors[i].texture.height);
-            }
+            if (pass.colors[i].texture.handle == 0 || pass.colors[i].texture.format == RT_TEXTURE_NONE)
+                continue;
+            glBindTexture(rt_to_gl_texture_target(pass.colors[i].texture.target), pass.colors[i].texture.handle);
+            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + (GLenum)i, rt_to_gl_texture_target(pass.colors[i].texture.target), pass.colors[i].texture.handle, 0);
+            colorAttachments[i] = GL_COLOR_ATTACHMENT0 + (GLenum)i;
+            width = std::max(width, pass.colors[i].texture.width);
+            height = std::max(height, pass.colors[i].texture.height);
+            colorCount = (int32_t)i + 1;
         }
         if (colorCount) glDrawBuffers(colorCount, colorAttachments);
 
@@ -1562,24 +1564,24 @@ void gl_begin_render(rt_pass_render_t& pass)
         glDisable(GL_BLEND);
         for (size_t i = 0; i < std::size(pass.colors); ++i)
         {
-            if (pass.colors[i].texture.handle)
+            if (pass.colors[i].texture.handle == 0 || pass.colors[i].texture.format == RT_TEXTURE_NONE)
+                continue;
+
+            if (pass.colors[i].clear)
             {
-                if (pass.colors[i].clear)
-                {
-                    glColorMask(true, true, true, true);
-                    glClearBufferfv(GL_COLOR, (int32_t)i, &pass.colors[i].value.r);
-                }
-
-                if (pass.module.colors[i].color.func != RT_FUNC_ADD || pass.module.colors[i].color.src != RT_BLEND_ONE ||
-                    pass.module.colors[i].color.dst != RT_BLEND_ZERO || pass.module.colors[i].alpha.func != RT_FUNC_ADD ||
-                    pass.module.colors[i].alpha.src != RT_BLEND_ONE || pass.module.colors[i].alpha.dst != RT_BLEND_ZERO)
-                {
-                    glEnable(GL_BLEND);
-                }
-
-                glBlendEquationSeparatei(i, rt_to_gl_blend_op(pass.module.colors[i].color.func), rt_to_gl_blend_op(pass.module.colors[i].alpha.func));
-                glBlendFuncSeparatei(i, rt_to_gl_blend_factor(pass.module.colors[i].color.src), rt_to_gl_blend_factor(pass.module.colors[i].color.dst), rt_to_gl_blend_factor(pass.module.colors[i].alpha.src), rt_to_gl_blend_factor(pass.module.colors[i].alpha.dst));
+                glColorMask(true, true, true, true);
+                glClearBufferfv(GL_COLOR, (int32_t)i, &pass.colors[i].value.r);
             }
+
+            if (pass.module.colors[i].color.func != RT_FUNC_ADD || pass.module.colors[i].color.src != RT_BLEND_ONE ||
+                pass.module.colors[i].color.dst != RT_BLEND_ZERO || pass.module.colors[i].alpha.func != RT_FUNC_ADD ||
+                pass.module.colors[i].alpha.src != RT_BLEND_ONE || pass.module.colors[i].alpha.dst != RT_BLEND_ZERO)
+            {
+                glEnable(GL_BLEND);
+            }
+
+            glBlendEquationSeparatei(i, rt_to_gl_blend_op(pass.module.colors[i].color.func), rt_to_gl_blend_op(pass.module.colors[i].alpha.func));
+            glBlendFuncSeparatei(i, rt_to_gl_blend_factor(pass.module.colors[i].color.src), rt_to_gl_blend_factor(pass.module.colors[i].color.dst), rt_to_gl_blend_factor(pass.module.colors[i].alpha.src), rt_to_gl_blend_factor(pass.module.colors[i].alpha.dst));
         }
 
         if (pass.depth.texture.handle &&

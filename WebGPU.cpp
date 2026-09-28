@@ -711,9 +711,13 @@ static bool wg_create_graphics_pipeline(wg_module_native_t& native, rt_module_re
 
     WGPUColorTargetState targets[RT_MAX_COLOR_TEXTURE_NUM] = {};
     WGPUBlendState blends[RT_MAX_COLOR_TEXTURE_NUM] = {};
+    uint32_t colorCount = 0;
     for (uint32_t i = 0; i < RT_MAX_COLOR_TEXTURE_NUM; ++i)
     {
-        targets[i].format = WGPUTextureFormat_RGBA8Unorm;
+        if (info.colors[i].format == RT_TEXTURE_NONE)
+            continue;
+        colorCount = i + 1;
+        targets[i].format = rt_to_wg_texture_format(info.colors[i].format);
         targets[i].writeMask = WGPUColorWriteMask_All;
         bool blend =
             (info.colors[i].color.func != RT_FUNC_ADD || info.colors[i].color.src != RT_BLEND_ONE ||
@@ -734,8 +738,8 @@ static bool wg_create_graphics_pipeline(wg_module_native_t& native, rt_module_re
     WGPUFragmentState fragment = {};
     fragment.module = native.fshader;
     fragment.entryPoint = (info.fshader.entry && info.fshader.entry[0]) ? info.fshader.entry : "main";
-    fragment.targetCount = RT_MAX_COLOR_TEXTURE_NUM;
-    fragment.targets = targets;
+    fragment.targetCount = colorCount;
+    fragment.targets = colorCount ? targets : nullptr;
 
     const bool depthEnabled = (info.depth.func != RT_ALWAYS || info.depth.write);
     const bool stencilEnabled =
@@ -1599,15 +1603,24 @@ void wg_begin_render(rt_pass_render_t& pass)
     {
         if (auto* tex = wg_texture_native(pass.colors[i].texture))
         {
+            if (pass.colors[i].texture.format == RT_TEXTURE_NONE)
+                continue;
             wg_transition_image(*tex, WG_STATE_COLOR);
-            colors[colorCount].view = tex->view;
-            colors[colorCount].loadOp = pass.colors[i].clear ? WGPULoadOp_Clear : WGPULoadOp_Load;
-            colors[colorCount].storeOp = WGPUStoreOp_Store;
-            colors[colorCount].clearValue = {pass.colors[i].value.r, pass.colors[i].value.g, pass.colors[i].value.b, pass.colors[i].value.a};
+            colors[i].view = tex->view;
+            colors[i].loadOp = pass.colors[i].clear ? WGPULoadOp_Clear : WGPULoadOp_Load;
+            colors[i].storeOp = WGPUStoreOp_Store;
+            colors[i].clearValue = {pass.colors[i].value.r, pass.colors[i].value.g, pass.colors[i].value.b, pass.colors[i].value.a};
             width = std::max(width, pass.colors[i].texture.width);
             height = std::max(height, pass.colors[i].texture.height);
-            colorCount++;
+            colorCount = i + 1;
         }
+    }
+    for (uint32_t i = 0; i < colorCount; ++i)
+    {
+        if (colors[i].view)
+            continue;
+        colors[i].loadOp = WGPULoadOp_Load;
+        colors[i].storeOp = WGPUStoreOp_Store;
     }
 
     WGPURenderPassDepthStencilAttachment depth = {};
