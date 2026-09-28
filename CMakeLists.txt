@@ -99,3 +99,17 @@ find_package(SDL3 CONFIG REQUIRED)
 target_link_libraries(DirectX-Default PRIVATE SDL3::SDL3)
 target_link_libraries(DirectX-Default PRIVATE d3d12 dxgi d3dcompiler)
 endif()
+
+#=======================Metal==========================
+
+if(APPLE)
+target_compile_definitions(OpenRT PRIVATE METAL_IMPLEMENTATION)
+add_executable(Metal-Default Example/Metal/Default.cpp)
+add_dependencies(Metal-Default OpenRT)
+target_compile_definitions(Metal-Default PRIVATE METAL_IMPLEMENTATION)
+target_include_directories(Metal-Default PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/metal-cpp)
+target_link_libraries(Metal-Default PRIVATE OpenRT)
+find_package(SDL3 CONFIG REQUIRED)
+target_link_libraries(Metal-Default PRIVATE SDL3::SDL3)
+target_link_libraries(Metal-Default PRIVATE "-framework Metal" "-framework QuartzCore" "-framework Foundation")
+endif()
