@@ -88,3 +88,14 @@ target_link_libraries(Vulkan-Default PRIVATE OpenRT)
 find_package(SDL3 CONFIG REQUIRED)
 target_link_libraries(Vulkan-Default PRIVATE SDL3::SDL3)
 target_link_libraries(Vulkan-Default PRIVATE Vulkan::Vulkan)
+
+#=======================DirectX==========================
+
+if(WIN32)
+add_executable(DirectX-Default Example/DirectX/Default.cpp)
+add_dependencies(DirectX-Default OpenRT)
+target_link_libraries(DirectX-Default PRIVATE OpenRT)
+find_package(SDL3 CONFIG REQUIRED)
+target_link_libraries(DirectX-Default PRIVATE SDL3::SDL3)
+target_link_libraries(DirectX-Default PRIVATE d3d12 dxgi d3dcompiler)
+endif()
