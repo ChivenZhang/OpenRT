@@ -101,7 +101,7 @@ static WGPUTextureFormat rt_to_wg_texture_format(rt_texture_format_t format)
 {
     switch (format)
     {
-        case RT_TEXTURE_UNDEFINED: return WGPUTextureFormat_Undefined;
+        case RT_TEXTURE_NONE: return WGPUTextureFormat_Undefined;
         case RT_TEXTURE_R8UNORM: return WGPUTextureFormat_R8Unorm;
         case RT_TEXTURE_R8SNORM: return WGPUTextureFormat_R8Snorm;
         case RT_TEXTURE_R8UINT: return WGPUTextureFormat_R8Uint;
@@ -159,7 +159,7 @@ static WGPUVertexFormat rt_to_wg_vertex_format(rt_vertex_format_t format)
 {
     switch (format)
     {
-        case RT_VERTEX_UNDEFINED: return WGPUVertexFormat_Undefined;
+        case RT_VERTEX_NONE: return WGPUVertexFormat_Undefined;
         case RT_VERTEX_UINT8: return WGPUVertexFormat_Uint8;
         case RT_VERTEX_UINT8X2: return WGPUVertexFormat_Uint8x2;
         case RT_VERTEX_UINT8X4: return WGPUVertexFormat_Uint8x4;
@@ -284,7 +284,7 @@ static uint32_t rt_to_wg_vertex_size(rt_vertex_format_t format)
 {
     switch (format)
     {
-        case RT_VERTEX_UNDEFINED: return 0;
+        case RT_VERTEX_NONE: return 0;
         case RT_VERTEX_UINT8: return 1;
         case RT_VERTEX_UINT8X2: return 2;
         case RT_VERTEX_UINT8X4: return 4;
@@ -709,7 +709,7 @@ static bool wg_create_graphics_pipeline(wg_module_native_t& native, rt_module_re
     uint32_t attrCount = 0;
     for (uint32_t i = 0; i < RT_MAX_VERTEX_BUFFER_NUM; ++i)
     {
-        if (info.vertex[i].format == RT_VERTEX_UNDEFINED) continue;
+        if (info.vertex[i].format == RT_VERTEX_NONE) continue;
         attributes[attrCount].format = rt_to_wg_vertex_format(info.vertex[i].format);
         attributes[attrCount].offset = 0;
         attributes[attrCount].shaderLocation = info.vertex[i].location;
@@ -2014,7 +2014,7 @@ static void wg_draw_mesh_impl(rt_mesh_t& mesh, uint32_t instanceCount)
     for (uint32_t i = 0; i < std::size(module.vertex); ++i)
     {
         rt_vertex_t const& layout = module.vertex[i];
-        if (layout.format == RT_VERTEX_UNDEFINED) continue;
+        if (layout.format == RT_VERTEX_NONE) continue;
         for (uint32_t k = 0; k < std::size(mesh.vertex); ++k)
         {
             if (mesh.vertex[k].handle == 0 || mesh.location[k] != layout.location) continue;
@@ -2101,7 +2101,7 @@ void wg_draw_meshlet(rt_meshlet_t& meshlet)
     for (uint32_t i = 0; i < std::size(module.vertex); ++i)
     {
         rt_vertex_t const& layout = module.vertex[i];
-        if (layout.format == RT_VERTEX_UNDEFINED) continue;
+        if (layout.format == RT_VERTEX_NONE) continue;
         for (uint32_t k = 0; k < std::size(meshlet.vertex); ++k)
         {
             if (meshlet.vertex[k].handle == 0 || meshlet.location[k] != layout.location) continue;

@@ -14,6 +14,9 @@ else()
     link_directories(${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/lib)
 endif()
 
+if(EMSCRIPTEN)
+add_definitions(-DWEBGPU_IMPLEMENTATION)
+else()
 add_definitions(
 #        -DOPENRT_STATIC
         -DOPENGL_IMPLEMENTATION
@@ -22,6 +25,7 @@ add_definitions(
 #        -DMETAL_IMPLEMENTATION
 #        -DWEBGPU_IMPLEMENTATION
 )
+endif()
 
 add_library(OpenRT STATIC
         OpenRT.cpp
@@ -34,6 +38,9 @@ add_library(OpenRT STATIC
 target_compile_definitions(OpenRT PUBLIC OPENRT_EXPORTS)
 find_package(Stb REQUIRED)
 target_include_directories(OpenRT PRIVATE ${Stb_INCLUDE_DIR})
+if(EMSCRIPTEN)
+target_compile_options(OpenRT PRIVATE "SHELL:-sUSE_WEBGPU=1")
+else()
 find_package(GLEW CONFIG REQUIRED)
 target_link_libraries(OpenRT PRIVATE GLEW::GLEW)
 find_package(Vulkan REQUIRED)
@@ -45,7 +52,9 @@ if(APPLE)
 target_include_directories(OpenRT PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/metal-cpp ${CMAKE_CURRENT_SOURCE_DIR}/metal-cpp-extensions)
 target_link_libraries(OpenRT PRIVATE "-framework Metal" "-framework MetalKit" "-framework AppKit" "-framework Foundation" "-framework QuartzCore")
 endif()
+endif()
 
+if(NOT EMSCRIPTEN)
 #=======================OpenGL==========================
 
 add_executable(OpenGL-Default Example/OpenGL/Default.cpp)
@@ -112,4 +121,22 @@ target_link_libraries(Metal-Default PRIVATE OpenRT)
 find_package(SDL3 CONFIG REQUIRED)
 target_link_libraries(Metal-Default PRIVATE SDL3::SDL3)
 target_link_libraries(Metal-Default PRIVATE "-framework Metal" "-framework QuartzCore" "-framework Foundation")
+endif()
+endif()
+
+#=======================WebGPU==========================
+
+if(EMSCRIPTEN)
+add_executable(WebGPU-Default Example/WebGPU/Default.cpp)
+add_dependencies(WebGPU-Default OpenRT)
+target_compile_definitions(WebGPU-Default PRIVATE WEBGPU_IMPLEMENTATION)
+target_include_directories(WebGPU-Default PRIVATE ${Stb_INCLUDE_DIR})
+target_compile_options(WebGPU-Default PRIVATE "SHELL:-sUSE_SDL=3" "SHELL:-sUSE_WEBGPU=1")
+target_link_libraries(WebGPU-Default PRIVATE OpenRT)
+target_link_options(WebGPU-Default PRIVATE
+    "SHELL:-sUSE_SDL=3"
+    "SHELL:-sUSE_WEBGPU=1"
+    "SHELL:-sALLOW_MEMORY_GROWTH=1"
+)
+set_target_properties(WebGPU-Default PROPERTIES SUFFIX ".html")
 endif()
