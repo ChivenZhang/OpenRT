@@ -574,6 +574,8 @@ struct dx_native_t
     uint32_t srvCursor = 0, samplerCursor = 0;
     D3D12_CPU_DESCRIPTOR_HANDLE defaultSamplerCPU = {};
     std::vector<dx_staging_t> pendingStaging;
+    uint8_t pushData[128] = {};
+    uint32_t pushCount = 0;
 
     struct
     {
@@ -699,6 +701,7 @@ static void dx_clear_bindings()
 {
     for (auto& binding : direct.currentBinding)
         binding = {};
+    direct.pushCount = 0;
 }
 
 static bool dx_setup_root(dx_module_native_t& native, rt_binding_t const* bindings)
@@ -1015,6 +1018,13 @@ static void dx_flush_descriptors()
             if (mod->cshader.BytecodeLength) direct.cmd->SetComputeRootDescriptorTable(root, gpu);
             else direct.cmd->SetGraphicsRootDescriptorTable(root, gpu);
         }
+    }
+    if (direct.pushCount)
+    {
+        if (mod->cshader.BytecodeLength)
+            direct.cmd->SetComputeRoot32BitConstants(0, direct.pushCount, direct.pushData, 0);
+        else
+            direct.cmd->SetGraphicsRoot32BitConstants(0, direct.pushCount, direct.pushData, 0);
     }
 }
 
@@ -1771,10 +1781,13 @@ void dx_push_constant(uint8_t const* buffer, size_t length)
     auto* mod = dx_current_module_native();
     if (!buffer || length == 0 || !mod) return;
     uint32_t count = (uint32_t)((length + 3) / 4);
+    if (count > 32) count = 32;
+    std::memcpy(direct.pushData, buffer, (size_t)count * 4);
+    direct.pushCount = count;
     if (mod->cshader.BytecodeLength)
-        direct.cmd->SetComputeRoot32BitConstants(0, count, buffer, 0);
+        direct.cmd->SetComputeRoot32BitConstants(0, count, direct.pushData, 0);
     else
-        direct.cmd->SetGraphicsRoot32BitConstants(0, count, buffer, 0);
+        direct.cmd->SetGraphicsRoot32BitConstants(0, count, direct.pushData, 0);
 }
 
 void dx_push_const_int(const char*, int32_t) {}

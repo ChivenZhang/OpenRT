@@ -196,7 +196,7 @@ int main()
 {
     int w = 600, h = 600;
     SDL_Init(SDL_INIT_VIDEO);
-    auto window = SDL_CreateWindow("Vulkan", w, h, SDL_WINDOW_VULKAN);
+    auto window = SDL_CreateWindow("Vulkan-Default", w, h, SDL_WINDOW_VULKAN);
 
     uint32_t extCount = 0;
     const char* const* sdlExts = SDL_Vulkan_GetInstanceExtensions(&extCount);

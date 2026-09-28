@@ -247,7 +247,7 @@ int main()
 {
     int w = 600, h = 600;
     SDL_Init(SDL_INIT_VIDEO);
-    window = SDL_CreateWindow("WebGPU", w, h, 0);
+    window = SDL_CreateWindow("WebGPU-Default", w, h, 0);
     if (!window)
     {
         fprintf(stderr, "[WebGPU][ERROR] SDL_CreateWindow failed: %s\n", SDL_GetError());

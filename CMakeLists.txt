@@ -98,6 +98,15 @@ find_package(SDL3 CONFIG REQUIRED)
 target_link_libraries(Vulkan-Default PRIVATE SDL3::SDL3)
 target_link_libraries(Vulkan-Default PRIVATE Vulkan::Vulkan)
 
+add_executable(Vulkan-Render Example/Vulkan/Render.cpp)
+add_dependencies(Vulkan-Render OpenRT)
+target_link_libraries(Vulkan-Render PRIVATE OpenRT)
+find_package(SDL3 CONFIG REQUIRED)
+target_link_libraries(Vulkan-Render PRIVATE SDL3::SDL3)
+find_package(glm CONFIG REQUIRED)
+target_link_libraries(Vulkan-Render PRIVATE glm::glm)
+target_link_libraries(Vulkan-Render PRIVATE Vulkan::Vulkan)
+
 #=======================DirectX==========================
 
 if(WIN32)
@@ -107,6 +116,15 @@ target_link_libraries(DirectX-Default PRIVATE OpenRT)
 find_package(SDL3 CONFIG REQUIRED)
 target_link_libraries(DirectX-Default PRIVATE SDL3::SDL3)
 target_link_libraries(DirectX-Default PRIVATE d3d12 dxgi d3dcompiler)
+
+add_executable(DirectX-Render Example/DirectX/Render.cpp)
+add_dependencies(DirectX-Render OpenRT)
+target_link_libraries(DirectX-Render PRIVATE OpenRT)
+find_package(SDL3 CONFIG REQUIRED)
+target_link_libraries(DirectX-Render PRIVATE SDL3::SDL3)
+find_package(glm CONFIG REQUIRED)
+target_link_libraries(DirectX-Render PRIVATE glm::glm)
+target_link_libraries(DirectX-Render PRIVATE d3d12 dxgi d3dcompiler)
 endif()
 
 #=======================Metal==========================

@@ -130,7 +130,7 @@ int main()
 {
     int w = 600, h = 600;
     SDL_Init(SDL_INIT_VIDEO);
-    auto window = SDL_CreateWindow("Metal", w, h, SDL_WINDOW_METAL);
+    auto window = SDL_CreateWindow("Metal-Default", w, h, SDL_WINDOW_METAL);
     SDL_MetalView view = SDL_Metal_CreateView(window);
     layer = (CA::MetalLayer*)SDL_Metal_GetLayer(view);
     if (!layer)

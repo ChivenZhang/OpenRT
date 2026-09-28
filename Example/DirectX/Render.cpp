@@ -15,6 +15,8 @@
 #include "../../DirectX.h"
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_properties.h>
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
 #include <d3dcompiler.h>
 #include <dxgi1_6.h>
 #include <wrl/client.h>
@@ -25,12 +27,17 @@
 using Microsoft::WRL::ComPtr;
 
 static constexpr auto VS = R"(
+    cbuffer Push : register(b16)
+    {
+        column_major float4x4 projView;
+        column_major float4x4 meshMat;
+    };
+
     struct VSIn
     {
         float3 in_vertex : TEXCOORD0;
         float3 in_normal : TEXCOORD1;
         float2 in_uv : TEXCOORD2;
-        uint vertexID : SV_VertexID;
     };
 
     struct VSOut
@@ -39,35 +46,54 @@ static constexpr auto VS = R"(
         float3 vertex : TEXCOORD0;
         float3 normal : TEXCOORD1;
         float2 uv : TEXCOORD2;
-        float3 color : TEXCOORD3;
     };
 
     VSOut main(VSIn input)
     {
-        float3 colors[3] = {float3(1, 0, 0), float3(0, 1, 0), float3(0, 0, 1)};
         VSOut output;
-        output.vertex = input.in_vertex;
-        output.normal = input.in_normal;
+        output.vertex = mul(meshMat, float4(input.in_vertex, 1)).xyz;
+        output.normal = mul(meshMat, float4(input.in_normal, 0)).xyz;
         output.uv = input.in_uv;
-        output.color = colors[input.vertexID];
-        output.position = float4(input.in_vertex, 1.0);
+        output.position = mul(projView, float4(output.vertex, 1));
         return output;
     }
 )";
 
 static constexpr auto FS = R"(
+    Texture2D texture0 : register(t0);
+    SamplerState sampler0 : register(s1);
+
     struct PSIn
     {
         float4 position : SV_Position;
         float3 vertex : TEXCOORD0;
         float3 normal : TEXCOORD1;
         float2 uv : TEXCOORD2;
-        float3 color : TEXCOORD3;
     };
+
+    static const float3 LIGHT_POSITION = float3(5.0, 5.0, 5.0);
+    static const float3 LIGHT_COLOR = float3(1.0, 0.98, 0.94);
+    static const float LIGHT_INTENSITY = 1.5;
+    static const float3 AMBIENT_COLOR = float3(0.1, 0.1, 0.1);
+    static const float3 DIFFUSE_COLOR = float3(1.0, 1.0, 1.0);
+    static const float3 SPECULAR_COLOR = float3(0.5, 0.5, 0.5);
+    static const float SHININESS = 32.0;
+    static const float3 CAMERA_POSITION = float3(0.0, 0.0, 10.0);
 
     float4 main(PSIn input) : SV_Target0
     {
-        return float4(input.color, 1);
+        float3 N = normalize(input.normal);
+        float3 L = normalize(LIGHT_POSITION - input.vertex);
+        float3 V = normalize(CAMERA_POSITION - input.vertex);
+        float3 H = normalize(L + V);
+
+        float3 ambient = AMBIENT_COLOR;
+        float diff = max(dot(N, L), 0.0);
+        float3 diffuse = diff * DIFFUSE_COLOR * texture0.Sample(sampler0, input.uv).rgb;
+        float spec = pow(max(dot(N, H), 0.0), SHININESS);
+        float3 specular = spec * SPECULAR_COLOR;
+        float3 result = ambient + LIGHT_INTENSITY * LIGHT_COLOR * (diffuse + specular);
+        return float4(result, 1);
     }
 )";
 
@@ -161,20 +187,34 @@ static void present(rt_texture_t& color)
 void frame(int width, int height)
 {
     wait_present();
-    static auto vs = compile_shader(VS, "vs_5_0");
-    static auto fs = compile_shader(FS, "ps_5_0");
+    static auto vs = compile_shader(VS, "vs_5_1");
+    static auto fs = compile_shader(FS, "ps_5_1");
     static auto module = rt_create_module_render({
         .vshader = {.code = (const char*)vs.data(), .size = (uint32_t)vs.size()},
         .fshader = {.code = (const char*)fs.data(), .size = (uint32_t)fs.size()},
         .colors = {{.format = RT_TEXTURE_RGBA8UNORM,}},
+        .depth = {.write = true, .func = RT_LEQUAL,},
         .vertex = {rt_vertex_vertex, rt_vertex_normal, rt_vertex_uv,},
+        .binding = {{.binding = 0, .type = RT_BINDING_TEXTURE}, {.binding = 1, .type = RT_BINDING_SAMPLER}},
     });
     static auto pass_color = rt_create_texture_color(width, height, nullptr);
+    static auto pass_depth = rt_create_texture_depth(width, height, nullptr);
     {
-        rt_pass_render_t pass = {.module = module, .colors = {{.texture = pass_color, .clear = true,}},};
+        rt_pass_render_t pass = {.module = module, .colors = {{.texture = pass_color, .clear = true,}}, .depth = {.texture = pass_depth, .clear = true,},};
         rt_begin_render(pass);
 
-        static auto mesh = rt_create_mesh_triangle(1);
+        auto projMat = glm::perspectiveRH_ZO(glm::radians(60.0f), (float)width / (float)height, 0.1f, 100.0f);
+        auto viewMat = glm::lookAt(glm::vec3(0, 2, 5), glm::vec3(0, 0, 0), glm::vec3(0, 1, 0));
+        auto meshMat = glm::rotate(glm::rotate(glm::mat4(1), glm::radians(-23.5f), glm::vec3(0, 0, 1)), (float)SDL_GetTicks() / 2000.0f, glm::vec3(0, 1, 0));
+        glm::mat4 push[2] = {projMat * viewMat, meshMat};
+        rt_push_constant((const uint8_t*)push, sizeof(push));
+
+        static auto texture0 = rt_load_texture_file("../../Earth.png", true);
+        rt_bind_texture(texture0, {.binding = 0,});
+        static auto sampler0 = rt_create_sampler({.min_filter = RT_LINEAR, .mag_filter = RT_LINEAR, .wrap_s = RT_REPEAT, .wrap_t = RT_REPEAT,});
+        rt_bind_sampler(sampler0, {.binding = 1,});
+
+        static auto mesh = rt_create_mesh_sphere(2, 64, 32);
         rt_draw_mesh(mesh);
 
         rt_end_render(pass);
@@ -186,9 +226,9 @@ void frame(int width, int height)
 
 int main()
 {
-    int w = 600, h = 600;
+    int w = 1000, h = 600;
     SDL_Init(SDL_INIT_VIDEO);
-    auto window = SDL_CreateWindow("DirectX-Default", w, h, 0);
+    auto window = SDL_CreateWindow("DirectX-Render", w, h, 0);
     HWND hwnd = (HWND)SDL_GetPointerProperty(SDL_GetWindowProperties(window), SDL_PROP_WINDOW_WIN32_HWND_POINTER, nullptr);
     if (!hwnd)
     {
