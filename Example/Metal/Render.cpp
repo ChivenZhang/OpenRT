@@ -185,6 +185,7 @@ int main()
     layer->setDevice(device);
     layer->setPixelFormat(MTL::PixelFormatBGRA8Unorm);
     layer->setFramebufferOnly(false);
+    layer->setDisplaySyncEnabled(true);
 
     mt_load_library(device, queue);
 

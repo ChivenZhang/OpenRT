@@ -132,6 +132,7 @@ int main()
     auto window = SDL_CreateWindow("OpenGL-Render", w, h, SDL_WINDOW_OPENGL);
     auto context = SDL_GL_CreateContext(window);
     SDL_GL_MakeCurrent(window, context);
+    SDL_GL_SetSwapInterval(1);
 
     rt_load_library();
 
