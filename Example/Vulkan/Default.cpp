@@ -8,14 +8,14 @@
 * Created by chivenzhang@gmail.com.
 *
 * =================================================*/
+#define OPENRTX_IMPLEMENTATION
+#include "../../OpenRTX.h"
+#include "../../Vulkan.h"
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_vulkan.h>
 #include <cstdio>
 #include <cstring>
 #include <vector>
-#define OPENRTX_IMPLEMENTATION
-#include "../../OpenRTX.h"
-#include "../../Vulkan.h"
 
 [[maybe_unused]] static constexpr auto VS = R"(
     #version 450
