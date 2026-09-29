@@ -40,12 +40,11 @@ void frame(int width, int height)
         in vec2 uv;
         out vec4 final;
 
-        layout(binding = 0) uniform texture2D texture0;
-        layout(binding = 1) uniform sampler sampler0;
+        layout(binding = 0) uniform sampler2D texture0;
 
         void main()
         {
-            final = texture(sampler2D(texture0, sampler0), uv);
+            final = texture(texture0, uv);
         }
     )";
 
@@ -54,6 +53,8 @@ void frame(int width, int height)
     static auto texture0 = []()
     {
         auto texture = rt_load_texture_file("../../Earth.png");
+        auto width = texture.width;
+        auto height = texture.height;
 
         // Copy Texture To Buffer
 
@@ -62,7 +63,7 @@ void frame(int width, int height)
             rt_pass_transfer_t pass = {};
             rt_begin_transfer(pass);
             rt_copy_buffer_texture(
-                {.texture = texture, },
+                {.texture = texture,},
                 {.buffer = buffer, .bytesPerRow = texture.width * 4, .rowsPerImage = texture.height,},
                 {texture.width, texture.height, 1});
             rt_end_transfer(pass);
@@ -71,7 +72,7 @@ void frame(int width, int height)
 
         // Copy Buffer To Texture
 
-        texture = rt_create_texture({.width = texture.width, .height = texture.height, .format = RT_TEXTURE_RGBA8UNORM, });
+        texture = rt_create_texture({.width = width, .height = height, .format = RT_TEXTURE_RGBA8UNORM, });
         {
             rt_pass_transfer_t pass = {};
             rt_begin_transfer(pass);
@@ -91,9 +92,7 @@ void frame(int width, int height)
         rt_pass_render_t pass = {.module = module, .colors = {{.texture_view = pass_color.default_view, .clear = true,}},};
         rt_begin_render(pass);
 
-        static auto sampler0 = rt_create_sampler({.min_filter = RT_LINEAR, .mag_filter = RT_LINEAR, .wrap_s = RT_REPEAT, .wrap_t = RT_REPEAT,});
         rt_bind_texture(texture0, {.binding = 0,});
-        rt_bind_sampler(sampler0, {.binding = 1,});
 
         static auto mesh = rt_create_mesh_screen();
         rt_draw_mesh(mesh);

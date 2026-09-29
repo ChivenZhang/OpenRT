@@ -44,8 +44,7 @@ void frame(int width, int height)
         in vec2 uv;
         out vec4 final;
 
-        layout(binding = 0) uniform texture2D texture0;
-        layout(binding = 1) uniform sampler sampler0;
+        layout(binding = 0) uniform sampler2D texture0;
 
         const vec3 LIGHT_POSITION = vec3(5.0, 5.0, 5.0);
         const vec3 LIGHT_COLOR = vec3(1.0, 0.98, 0.94);
@@ -71,7 +70,7 @@ void frame(int width, int height)
             vec3 ambient = AMBIENT_COLOR;
 
             float diff = max(dot(N, L), 0.0);
-            vec3 diffuse = diff * DIFFUSE_COLOR;
+            vec3 diffuse = diff * DIFFUSE_COLOR * texture(texture0, uv).rgb;
 
             float spec = pow(max(dot(N, H), 0.0), SHININESS);
             vec3 specular = spec * SPECULAR_COLOR;
@@ -107,7 +106,7 @@ void frame(int width, int height)
         static auto texture0 = rt_load_texture_file("../../Earth.png", true);
         static auto sampler0 = rt_create_sampler({.min_filter = RT_LINEAR, .mag_filter = RT_LINEAR, .wrap_s = RT_REPEAT, .wrap_t = RT_REPEAT,});
         rt_bind_texture(texture0, {.binding = 0,});
-        rt_bind_sampler(sampler0, {.binding = 1,});
+        rt_bind_sampler(sampler0, {.binding = 0,});
 
         static auto mesh = rt_create_mesh_sphere(2, 64, 32);
         rt_draw_mesh(mesh);

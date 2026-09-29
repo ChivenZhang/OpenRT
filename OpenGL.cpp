@@ -3008,21 +3008,19 @@ void gl_draw_screen(int width, int height, rt_color_t clear, rt_texture_t& textu
         layout(location = 1) in vec3 normal;
         layout(location = 2) in vec2 uv;
         layout(location = 0) out vec4 final;
-        layout(binding = 0) uniform texture2D texture0;
-        layout(binding = 1) uniform sampler sampler0;
+
+        layout(binding = 0) uniform sampler2D texture0;
 
         void main()
         {
-            final = texture(sampler2D(texture0, sampler0), uv);
+            final = texture(texture0, uv);
         }
     )";
     static auto module = gl_create_module_render({.vshader = {.code = VS}, .fshader = {.code = FS}, .vertex = {rt_vertex_vertex, {}, rt_vertex_uv,},});
-    static auto sampler0 = gl_create_sampler({.min_filter = RT_LINEAR, .mag_filter = RT_LINEAR, .wrap_s = RT_CLAMP_TO_EDGE, .wrap_t = RT_CLAMP_TO_EDGE,});
     rt_pass_render_t pass = {.module = module, .screen = {.color = { .clear = true, .value = clear,}}};
     gl_begin_render(pass);
     gl_set_viewport(0, 0, width, height);
-    gl_bind_texture(texture, { .binding = 0, });
-    gl_bind_sampler(sampler0, {.binding = 1,});
+    gl_bind_texture(texture, {.binding = 0,});
     if (texture.handle)
     {
         static auto mesh = gl_create_mesh_screen();
