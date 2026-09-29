@@ -707,172 +707,6 @@ static dx_module_native_t* dx_current_module_native()
     return nullptr;
 }
 
-static void dx_clear_bindings()
-{
-    for (auto& binding : direct.currentBinding)
-        binding = {};
-    direct.pushCount = 0;
-}
-
-static bool dx_setup_root(dx_module_native_t& native, rt_binding_t const* bindings)
-{
-    native.descriptorCount = 0;
-    D3D12_DESCRIPTOR_RANGE ranges[RT_MAX_BINDING_HANDLE_NUM] = {};
-    D3D12_ROOT_PARAMETER params[1 + RT_MAX_BINDING_HANDLE_NUM] = {};
-    params[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
-    params[0].Constants.ShaderRegister = 16;
-    params[0].Constants.RegisterSpace = 0;
-    params[0].Constants.Num32BitValues = 32;
-    params[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
-
-    uint32_t paramCount = 1;
-    if (bindings)
-    {
-        for (uint32_t i = 0; i < RT_MAX_BINDING_HANDLE_NUM; ++i)
-        {
-            dx_binding_kind_t kind = DX_KIND_NONE;
-            D3D12_DESCRIPTOR_RANGE_TYPE rangeType = D3D12_DESCRIPTOR_RANGE_TYPE_CBV;
-            if (bindings[i].type == RT_BINDING_BUFFER)
-            {
-                kind = DX_KIND_CBV;
-                rangeType = D3D12_DESCRIPTOR_RANGE_TYPE_CBV;
-            }
-            else if (bindings[i].type == RT_BINDING_TEXTURE)
-            {
-                kind = DX_KIND_SRV;
-                rangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
-            }
-            else if (bindings[i].type == RT_BINDING_STORAGE_TEXTURE)
-            {
-                kind = DX_KIND_UAV;
-                rangeType = D3D12_DESCRIPTOR_RANGE_TYPE_UAV;
-            }
-            else if (bindings[i].type == RT_BINDING_SAMPLER)
-            {
-                kind = DX_KIND_SAMPLER;
-                rangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SAMPLER;
-            }
-            else continue;
-            
-            native.kinds[native.descriptorCount] = kind;
-            native.descriptorBindings[native.descriptorCount] = bindings[i].binding;
-            ranges[native.descriptorCount].RangeType = rangeType;
-            ranges[native.descriptorCount].NumDescriptors = 1;
-            ranges[native.descriptorCount].BaseShaderRegister = bindings[i].binding;
-            ranges[native.descriptorCount].RegisterSpace = 0;
-            ranges[native.descriptorCount].OffsetInDescriptorsFromTableStart = 0;
-            params[paramCount].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
-            params[paramCount].DescriptorTable.NumDescriptorRanges = 1;
-            params[paramCount].DescriptorTable.pDescriptorRanges = &ranges[native.descriptorCount];
-            params[paramCount].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
-            native.descriptorCount++;
-            paramCount++;
-        }
-    }
-
-    D3D12_ROOT_SIGNATURE_DESC desc = {};
-    desc.NumParameters = paramCount;
-    desc.pParameters = params;
-    desc.Flags = native.cshader.BytecodeLength ? D3D12_ROOT_SIGNATURE_FLAG_NONE :
-                 D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
-    ComPtr<ID3DBlob> blob, error;
-    if (FAILED(D3D12SerializeRootSignature(&desc, D3D_ROOT_SIGNATURE_VERSION_1, &blob, &error)))
-        return false;
-    return SUCCEEDED(direct.device->CreateRootSignature(0, blob->GetBufferPointer(), blob->GetBufferSize(),
-        IID_PPV_ARGS(&native.rootSignature)));
-}
-
-static bool dx_create_graphics_pipeline(dx_module_native_t& native, rt_module_render_info_t const& info, bool meshlet)
-{
-    D3D12_INPUT_ELEMENT_DESC elements[RT_MAX_VERTEX_BUFFER_NUM] = {};
-    uint32_t attrCount = 0;
-    if (!meshlet)
-    {
-        for (uint32_t i = 0; i < RT_MAX_VERTEX_BUFFER_NUM; ++i)
-        {
-            if (info.vertex[i].format == RT_VERTEX_NONE) continue;
-            elements[attrCount].SemanticName = "TEXCOORD";
-            elements[attrCount].SemanticIndex = info.vertex[i].location;
-            elements[attrCount].Format = rt_to_dx_vertex_format(info.vertex[i].format);
-            elements[attrCount].InputSlot = info.vertex[i].location;
-            elements[attrCount].AlignedByteOffset = 0;
-            elements[attrCount].InputSlotClass = info.vertex[i].instance ?
-                D3D12_INPUT_CLASSIFICATION_PER_INSTANCE_DATA : D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA;
-            elements[attrCount].InstanceDataStepRate = info.vertex[i].instance ? 1 : 0;
-            attrCount++;
-        }
-    }
-
-    const bool depthEnabled = (info.depth.func != RT_ALWAYS || info.depth.write);
-    const bool stencilEnabled =
-        (info.stencil.back.func != RT_ALWAYS || info.stencil.back.sfail != RT_STENCIL_KEEP ||
-         info.stencil.back.zfail != RT_STENCIL_KEEP || info.stencil.back.zpass != RT_STENCIL_KEEP ||
-         info.stencil.front.func != RT_ALWAYS || info.stencil.front.sfail != RT_STENCIL_KEEP ||
-         info.stencil.front.zfail != RT_STENCIL_KEEP || info.stencil.front.zpass != RT_STENCIL_KEEP);
-
-    D3D12_GRAPHICS_PIPELINE_STATE_DESC pso = {};
-    pso.pRootSignature = native.rootSignature.Get();
-    pso.VS = native.vshader;
-    pso.PS = native.fshader;
-    pso.InputLayout = {meshlet ? nullptr : elements, meshlet ? 0u : attrCount};
-    pso.PrimitiveTopologyType = rt_to_dx_topology_type(info.primitive);
-    pso.RasterizerState.FillMode = rt_to_dx_fill(info.fill_mode);
-    pso.RasterizerState.CullMode = rt_to_dx_cull(info.cull_mode);
-    pso.RasterizerState.FrontCounterClockwise = (info.front_face != RT_CW);
-    pso.RasterizerState.DepthBias = (INT)info.depth.bias;
-    pso.RasterizerState.DepthBiasClamp = info.depth.biasClamp;
-    pso.RasterizerState.SlopeScaledDepthBias = info.depth.biasSlope;
-    pso.RasterizerState.DepthClipEnable = TRUE;
-    pso.BlendState.AlphaToCoverageEnable = FALSE;
-    pso.BlendState.IndependentBlendEnable = TRUE;
-    uint32_t colorCount = 0;
-    for (uint32_t i = 0; i < RT_MAX_COLOR_TEXTURE_NUM; ++i)
-    {
-        if (info.colors[i].format == RT_TEXTURE_NONE)
-        {
-            pso.RTVFormats[i] = DXGI_FORMAT_UNKNOWN;
-            continue;
-        }
-        colorCount = i + 1;
-        auto& rt = pso.BlendState.RenderTarget[i];
-        bool blend =
-            (info.colors[i].color.func != RT_FUNC_ADD || info.colors[i].color.src != RT_BLEND_ONE ||
-             info.colors[i].color.dst != RT_BLEND_ZERO || info.colors[i].alpha.func != RT_FUNC_ADD ||
-             info.colors[i].alpha.src != RT_BLEND_ONE || info.colors[i].alpha.dst != RT_BLEND_ZERO);
-        rt.BlendEnable = blend;
-        rt.SrcBlend = rt_to_dx_blend(info.colors[i].color.src);
-        rt.DestBlend = rt_to_dx_blend(info.colors[i].color.dst);
-        rt.BlendOp = rt_to_dx_blend_op(info.colors[i].color.func);
-        rt.SrcBlendAlpha = rt_to_dx_blend(info.colors[i].alpha.src);
-        rt.DestBlendAlpha = rt_to_dx_blend(info.colors[i].alpha.dst);
-        rt.BlendOpAlpha = rt_to_dx_blend_op(info.colors[i].alpha.func);
-        rt.RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
-        pso.RTVFormats[i] = rt_to_dx_texture_format(info.colors[i].format);
-    }
-    native.colorCount = colorCount;
-    pso.NumRenderTargets = colorCount;
-    pso.SampleMask = UINT_MAX;
-    pso.SampleDesc.Count = 1;
-    pso.DepthStencilState.DepthEnable = depthEnabled;
-    pso.DepthStencilState.DepthWriteMask = info.depth.write ? D3D12_DEPTH_WRITE_MASK_ALL : D3D12_DEPTH_WRITE_MASK_ZERO;
-    pso.DepthStencilState.DepthFunc = rt_to_dx_compare(info.depth.func);
-    pso.DepthStencilState.StencilEnable = stencilEnabled;
-    pso.DepthStencilState.StencilReadMask = (UINT8)info.stencil.read;
-    pso.DepthStencilState.StencilWriteMask = (UINT8)info.stencil.write;
-    pso.DepthStencilState.FrontFace.StencilFailOp = rt_to_dx_stencil_op(info.stencil.front.sfail);
-    pso.DepthStencilState.FrontFace.StencilDepthFailOp = rt_to_dx_stencil_op(info.stencil.front.zfail);
-    pso.DepthStencilState.FrontFace.StencilPassOp = rt_to_dx_stencil_op(info.stencil.front.zpass);
-    pso.DepthStencilState.FrontFace.StencilFunc = rt_to_dx_compare(info.stencil.front.func);
-    pso.DepthStencilState.BackFace.StencilFailOp = rt_to_dx_stencil_op(info.stencil.back.sfail);
-    pso.DepthStencilState.BackFace.StencilDepthFailOp = rt_to_dx_stencil_op(info.stencil.back.zfail);
-    pso.DepthStencilState.BackFace.StencilPassOp = rt_to_dx_stencil_op(info.stencil.back.zpass);
-    pso.DepthStencilState.BackFace.StencilFunc = rt_to_dx_compare(info.stencil.back.func);
-    if (stencilEnabled) pso.DSVFormat = DXGI_FORMAT_D24_UNORM_S8_UINT;
-    else if (depthEnabled) pso.DSVFormat = DXGI_FORMAT_D32_FLOAT;
-    native.topology = rt_to_dx_topology(info.primitive);
-    return SUCCEEDED(direct.device->CreateGraphicsPipelineState(&pso, IID_PPV_ARGS(&native.pipeline)));
-}
-
 static void dx_destroy_module_native(uint32_t handle, void*& native)
 {
     direct.modules.erase(handle);
@@ -1621,7 +1455,21 @@ rt_module_compute_t dx_create_module_compute(rt_module_compute_info_t const& inf
     native.ccode.assign((const uint8_t*)info.cshader.code, (const uint8_t*)info.cshader.code + info.cshader.size);
     native.cshader.pShaderBytecode = native.ccode.data();
     native.cshader.BytecodeLength = native.ccode.size();
-    if (!dx_setup_root(native, nullptr))
+    native.descriptorCount = 0;
+    D3D12_ROOT_PARAMETER params[1] = {};
+    params[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
+    params[0].Constants.ShaderRegister = 16;
+    params[0].Constants.RegisterSpace = 0;
+    params[0].Constants.Num32BitValues = 32;
+    params[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+    D3D12_ROOT_SIGNATURE_DESC desc = {};
+    desc.NumParameters = 1;
+    desc.pParameters = params;
+    desc.Flags = D3D12_ROOT_SIGNATURE_FLAG_NONE;
+    ComPtr<ID3DBlob> blob, error;
+    if (FAILED(D3D12SerializeRootSignature(&desc, D3D_ROOT_SIGNATURE_VERSION_1, &blob, &error)) ||
+        FAILED(direct.device->CreateRootSignature(0, blob->GetBufferPointer(), blob->GetBufferSize(),
+            IID_PPV_ARGS(&native.rootSignature))))
     {
         direct.modules.erase(handle);
         return {};
@@ -1659,7 +1507,149 @@ rt_module_render_t dx_create_module_render(rt_module_render_info_t const& info)
         native.fshader.pShaderBytecode = native.fcode.data();
         native.fshader.BytecodeLength = native.fcode.size();
     }
-    if (!dx_setup_root(native, info.binding) || !dx_create_graphics_pipeline(native, info, false))
+    native.descriptorCount = 0;
+    D3D12_DESCRIPTOR_RANGE ranges[RT_MAX_BINDING_HANDLE_NUM] = {};
+    D3D12_ROOT_PARAMETER params[1 + RT_MAX_BINDING_HANDLE_NUM] = {};
+    params[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
+    params[0].Constants.ShaderRegister = 16;
+    params[0].Constants.RegisterSpace = 0;
+    params[0].Constants.Num32BitValues = 32;
+    params[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+    uint32_t paramCount = 1;
+    for (uint32_t i = 0; i < RT_MAX_BINDING_HANDLE_NUM; ++i)
+    {
+        dx_binding_kind_t kind = DX_KIND_NONE;
+        D3D12_DESCRIPTOR_RANGE_TYPE rangeType = D3D12_DESCRIPTOR_RANGE_TYPE_CBV;
+        if (info.binding[i].type == RT_BINDING_BUFFER)
+        {
+            kind = DX_KIND_CBV;
+            rangeType = D3D12_DESCRIPTOR_RANGE_TYPE_CBV;
+        }
+        else if (info.binding[i].type == RT_BINDING_TEXTURE)
+        {
+            kind = DX_KIND_SRV;
+            rangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
+        }
+        else if (info.binding[i].type == RT_BINDING_STORAGE_TEXTURE)
+        {
+            kind = DX_KIND_UAV;
+            rangeType = D3D12_DESCRIPTOR_RANGE_TYPE_UAV;
+        }
+        else if (info.binding[i].type == RT_BINDING_SAMPLER)
+        {
+            kind = DX_KIND_SAMPLER;
+            rangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SAMPLER;
+        }
+        else continue;
+        native.kinds[native.descriptorCount] = kind;
+        native.descriptorBindings[native.descriptorCount] = info.binding[i].binding;
+        ranges[native.descriptorCount].RangeType = rangeType;
+        ranges[native.descriptorCount].NumDescriptors = 1;
+        ranges[native.descriptorCount].BaseShaderRegister = info.binding[i].binding;
+        ranges[native.descriptorCount].RegisterSpace = 0;
+        ranges[native.descriptorCount].OffsetInDescriptorsFromTableStart = 0;
+        params[paramCount].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+        params[paramCount].DescriptorTable.NumDescriptorRanges = 1;
+        params[paramCount].DescriptorTable.pDescriptorRanges = &ranges[native.descriptorCount];
+        params[paramCount].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+        native.descriptorCount++;
+        paramCount++;
+    }
+    D3D12_ROOT_SIGNATURE_DESC desc = {};
+    desc.NumParameters = paramCount;
+    desc.pParameters = params;
+    desc.Flags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
+    ComPtr<ID3DBlob> blob, error;
+    if (FAILED(D3D12SerializeRootSignature(&desc, D3D_ROOT_SIGNATURE_VERSION_1, &blob, &error)) ||
+        FAILED(direct.device->CreateRootSignature(0, blob->GetBufferPointer(), blob->GetBufferSize(),
+            IID_PPV_ARGS(&native.rootSignature))))
+    {
+        result.native = &native;
+        dx_destroy_module_native(handle, result.native);
+        return {};
+    }
+    D3D12_INPUT_ELEMENT_DESC elements[RT_MAX_VERTEX_BUFFER_NUM] = {};
+    uint32_t attrCount = 0;
+    for (uint32_t i = 0; i < RT_MAX_VERTEX_BUFFER_NUM; ++i)
+    {
+        if (info.vertex[i].format == RT_VERTEX_NONE) continue;
+        elements[attrCount].SemanticName = "TEXCOORD";
+        elements[attrCount].SemanticIndex = info.vertex[i].location;
+        elements[attrCount].Format = rt_to_dx_vertex_format(info.vertex[i].format);
+        elements[attrCount].InputSlot = info.vertex[i].location;
+        elements[attrCount].AlignedByteOffset = 0;
+        elements[attrCount].InputSlotClass = info.vertex[i].instance ?
+            D3D12_INPUT_CLASSIFICATION_PER_INSTANCE_DATA : D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA;
+        elements[attrCount].InstanceDataStepRate = info.vertex[i].instance ? 1 : 0;
+        attrCount++;
+    }
+    const bool depthEnabled = (info.depth.func != RT_ALWAYS || info.depth.write);
+    const bool stencilEnabled =
+        (info.stencil.back.func != RT_ALWAYS || info.stencil.back.sfail != RT_STENCIL_KEEP ||
+         info.stencil.back.zfail != RT_STENCIL_KEEP || info.stencil.back.zpass != RT_STENCIL_KEEP ||
+         info.stencil.front.func != RT_ALWAYS || info.stencil.front.sfail != RT_STENCIL_KEEP ||
+         info.stencil.front.zfail != RT_STENCIL_KEEP || info.stencil.front.zpass != RT_STENCIL_KEEP);
+    D3D12_GRAPHICS_PIPELINE_STATE_DESC pso = {};
+    pso.pRootSignature = native.rootSignature.Get();
+    pso.VS = native.vshader;
+    pso.PS = native.fshader;
+    pso.InputLayout = {elements, attrCount};
+    pso.PrimitiveTopologyType = rt_to_dx_topology_type(info.primitive);
+    pso.RasterizerState.FillMode = rt_to_dx_fill(info.fill_mode);
+    pso.RasterizerState.CullMode = rt_to_dx_cull(info.cull_mode);
+    pso.RasterizerState.FrontCounterClockwise = (info.front_face != RT_CW);
+    pso.RasterizerState.DepthBias = (INT)info.depth.bias;
+    pso.RasterizerState.DepthBiasClamp = info.depth.biasClamp;
+    pso.RasterizerState.SlopeScaledDepthBias = info.depth.biasSlope;
+    pso.RasterizerState.DepthClipEnable = TRUE;
+    pso.BlendState.AlphaToCoverageEnable = FALSE;
+    pso.BlendState.IndependentBlendEnable = TRUE;
+    uint32_t colorCount = 0;
+    for (uint32_t i = 0; i < RT_MAX_COLOR_TEXTURE_NUM; ++i)
+    {
+        if (info.colors[i].format == RT_TEXTURE_NONE)
+        {
+            pso.RTVFormats[i] = DXGI_FORMAT_UNKNOWN;
+            continue;
+        }
+        colorCount = i + 1;
+        auto& rt = pso.BlendState.RenderTarget[i];
+        bool blend =
+            (info.colors[i].color.func != RT_FUNC_ADD || info.colors[i].color.src != RT_BLEND_ONE ||
+             info.colors[i].color.dst != RT_BLEND_ZERO || info.colors[i].alpha.func != RT_FUNC_ADD ||
+             info.colors[i].alpha.src != RT_BLEND_ONE || info.colors[i].alpha.dst != RT_BLEND_ZERO);
+        rt.BlendEnable = blend;
+        rt.SrcBlend = rt_to_dx_blend(info.colors[i].color.src);
+        rt.DestBlend = rt_to_dx_blend(info.colors[i].color.dst);
+        rt.BlendOp = rt_to_dx_blend_op(info.colors[i].color.func);
+        rt.SrcBlendAlpha = rt_to_dx_blend(info.colors[i].alpha.src);
+        rt.DestBlendAlpha = rt_to_dx_blend(info.colors[i].alpha.dst);
+        rt.BlendOpAlpha = rt_to_dx_blend_op(info.colors[i].alpha.func);
+        rt.RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
+        pso.RTVFormats[i] = rt_to_dx_texture_format(info.colors[i].format);
+    }
+    native.colorCount = colorCount;
+    pso.NumRenderTargets = colorCount;
+    pso.SampleMask = UINT_MAX;
+    pso.SampleDesc.Count = 1;
+    pso.DepthStencilState.DepthEnable = depthEnabled;
+    pso.DepthStencilState.DepthWriteMask = info.depth.write ? D3D12_DEPTH_WRITE_MASK_ALL : D3D12_DEPTH_WRITE_MASK_ZERO;
+    pso.DepthStencilState.DepthFunc = rt_to_dx_compare(info.depth.func);
+    pso.DepthStencilState.StencilEnable = stencilEnabled;
+    pso.DepthStencilState.StencilReadMask = (UINT8)info.stencil.read;
+    pso.DepthStencilState.StencilWriteMask = (UINT8)info.stencil.write;
+    pso.DepthStencilState.FrontFace.StencilFailOp = rt_to_dx_stencil_op(info.stencil.front.sfail);
+    pso.DepthStencilState.FrontFace.StencilDepthFailOp = rt_to_dx_stencil_op(info.stencil.front.zfail);
+    pso.DepthStencilState.FrontFace.StencilPassOp = rt_to_dx_stencil_op(info.stencil.front.zpass);
+    pso.DepthStencilState.FrontFace.StencilFunc = rt_to_dx_compare(info.stencil.front.func);
+    pso.DepthStencilState.BackFace.StencilFailOp = rt_to_dx_stencil_op(info.stencil.back.sfail);
+    pso.DepthStencilState.BackFace.StencilDepthFailOp = rt_to_dx_stencil_op(info.stencil.back.zfail);
+    pso.DepthStencilState.BackFace.StencilPassOp = rt_to_dx_stencil_op(info.stencil.back.zpass);
+    pso.DepthStencilState.BackFace.StencilFunc = rt_to_dx_compare(info.stencil.back.func);
+    if (stencilEnabled) pso.DSVFormat = DXGI_FORMAT_D24_UNORM_S8_UINT;
+    else if (depthEnabled) pso.DSVFormat = DXGI_FORMAT_D32_FLOAT;
+    native.topology = rt_to_dx_topology(info.primitive);
+    if (FAILED(direct.device->CreateGraphicsPipelineState(&pso, IID_PPV_ARGS(&native.pipeline))))
     {
         result.native = &native;
         dx_destroy_module_native(handle, result.native);
@@ -1726,7 +1716,134 @@ rt_module_render_t dx_create_module_meshlet(rt_module_render_info_t const& info)
         native.fshader.pShaderBytecode = native.fcode.data();
         native.fshader.BytecodeLength = native.fcode.size();
     }
-    if (!dx_setup_root(native, info.binding) || !dx_create_graphics_pipeline(native, info, true))
+    native.descriptorCount = 0;
+    D3D12_DESCRIPTOR_RANGE ranges[RT_MAX_BINDING_HANDLE_NUM] = {};
+    D3D12_ROOT_PARAMETER params[1 + RT_MAX_BINDING_HANDLE_NUM] = {};
+    params[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
+    params[0].Constants.ShaderRegister = 16;
+    params[0].Constants.RegisterSpace = 0;
+    params[0].Constants.Num32BitValues = 32;
+    params[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+    uint32_t paramCount = 1;
+    for (uint32_t i = 0; i < RT_MAX_BINDING_HANDLE_NUM; ++i)
+    {
+        dx_binding_kind_t kind = DX_KIND_NONE;
+        D3D12_DESCRIPTOR_RANGE_TYPE rangeType = D3D12_DESCRIPTOR_RANGE_TYPE_CBV;
+        if (info.binding[i].type == RT_BINDING_BUFFER)
+        {
+            kind = DX_KIND_CBV;
+            rangeType = D3D12_DESCRIPTOR_RANGE_TYPE_CBV;
+        }
+        else if (info.binding[i].type == RT_BINDING_TEXTURE)
+        {
+            kind = DX_KIND_SRV;
+            rangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
+        }
+        else if (info.binding[i].type == RT_BINDING_STORAGE_TEXTURE)
+        {
+            kind = DX_KIND_UAV;
+            rangeType = D3D12_DESCRIPTOR_RANGE_TYPE_UAV;
+        }
+        else if (info.binding[i].type == RT_BINDING_SAMPLER)
+        {
+            kind = DX_KIND_SAMPLER;
+            rangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SAMPLER;
+        }
+        else continue;
+        native.kinds[native.descriptorCount] = kind;
+        native.descriptorBindings[native.descriptorCount] = info.binding[i].binding;
+        ranges[native.descriptorCount].RangeType = rangeType;
+        ranges[native.descriptorCount].NumDescriptors = 1;
+        ranges[native.descriptorCount].BaseShaderRegister = info.binding[i].binding;
+        ranges[native.descriptorCount].RegisterSpace = 0;
+        ranges[native.descriptorCount].OffsetInDescriptorsFromTableStart = 0;
+        params[paramCount].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+        params[paramCount].DescriptorTable.NumDescriptorRanges = 1;
+        params[paramCount].DescriptorTable.pDescriptorRanges = &ranges[native.descriptorCount];
+        params[paramCount].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+        native.descriptorCount++;
+        paramCount++;
+    }
+    D3D12_ROOT_SIGNATURE_DESC desc = {};
+    desc.NumParameters = paramCount;
+    desc.pParameters = params;
+    desc.Flags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
+    ComPtr<ID3DBlob> blob, error;
+    if (FAILED(D3D12SerializeRootSignature(&desc, D3D_ROOT_SIGNATURE_VERSION_1, &blob, &error)) ||
+        FAILED(direct.device->CreateRootSignature(0, blob->GetBufferPointer(), blob->GetBufferSize(),
+            IID_PPV_ARGS(&native.rootSignature))))
+    {
+        result.native = &native;
+        dx_destroy_module_native(handle, result.native);
+        return {};
+    }
+    const bool depthEnabled = (info.depth.func != RT_ALWAYS || info.depth.write);
+    const bool stencilEnabled =
+        (info.stencil.back.func != RT_ALWAYS || info.stencil.back.sfail != RT_STENCIL_KEEP ||
+         info.stencil.back.zfail != RT_STENCIL_KEEP || info.stencil.back.zpass != RT_STENCIL_KEEP ||
+         info.stencil.front.func != RT_ALWAYS || info.stencil.front.sfail != RT_STENCIL_KEEP ||
+         info.stencil.front.zfail != RT_STENCIL_KEEP || info.stencil.front.zpass != RT_STENCIL_KEEP);
+    D3D12_GRAPHICS_PIPELINE_STATE_DESC pso = {};
+    pso.pRootSignature = native.rootSignature.Get();
+    pso.VS = native.vshader;
+    pso.PS = native.fshader;
+    pso.InputLayout = {nullptr, 0};
+    pso.PrimitiveTopologyType = rt_to_dx_topology_type(info.primitive);
+    pso.RasterizerState.FillMode = rt_to_dx_fill(info.fill_mode);
+    pso.RasterizerState.CullMode = rt_to_dx_cull(info.cull_mode);
+    pso.RasterizerState.FrontCounterClockwise = (info.front_face != RT_CW);
+    pso.RasterizerState.DepthBias = (INT)info.depth.bias;
+    pso.RasterizerState.DepthBiasClamp = info.depth.biasClamp;
+    pso.RasterizerState.SlopeScaledDepthBias = info.depth.biasSlope;
+    pso.RasterizerState.DepthClipEnable = TRUE;
+    pso.BlendState.AlphaToCoverageEnable = FALSE;
+    pso.BlendState.IndependentBlendEnable = TRUE;
+    uint32_t colorCount = 0;
+    for (uint32_t i = 0; i < RT_MAX_COLOR_TEXTURE_NUM; ++i)
+    {
+        if (info.colors[i].format == RT_TEXTURE_NONE)
+        {
+            pso.RTVFormats[i] = DXGI_FORMAT_UNKNOWN;
+            continue;
+        }
+        colorCount = i + 1;
+        auto& rt = pso.BlendState.RenderTarget[i];
+        bool blend =
+            (info.colors[i].color.func != RT_FUNC_ADD || info.colors[i].color.src != RT_BLEND_ONE ||
+             info.colors[i].color.dst != RT_BLEND_ZERO || info.colors[i].alpha.func != RT_FUNC_ADD ||
+             info.colors[i].alpha.src != RT_BLEND_ONE || info.colors[i].alpha.dst != RT_BLEND_ZERO);
+        rt.BlendEnable = blend;
+        rt.SrcBlend = rt_to_dx_blend(info.colors[i].color.src);
+        rt.DestBlend = rt_to_dx_blend(info.colors[i].color.dst);
+        rt.BlendOp = rt_to_dx_blend_op(info.colors[i].color.func);
+        rt.SrcBlendAlpha = rt_to_dx_blend(info.colors[i].alpha.src);
+        rt.DestBlendAlpha = rt_to_dx_blend(info.colors[i].alpha.dst);
+        rt.BlendOpAlpha = rt_to_dx_blend_op(info.colors[i].alpha.func);
+        rt.RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
+        pso.RTVFormats[i] = rt_to_dx_texture_format(info.colors[i].format);
+    }
+    native.colorCount = colorCount;
+    pso.NumRenderTargets = colorCount;
+    pso.SampleMask = UINT_MAX;
+    pso.SampleDesc.Count = 1;
+    pso.DepthStencilState.DepthEnable = depthEnabled;
+    pso.DepthStencilState.DepthWriteMask = info.depth.write ? D3D12_DEPTH_WRITE_MASK_ALL : D3D12_DEPTH_WRITE_MASK_ZERO;
+    pso.DepthStencilState.DepthFunc = rt_to_dx_compare(info.depth.func);
+    pso.DepthStencilState.StencilEnable = stencilEnabled;
+    pso.DepthStencilState.StencilReadMask = (UINT8)info.stencil.read;
+    pso.DepthStencilState.StencilWriteMask = (UINT8)info.stencil.write;
+    pso.DepthStencilState.FrontFace.StencilFailOp = rt_to_dx_stencil_op(info.stencil.front.sfail);
+    pso.DepthStencilState.FrontFace.StencilDepthFailOp = rt_to_dx_stencil_op(info.stencil.front.zfail);
+    pso.DepthStencilState.FrontFace.StencilPassOp = rt_to_dx_stencil_op(info.stencil.front.zpass);
+    pso.DepthStencilState.FrontFace.StencilFunc = rt_to_dx_compare(info.stencil.front.func);
+    pso.DepthStencilState.BackFace.StencilFailOp = rt_to_dx_stencil_op(info.stencil.back.sfail);
+    pso.DepthStencilState.BackFace.StencilDepthFailOp = rt_to_dx_stencil_op(info.stencil.back.zfail);
+    pso.DepthStencilState.BackFace.StencilPassOp = rt_to_dx_stencil_op(info.stencil.back.zpass);
+    pso.DepthStencilState.BackFace.StencilFunc = rt_to_dx_compare(info.stencil.back.func);
+    if (stencilEnabled) pso.DSVFormat = DXGI_FORMAT_D24_UNORM_S8_UINT;
+    else if (depthEnabled) pso.DSVFormat = DXGI_FORMAT_D32_FLOAT;
+    native.topology = rt_to_dx_topology(info.primitive);
+    if (FAILED(direct.device->CreateGraphicsPipelineState(&pso, IID_PPV_ARGS(&native.pipeline))))
     {
         result.native = &native;
         dx_destroy_module_native(handle, result.native);
@@ -1824,7 +1941,9 @@ void dx_begin_compute(rt_pass_compute_t& pass)
         fprintf(stderr, "Pipeline module is not created\n");
         abort();
     }
-    dx_clear_bindings();
+    for (auto& binding : direct.currentBinding)
+        binding = {};
+    direct.pushCount = 0;
     auto handle = direct.passID + 1;
     auto& native = direct.computePasses[handle];
     pass.handle = handle;
@@ -1851,7 +1970,9 @@ void dx_end_compute(rt_pass_compute_t& pass)
     pass.native = nullptr;
     direct.currentPassType = RT_MODULE_NONE;
     direct.currentPipeline = nullptr;
-    dx_clear_bindings();
+    for (auto& binding : direct.currentBinding)
+        binding = {};
+    direct.pushCount = 0;
 }
 
 void dx_dispatch_compute(uint32_t groupX, uint32_t groupY, uint32_t groupZ)
@@ -1882,7 +2003,9 @@ void dx_begin_render(rt_pass_render_t& pass)
         fprintf(stderr, "Pipeline module is not created\n");
         abort();
     }
-    dx_clear_bindings();
+    for (auto& binding : direct.currentBinding)
+        binding = {};
+    direct.pushCount = 0;
     auto handle = direct.passID + 1;
     auto& native = direct.renderPasses[handle];
     pass.handle = handle;
@@ -1979,7 +2102,9 @@ void dx_end_render(rt_pass_render_t& pass)
     pass.native = nullptr;
     direct.currentPassType = RT_MODULE_NONE;
     direct.currentPipeline = nullptr;
-    dx_clear_bindings();
+    for (auto& binding : direct.currentBinding)
+        binding = {};
+    direct.pushCount = 0;
 }
 
 void dx_set_viewport(int32_t x, int32_t y, int32_t width, int32_t height)

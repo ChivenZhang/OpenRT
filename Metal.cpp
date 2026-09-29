@@ -759,12 +759,6 @@ static mt_module_native_t* mt_current_module_native()
     return nullptr;
 }
 
-static void mt_clear_bindings()
-{
-    for (auto& binding : metal.currentBinding)
-        binding = {};
-}
-
 static MTL::Function* mt_function_from_binary(MTL::Library* library, const char* entry)
 {
     if (!library) return nullptr;
@@ -890,57 +884,6 @@ static bool mt_create_depth_stencil(mt_module_native_t& native, rt_module_render
     for (uint32_t i = 0; i < RT_MAX_BINDING_HANDLE_NUM; ++i)
         native.bindings[i] = info.binding[i];
     return native.depthStencil != nullptr;
-}
-
-static bool mt_create_graphics_pipeline(mt_module_native_t& native, rt_module_render_info_t const& info, bool meshlet)
-{
-    const bool depthEnabled = (info.depth.func != RT_ALWAYS || info.depth.write);
-    const bool stencilEnabled =
-        (info.stencil.back.func != RT_ALWAYS || info.stencil.back.sfail != RT_STENCIL_KEEP ||
-         info.stencil.back.zfail != RT_STENCIL_KEEP || info.stencil.back.zpass != RT_STENCIL_KEEP ||
-         info.stencil.front.func != RT_ALWAYS || info.stencil.front.sfail != RT_STENCIL_KEEP ||
-         info.stencil.front.zfail != RT_STENCIL_KEEP || info.stencil.front.zpass != RT_STENCIL_KEEP);
-
-    NS::Error* error = nullptr;
-    if (meshlet)
-    {
-        MTL::MeshRenderPipelineDescriptor* desc = MTL::MeshRenderPipelineDescriptor::alloc()->init();
-        desc->setObjectFunction(native.tfn);
-        desc->setMeshFunction(native.mfn);
-        desc->setFragmentFunction(native.ffn);
-        mt_fill_color_attachments(desc->colorAttachments(), info);
-        if (stencilEnabled) desc->setDepthAttachmentPixelFormat(MTL::PixelFormatDepth32Float_Stencil8);
-        else if (depthEnabled) desc->setDepthAttachmentPixelFormat(MTL::PixelFormatDepth32Float);
-        native.renderPipeline = metal.device->newRenderPipelineState(desc, MTL::PipelineOptionNone, nullptr, &error);
-        mt_release(desc);
-    }
-    else
-    {
-        MTL::RenderPipelineDescriptor* desc = MTL::RenderPipelineDescriptor::alloc()->init();
-        desc->setVertexFunction(native.vfn);
-        desc->setFragmentFunction(native.ffn);
-        MTL::VertexDescriptor* vd = MTL::VertexDescriptor::alloc()->init();
-        for (uint32_t i = 0; i < RT_MAX_VERTEX_BUFFER_NUM; ++i)
-        {
-            if (info.vertex[i].format == RT_VERTEX_NONE) continue;
-            uint32_t loc = info.vertex[i].location;
-            vd->attributes()->object(loc)->setFormat(rt_to_mt_vertex_format(info.vertex[i].format));
-            vd->attributes()->object(loc)->setOffset(0);
-            vd->attributes()->object(loc)->setBufferIndex(loc);
-            vd->layouts()->object(loc)->setStride(rt_to_mt_vertex_size(info.vertex[i].format));
-            vd->layouts()->object(loc)->setStepFunction(info.vertex[i].instance ? MTL::VertexStepFunctionPerInstance : MTL::VertexStepFunctionPerVertex);
-            vd->layouts()->object(loc)->setStepRate(1);
-        }
-        desc->setVertexDescriptor(vd);
-        mt_release(vd);
-        mt_fill_color_attachments(desc->colorAttachments(), info);
-        if (stencilEnabled) desc->setDepthAttachmentPixelFormat(MTL::PixelFormatDepth32Float_Stencil8);
-        else if (depthEnabled) desc->setDepthAttachmentPixelFormat(MTL::PixelFormatDepth32Float);
-        native.renderPipeline = metal.device->newRenderPipelineState(desc, &error);
-        mt_release(desc);
-    }
-    if (!native.renderPipeline) return false;
-    return mt_create_depth_stencil(native, info, stencilEnabled);
 }
 
 static void mt_destroy_module_native(uint32_t handle, void*& native)
@@ -1548,7 +1491,36 @@ rt_module_render_t mt_create_module_render(rt_module_render_info_t const& info)
         native.flib = mt_create_library(info.fshader.code, info.fshader.size);
         native.ffn = mt_function_from_binary(native.flib, info.fshader.entry);
     }
-    if (!mt_create_graphics_pipeline(native, info, false))
+    const bool depthEnabled = (info.depth.func != RT_ALWAYS || info.depth.write);
+    const bool stencilEnabled =
+        (info.stencil.back.func != RT_ALWAYS || info.stencil.back.sfail != RT_STENCIL_KEEP ||
+         info.stencil.back.zfail != RT_STENCIL_KEEP || info.stencil.back.zpass != RT_STENCIL_KEEP ||
+         info.stencil.front.func != RT_ALWAYS || info.stencil.front.sfail != RT_STENCIL_KEEP ||
+         info.stencil.front.zfail != RT_STENCIL_KEEP || info.stencil.front.zpass != RT_STENCIL_KEEP);
+    NS::Error* error = nullptr;
+    MTL::RenderPipelineDescriptor* desc = MTL::RenderPipelineDescriptor::alloc()->init();
+    desc->setVertexFunction(native.vfn);
+    desc->setFragmentFunction(native.ffn);
+    MTL::VertexDescriptor* vd = MTL::VertexDescriptor::alloc()->init();
+    for (uint32_t i = 0; i < RT_MAX_VERTEX_BUFFER_NUM; ++i)
+    {
+        if (info.vertex[i].format == RT_VERTEX_NONE) continue;
+        uint32_t loc = info.vertex[i].location;
+        vd->attributes()->object(loc)->setFormat(rt_to_mt_vertex_format(info.vertex[i].format));
+        vd->attributes()->object(loc)->setOffset(0);
+        vd->attributes()->object(loc)->setBufferIndex(loc);
+        vd->layouts()->object(loc)->setStride(rt_to_mt_vertex_size(info.vertex[i].format));
+        vd->layouts()->object(loc)->setStepFunction(info.vertex[i].instance ? MTL::VertexStepFunctionPerInstance : MTL::VertexStepFunctionPerVertex);
+        vd->layouts()->object(loc)->setStepRate(1);
+    }
+    desc->setVertexDescriptor(vd);
+    mt_release(vd);
+    mt_fill_color_attachments(desc->colorAttachments(), info);
+    if (stencilEnabled) desc->setDepthAttachmentPixelFormat(MTL::PixelFormatDepth32Float_Stencil8);
+    else if (depthEnabled) desc->setDepthAttachmentPixelFormat(MTL::PixelFormatDepth32Float);
+    native.renderPipeline = metal.device->newRenderPipelineState(desc, &error);
+    mt_release(desc);
+    if (!native.renderPipeline || !mt_create_depth_stencil(native, info, stencilEnabled))
     {
         result.native = &native;
         mt_destroy_module_native(handle, result.native);
@@ -1579,7 +1551,29 @@ rt_module_render_t mt_create_module_meshlet(rt_module_render_info_t const& info)
         native.flib = mt_create_library(info.fshader.code, info.fshader.size);
         native.ffn = mt_function_from_binary(native.flib, info.fshader.entry);
     }
-    if (!native.mfn || !mt_create_graphics_pipeline(native, info, true))
+    const bool depthEnabled = (info.depth.func != RT_ALWAYS || info.depth.write);
+    const bool stencilEnabled =
+        (info.stencil.back.func != RT_ALWAYS || info.stencil.back.sfail != RT_STENCIL_KEEP ||
+         info.stencil.back.zfail != RT_STENCIL_KEEP || info.stencil.back.zpass != RT_STENCIL_KEEP ||
+         info.stencil.front.func != RT_ALWAYS || info.stencil.front.sfail != RT_STENCIL_KEEP ||
+         info.stencil.front.zfail != RT_STENCIL_KEEP || info.stencil.front.zpass != RT_STENCIL_KEEP);
+    if (!native.mfn)
+    {
+        result.native = &native;
+        mt_destroy_module_native(handle, result.native);
+        return {};
+    }
+    NS::Error* error = nullptr;
+    MTL::MeshRenderPipelineDescriptor* desc = MTL::MeshRenderPipelineDescriptor::alloc()->init();
+    desc->setObjectFunction(native.tfn);
+    desc->setMeshFunction(native.mfn);
+    desc->setFragmentFunction(native.ffn);
+    mt_fill_color_attachments(desc->colorAttachments(), info);
+    if (stencilEnabled) desc->setDepthAttachmentPixelFormat(MTL::PixelFormatDepth32Float_Stencil8);
+    else if (depthEnabled) desc->setDepthAttachmentPixelFormat(MTL::PixelFormatDepth32Float);
+    native.renderPipeline = metal.device->newRenderPipelineState(desc, MTL::PipelineOptionNone, nullptr, &error);
+    mt_release(desc);
+    if (!native.renderPipeline || !mt_create_depth_stencil(native, info, stencilEnabled))
     {
         result.native = &native;
         mt_destroy_module_native(handle, result.native);
@@ -1638,7 +1632,8 @@ void mt_begin_compute(rt_pass_compute_t& pass)
         fprintf(stderr, "Pipeline module is not created\n");
         abort();
     }
-    mt_clear_bindings();
+    for (auto& binding : metal.currentBinding)
+        binding = {};
     auto handle = metal.passID + 1;
     auto& native = metal.computePasses[handle];
     pass.handle = handle;
@@ -1671,7 +1666,8 @@ void mt_end_compute(rt_pass_compute_t& pass)
     pass.native = nullptr;
     metal.currentPassType = RT_MODULE_NONE;
     metal.currentPipeline = nullptr;
-    mt_clear_bindings();
+    for (auto& binding : metal.currentBinding)
+        binding = {};
 }
 
 void mt_dispatch_compute(uint32_t groupX, uint32_t groupY, uint32_t groupZ)
@@ -1707,7 +1703,8 @@ void mt_begin_render(rt_pass_render_t& pass)
         fprintf(stderr, "Pipeline module is not created\n");
         abort();
     }
-    mt_clear_bindings();
+    for (auto& binding : metal.currentBinding)
+        binding = {};
     auto handle = metal.passID + 1;
     auto& native = metal.renderPasses[handle];
     pass.handle = handle;
@@ -1796,7 +1793,8 @@ void mt_end_render(rt_pass_render_t& pass)
     pass.native = nullptr;
     metal.currentPassType = RT_MODULE_NONE;
     metal.currentPipeline = nullptr;
-    mt_clear_bindings();
+    for (auto& binding : metal.currentBinding)
+        binding = {};
 }
 
 void mt_set_viewport(int32_t x, int32_t y, int32_t width, int32_t height)

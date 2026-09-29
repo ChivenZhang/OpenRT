@@ -643,12 +643,6 @@ static wg_module_native_t* wg_current_module_native()
     return nullptr;
 }
 
-static void wg_clear_bindings()
-{
-    for (auto& binding : webgpu.currentBinding)
-        binding = {};
-}
-
 static bool wg_create_pipeline_layout(wg_module_native_t& native, rt_binding_t const* bindings)
 {
     WGPUBindGroupLayoutEntry entries[RT_MAX_BINDING_HANDLE_NUM + 1] = {};
@@ -709,90 +703,6 @@ static bool wg_create_pipeline_layout(wg_module_native_t& native, rt_binding_t c
     pipeDesc.bindGroupLayouts = &native.bindGroupLayout;
     native.pipelineLayout = wgpuDeviceCreatePipelineLayout(webgpu.device, &pipeDesc);
     return native.pipelineLayout != nullptr;
-}
-
-static bool wg_create_graphics_pipeline(wg_module_native_t& native, rt_module_render_info_t const& info)
-{
-    if (!native.vshader) return false;
-    WGPUVertexAttribute attributes[RT_MAX_VERTEX_BUFFER_NUM] = {};
-    WGPUVertexBufferLayout layouts[RT_MAX_VERTEX_BUFFER_NUM] = {};
-    uint32_t attrCount = 0;
-    for (uint32_t i = 0; i < RT_MAX_VERTEX_BUFFER_NUM; ++i)
-    {
-        if (info.vertex[i].format == RT_VERTEX_NONE) continue;
-        attributes[attrCount].format = rt_to_wg_vertex_format(info.vertex[i].format);
-        attributes[attrCount].offset = 0;
-        attributes[attrCount].shaderLocation = info.vertex[i].location;
-        layouts[attrCount].arrayStride = rt_to_wg_vertex_size(info.vertex[i].format);
-        layouts[attrCount].stepMode = info.vertex[i].instance ? WGPUVertexStepMode_Instance : WGPUVertexStepMode_Vertex;
-        layouts[attrCount].attributeCount = 1;
-        layouts[attrCount].attributes = &attributes[attrCount];
-        attrCount++;
-    }
-
-    WGPUColorTargetState targets[RT_MAX_COLOR_TEXTURE_NUM] = {};
-    WGPUBlendState blends[RT_MAX_COLOR_TEXTURE_NUM] = {};
-    uint32_t colorCount = 0;
-    for (uint32_t i = 0; i < RT_MAX_COLOR_TEXTURE_NUM; ++i)
-    {
-        if (info.colors[i].format == RT_TEXTURE_NONE)
-            continue;
-        colorCount = i + 1;
-        targets[i].format = rt_to_wg_texture_format(info.colors[i].format);
-        targets[i].writeMask = WGPUColorWriteMask_All;
-        bool blend =
-            (info.colors[i].color.func != RT_FUNC_ADD || info.colors[i].color.src != RT_BLEND_ONE ||
-             info.colors[i].color.dst != RT_BLEND_ZERO || info.colors[i].alpha.func != RT_FUNC_ADD ||
-             info.colors[i].alpha.src != RT_BLEND_ONE || info.colors[i].alpha.dst != RT_BLEND_ZERO);
-        if (blend)
-        {
-            blends[i].color.srcFactor = rt_to_wg_blend(info.colors[i].color.src);
-            blends[i].color.dstFactor = rt_to_wg_blend(info.colors[i].color.dst);
-            blends[i].color.operation = rt_to_wg_blend_op(info.colors[i].color.func);
-            blends[i].alpha.srcFactor = rt_to_wg_blend(info.colors[i].alpha.src);
-            blends[i].alpha.dstFactor = rt_to_wg_blend(info.colors[i].alpha.dst);
-            blends[i].alpha.operation = rt_to_wg_blend_op(info.colors[i].alpha.func);
-            targets[i].blend = &blends[i];
-        }
-    }
-
-    WGPUFragmentState fragment = {};
-    fragment.module = native.fshader;
-    fragment.entryPoint = (info.fshader.entry && info.fshader.entry[0]) ? info.fshader.entry : "main";
-    fragment.targetCount = colorCount;
-    fragment.targets = colorCount ? targets : nullptr;
-
-    const bool depthEnabled = (info.depth.func != RT_ALWAYS || info.depth.write);
-    const bool stencilEnabled =
-        (info.stencil.back.func != RT_ALWAYS || info.stencil.back.sfail != RT_STENCIL_KEEP ||
-         info.stencil.back.zfail != RT_STENCIL_KEEP || info.stencil.back.zpass != RT_STENCIL_KEEP ||
-         info.stencil.front.func != RT_ALWAYS || info.stencil.front.sfail != RT_STENCIL_KEEP ||
-         info.stencil.front.zfail != RT_STENCIL_KEEP || info.stencil.front.zpass != RT_STENCIL_KEEP);
-    WGPUDepthStencilState depth = {};
-    depth.format = stencilEnabled ? WGPUTextureFormat_Depth32FloatStencil8 : WGPUTextureFormat_Depth32Float;
-    depth.depthWriteEnabled = info.depth.write;
-    depth.depthCompare = rt_to_wg_compare(info.depth.func);
-    depth.stencilFront.compare = rt_to_wg_compare(info.stencil.front.func);
-    depth.stencilBack.compare = rt_to_wg_compare(info.stencil.back.func);
-    depth.stencilReadMask = info.stencil.read;
-    depth.stencilWriteMask = info.stencil.write;
-
-    WGPURenderPipelineDescriptor desc = {};
-    desc.layout = native.pipelineLayout;
-    desc.vertex.module = native.vshader;
-    desc.vertex.entryPoint = (info.vshader.entry && info.vshader.entry[0]) ? info.vshader.entry : "main";
-    desc.vertex.bufferCount = attrCount;
-    desc.vertex.buffers = layouts;
-    desc.primitive.topology = rt_to_wg_primitive(info.primitive);
-    desc.primitive.frontFace = (info.front_face == RT_CW) ? WGPUFrontFace_CW : WGPUFrontFace_CCW;
-    desc.primitive.cullMode = rt_to_wg_cull(info.cull_mode);
-    desc.multisample.count = 1;
-    desc.multisample.mask = 0xFFFFFFFF;
-    if (native.fshader) desc.fragment = &fragment;
-    if (depthEnabled || stencilEnabled) desc.depthStencil = &depth;
-    native.renderPipeline = wgpuDeviceCreateRenderPipeline(webgpu.device, &desc);
-    native.topology = desc.primitive.topology;
-    return native.renderPipeline != nullptr;
 }
 
 static void wg_destroy_module_native(uint32_t handle, void*& native)
@@ -1434,7 +1344,87 @@ rt_module_render_t wg_create_module_render(rt_module_render_info_t const& info)
     auto& native = webgpu.modules[handle];
     if (info.vshader.code) native.vshader = wg_create_shader(info.vshader.code, info.vshader.size);
     if (info.fshader.code) native.fshader = wg_create_shader(info.fshader.code, info.fshader.size);
-    if (!wg_create_pipeline_layout(native, info.binding) || !wg_create_graphics_pipeline(native, info))
+    if (!wg_create_pipeline_layout(native, info.binding) || !native.vshader)
+    {
+        result.native = &native;
+        wg_destroy_module_native(handle, result.native);
+        return {};
+    }
+    WGPUVertexAttribute attributes[RT_MAX_VERTEX_BUFFER_NUM] = {};
+    WGPUVertexBufferLayout layouts[RT_MAX_VERTEX_BUFFER_NUM] = {};
+    uint32_t attrCount = 0;
+    for (uint32_t i = 0; i < RT_MAX_VERTEX_BUFFER_NUM; ++i)
+    {
+        if (info.vertex[i].format == RT_VERTEX_NONE) continue;
+        attributes[attrCount].format = rt_to_wg_vertex_format(info.vertex[i].format);
+        attributes[attrCount].offset = 0;
+        attributes[attrCount].shaderLocation = info.vertex[i].location;
+        layouts[attrCount].arrayStride = rt_to_wg_vertex_size(info.vertex[i].format);
+        layouts[attrCount].stepMode = info.vertex[i].instance ? WGPUVertexStepMode_Instance : WGPUVertexStepMode_Vertex;
+        layouts[attrCount].attributeCount = 1;
+        layouts[attrCount].attributes = &attributes[attrCount];
+        attrCount++;
+    }
+    WGPUColorTargetState targets[RT_MAX_COLOR_TEXTURE_NUM] = {};
+    WGPUBlendState blends[RT_MAX_COLOR_TEXTURE_NUM] = {};
+    uint32_t colorCount = 0;
+    for (uint32_t i = 0; i < RT_MAX_COLOR_TEXTURE_NUM; ++i)
+    {
+        if (info.colors[i].format == RT_TEXTURE_NONE)
+            continue;
+        colorCount = i + 1;
+        targets[i].format = rt_to_wg_texture_format(info.colors[i].format);
+        targets[i].writeMask = WGPUColorWriteMask_All;
+        bool blend =
+            (info.colors[i].color.func != RT_FUNC_ADD || info.colors[i].color.src != RT_BLEND_ONE ||
+             info.colors[i].color.dst != RT_BLEND_ZERO || info.colors[i].alpha.func != RT_FUNC_ADD ||
+             info.colors[i].alpha.src != RT_BLEND_ONE || info.colors[i].alpha.dst != RT_BLEND_ZERO);
+        if (blend)
+        {
+            blends[i].color.srcFactor = rt_to_wg_blend(info.colors[i].color.src);
+            blends[i].color.dstFactor = rt_to_wg_blend(info.colors[i].color.dst);
+            blends[i].color.operation = rt_to_wg_blend_op(info.colors[i].color.func);
+            blends[i].alpha.srcFactor = rt_to_wg_blend(info.colors[i].alpha.src);
+            blends[i].alpha.dstFactor = rt_to_wg_blend(info.colors[i].alpha.dst);
+            blends[i].alpha.operation = rt_to_wg_blend_op(info.colors[i].alpha.func);
+            targets[i].blend = &blends[i];
+        }
+    }
+    WGPUFragmentState fragment = {};
+    fragment.module = native.fshader;
+    fragment.entryPoint = (info.fshader.entry && info.fshader.entry[0]) ? info.fshader.entry : "main";
+    fragment.targetCount = colorCount;
+    fragment.targets = colorCount ? targets : nullptr;
+    const bool depthEnabled = (info.depth.func != RT_ALWAYS || info.depth.write);
+    const bool stencilEnabled =
+        (info.stencil.back.func != RT_ALWAYS || info.stencil.back.sfail != RT_STENCIL_KEEP ||
+         info.stencil.back.zfail != RT_STENCIL_KEEP || info.stencil.back.zpass != RT_STENCIL_KEEP ||
+         info.stencil.front.func != RT_ALWAYS || info.stencil.front.sfail != RT_STENCIL_KEEP ||
+         info.stencil.front.zfail != RT_STENCIL_KEEP || info.stencil.front.zpass != RT_STENCIL_KEEP);
+    WGPUDepthStencilState depth = {};
+    depth.format = stencilEnabled ? WGPUTextureFormat_Depth32FloatStencil8 : WGPUTextureFormat_Depth32Float;
+    depth.depthWriteEnabled = info.depth.write;
+    depth.depthCompare = rt_to_wg_compare(info.depth.func);
+    depth.stencilFront.compare = rt_to_wg_compare(info.stencil.front.func);
+    depth.stencilBack.compare = rt_to_wg_compare(info.stencil.back.func);
+    depth.stencilReadMask = info.stencil.read;
+    depth.stencilWriteMask = info.stencil.write;
+    WGPURenderPipelineDescriptor desc = {};
+    desc.layout = native.pipelineLayout;
+    desc.vertex.module = native.vshader;
+    desc.vertex.entryPoint = (info.vshader.entry && info.vshader.entry[0]) ? info.vshader.entry : "main";
+    desc.vertex.bufferCount = attrCount;
+    desc.vertex.buffers = layouts;
+    desc.primitive.topology = rt_to_wg_primitive(info.primitive);
+    desc.primitive.frontFace = (info.front_face == RT_CW) ? WGPUFrontFace_CW : WGPUFrontFace_CCW;
+    desc.primitive.cullMode = rt_to_wg_cull(info.cull_mode);
+    desc.multisample.count = 1;
+    desc.multisample.mask = 0xFFFFFFFF;
+    if (native.fshader) desc.fragment = &fragment;
+    if (depthEnabled || stencilEnabled) desc.depthStencil = &depth;
+    native.renderPipeline = wgpuDeviceCreateRenderPipeline(webgpu.device, &desc);
+    native.topology = desc.primitive.topology;
+    if (!native.renderPipeline)
     {
         result.native = &native;
         wg_destroy_module_native(handle, result.native);
@@ -1583,7 +1573,8 @@ void wg_begin_compute(rt_pass_compute_t& pass)
         fprintf(stderr, "Pipeline not end");
         abort();
     }
-    wg_clear_bindings();
+    for (auto& binding : webgpu.currentBinding)
+        binding = {};
     auto handle = webgpu.passID + 1;
     auto& native = webgpu.computePasses[handle];
     pass.handle = handle;
@@ -1617,7 +1608,8 @@ void wg_end_compute(rt_pass_compute_t& pass)
     pass.native = nullptr;
     webgpu.currentPassType = RT_MODULE_NONE;
     webgpu.currentPipeline = nullptr;
-    wg_clear_bindings();
+    for (auto& binding : webgpu.currentBinding)
+        binding = {};
 }
 
 void wg_dispatch_compute(uint32_t groupX, uint32_t groupY, uint32_t groupZ)
@@ -1649,7 +1641,8 @@ void wg_begin_render(rt_pass_render_t& pass)
         fprintf(stderr, "Pipeline not end");
         abort();
     }
-    wg_clear_bindings();
+    for (auto& binding : webgpu.currentBinding)
+        binding = {};
     auto handle = webgpu.passID + 1;
     auto& native = webgpu.renderPasses[handle];
     pass.handle = handle;
@@ -1748,7 +1741,8 @@ void wg_end_render(rt_pass_render_t& pass)
     pass.native = nullptr;
     webgpu.currentPassType = RT_MODULE_NONE;
     webgpu.currentPipeline = nullptr;
-    wg_clear_bindings();
+    for (auto& binding : webgpu.currentBinding)
+        binding = {};
 }
 
 void wg_set_viewport(int32_t x, int32_t y, int32_t width, int32_t height)
