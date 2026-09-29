@@ -12,13 +12,13 @@
 #define NOMINMAX
 #define OPENRTX_IMPLEMENTATION
 #include "../../OpenRTX.h"
-#include "../../DirectX.h"
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_properties.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
-#include <d3dcompiler.h>
+#include <d3d12.h>
 #include <dxgi1_6.h>
+#include <d3dcompiler.h>
 #include <wrl/client.h>
 #include <cstdio>
 #include <vector>
@@ -294,7 +294,7 @@ int main()
     device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&presentFence));
     presentEvent = CreateEventW(nullptr, FALSE, FALSE, nullptr);
 
-    dx_load_library(device.Get(), queue.Get());
+    rt_load_library("directx", {.directx = {.device = device.Get(), .queue = queue.Get()}});
 
     bool running = true;
     while (running)

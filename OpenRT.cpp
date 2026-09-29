@@ -9,6 +9,9 @@
 *
 * =================================================*/
 #include "OpenRT.h"
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
 #ifdef OPENGL_IMPLEMENTATION
 #include "OpenGL.h"
 #endif
@@ -26,31 +29,66 @@
 #endif
 #include <string>
 
-void rt_load_library(const char* backend)
+void rt_load_library(const char* backend, rt_load_info_t const& info)
 {
+    if (backend == nullptr || strcmp(backend, "opengl") == 0)
+    {
 #ifdef OPENGL_IMPLEMENTATION
-    if (backend == nullptr) { gl_load_library(); return; }
+        gl_load_library();
+#else
+        fprintf(stderr, "OpenRT: OpenGL backend is not built\n");
+        abort();
 #endif
-
-#ifdef OPENGL_IMPLEMENTATION
-    if (strcmp(backend, "opengl") == 0) { gl_load_library(); return; }
-#endif
-
+        return;
+    }
+    if (strcmp(backend, "vulkan") == 0)
+    {
 #ifdef VULKAN_IMPLEMENTATION
-    // if (strcmp(backend, "vulkan") == 0) { vk_load_library(instance, device, queue, family); return; }
+        vk_load_library(
+            static_cast<VkInstance>(info.vulkan.instance),
+            static_cast<VkPhysicalDevice>(info.vulkan.physical),
+            static_cast<VkDevice>(info.vulkan.device),
+            static_cast<VkQueue>(info.vulkan.queue),
+            static_cast<VkCommandBuffer>(info.vulkan.cmdbuf),
+            info.vulkan.family);
+#else
+        fprintf(stderr, "OpenRT: Vulkan backend is not built\n");
+        abort();
 #endif
-
+        return;
+    }
+    if (strcmp(backend, "directx") == 0)
+    {
 #ifdef DIRECTX_IMPLEMENTATION
-    // if (strcmp(backend, "directx") == 0) { dx_load_library(device, queue); return; }
+        dx_load_library(static_cast<ID3D12Device*>(info.directx.device), static_cast<ID3D12CommandQueue*>(info.directx.queue));
+#else
+        fprintf(stderr, "OpenRT: DirectX backend is not built\n");
+        abort();
 #endif
-    
+        return;
+    }
+    if (strcmp(backend, "metal") == 0)
+    {
 #ifdef METAL_IMPLEMENTATION
-    // if (strcmp(backend, "metal") == 0) { mt_load_library(device, queue); return; }
+        mt_load_library(static_cast<MTL::Device*>(info.metal.device), static_cast<MTL::CommandQueue*>(info.metal.queue));
+#else
+        fprintf(stderr, "OpenRT: Metal backend is not built\n");
+        abort();
 #endif
-
+        return;
+    }
+    if (strcmp(backend, "webgpu") == 0)
+    {
 #ifdef WEBGPU_IMPLEMENTATION
-    // if (strcmp(backend, "webgpu") == 0) { wg_load_library(device, queue); return; }
+        wg_load_library(static_cast<WGPUDevice>(info.webgpu.device), static_cast<WGPUQueue>(info.webgpu.queue));
+#else
+        fprintf(stderr, "OpenRT: WebGPU backend is not built\n");
+        abort();
 #endif
+        return;
+    }
+    fprintf(stderr, "OpenRT: unknown backend %s\n", backend);
+    abort();
 }
 
 void (*rt_unload_library)() = nullptr;
@@ -62,10 +100,6 @@ void* (*rt_map_buffer)(rt_buffer_t& buffer, rt_access_t mode, size_t offset, siz
 void (*rt_unmap_buffer)(rt_buffer_t& buffer) = nullptr;
 
 rt_texture_t (*rt_create_texture)(rt_texture_info_t const& info) = nullptr;
-rt_texture_t (*rt_create_texture_color)(uint32_t width, uint32_t height) = nullptr;
-rt_texture_t (*rt_create_texture_color_float)(uint32_t width, uint32_t height) = nullptr;
-rt_texture_t (*rt_create_texture_depth)(uint32_t width, uint32_t height) = nullptr;
-rt_texture_t (*rt_create_texture_depth_stencil)(uint32_t width, uint32_t height) = nullptr;
 void (*rt_destroy_texture)(rt_texture_t& texture) = nullptr;
 void (*rt_bind_texture)(rt_texture_t& texture, rt_texture_bind_t bind) = nullptr;
 void (*rt_bind_texture_storage)(rt_texture_t& texture, rt_texture_storage_bind_t bind) = nullptr;

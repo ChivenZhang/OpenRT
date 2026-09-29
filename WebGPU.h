@@ -23,10 +23,6 @@ void* wg_map_buffer(rt_buffer_t& buffer, rt_access_t mode, size_t offset, size_t
 void wg_unmap_buffer(rt_buffer_t& buffer);
 
 rt_texture_t wg_create_texture(rt_texture_info_t const& info);
-rt_texture_t wg_create_texture_color(uint32_t width, uint32_t height);
-rt_texture_t wg_create_texture_color_float(uint32_t width, uint32_t height);
-rt_texture_t wg_create_texture_depth(uint32_t width, uint32_t height);
-rt_texture_t wg_create_texture_depth_stencil(uint32_t width, uint32_t height);
 void wg_destroy_texture(rt_texture_t& texture);
 void wg_bind_texture(rt_texture_t& texture, rt_texture_bind_t bind = {});
 void wg_bind_texture_storage(rt_texture_t& texture, rt_texture_storage_bind_t bind = {});

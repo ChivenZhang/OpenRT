@@ -11,7 +11,6 @@
 #define CA_PRIVATE_IMPLEMENTATION
 #define OPENRTX_IMPLEMENTATION
 #include "../../OpenRTX.h"
-#include "../../Metal.h"
 #include <Foundation/Foundation.hpp>
 #include <Metal/Metal.hpp>
 #include <QuartzCore/CAMetalLayer.hpp>
@@ -148,7 +147,7 @@ int main()
     layer->setPixelFormat(MTL::PixelFormatBGRA8Unorm);
     layer->setFramebufferOnly(false);
 
-    mt_load_library(device, queue);
+    rt_load_library("metal", {.metal = {.device = device, .queue = queue}});
 
     bool running = true;
     while (running)

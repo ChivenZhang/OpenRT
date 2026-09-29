@@ -11,10 +11,10 @@
 #define OPENRTX_IMPLEMENTATION
 #define WEBGPU_IMPLEMENTATION
 #include "../../OpenRTX.h"
-#include "../../WebGPU.h"
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_properties.h>
 #include <emscripten.h>
+#include <webgpu/webgpu.h>
 #include <cstdio>
 #include <cstring>
 
@@ -225,7 +225,7 @@ static void on_device(WGPURequestDeviceStatus status, WGPUDevice dev, char const
     queue = wgpuDeviceGetQueue(device);
     wgpuDeviceSetUncapturedErrorCallback(device, on_error, nullptr);
     choose_format(wgpuSurfaceGetPreferredFormat(surface, adapter));
-    wg_load_library(device, queue);
+    rt_load_library("webgpu", {.webgpu = {.device = device, .queue = queue}});
     gpuReady = true;
     if (adapter)
     {

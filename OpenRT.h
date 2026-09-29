@@ -350,6 +350,44 @@ enum rt_module_type_t : uint32_t
     RT_MODULE_TRANSFER,
 };
 
+// ====================================================================
+
+struct rt_load_info_t
+{
+    union
+    {
+        struct
+        {
+        } opengl;
+        struct
+        {
+            void* instance = nullptr;
+            void* physical = nullptr;
+            void* device = nullptr;
+            void* queue = nullptr;
+            void* cmdbuf = nullptr;
+            uint32_t family = 0;
+        } vulkan;
+        struct
+        {
+            void* device = nullptr;
+            void* queue = nullptr;
+        } directx;
+        struct
+        {
+            void* device = nullptr;
+            void* queue = nullptr;
+        } metal;
+        struct
+        {
+            void* device = nullptr;
+            void* queue = nullptr;
+        } webgpu;
+    };
+};
+
+// ====================================================================
+
 struct rt_buffer_t
 {
     uint32_t handle = 0;
@@ -755,7 +793,7 @@ struct rt_texture_data_t
 
 // ====================================================================
 
-OPENRT_API void rt_load_library(const char* backend = nullptr);
+OPENRT_API void rt_load_library(const char* backend = nullptr, rt_load_info_t const& info = {});
 OPENRT_API void (*rt_unload_library)();
 
 OPENRT_API rt_buffer_t (*rt_create_buffer)(rt_buffer_info_t const& info);
@@ -765,10 +803,6 @@ OPENRT_API void* (*rt_map_buffer)(rt_buffer_t& buffer, rt_access_t mode, size_t 
 OPENRT_API void (*rt_unmap_buffer)(rt_buffer_t& buffer);
 
 OPENRT_API rt_texture_t (*rt_create_texture)(rt_texture_info_t const& info);
-OPENRT_API rt_texture_t (*rt_create_texture_color)(uint32_t width, uint32_t height);
-OPENRT_API rt_texture_t (*rt_create_texture_color_float)(uint32_t width, uint32_t height);
-OPENRT_API rt_texture_t (*rt_create_texture_depth)(uint32_t width, uint32_t height);
-OPENRT_API rt_texture_t (*rt_create_texture_depth_stencil)(uint32_t width, uint32_t height);
 OPENRT_API void (*rt_destroy_texture)(rt_texture_t& texture);
 OPENRT_API void (*rt_bind_texture)(rt_texture_t& texture, rt_texture_bind_t bind);
 OPENRT_API void (*rt_bind_texture_storage)(rt_texture_t& texture, rt_texture_storage_bind_t bind);

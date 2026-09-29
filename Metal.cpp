@@ -1052,8 +1052,8 @@ void mt_load_library(MTL::Device* device, MTL::CommandQueue* queue)
     }
     if (!metal.queue)
     {
-        metal.queue = metal.device->newCommandQueue();
-        metal.ownsQueue = true;
+        fprintf(stderr, "Metal: queue is null\n");
+        abort();
     }
     mt_retain_cmd(metal.queue->commandBuffer());
 
@@ -1064,10 +1064,6 @@ void mt_load_library(MTL::Device* device, MTL::CommandQueue* queue)
     rt_map_buffer = mt_map_buffer;
     rt_unmap_buffer = mt_unmap_buffer;
     rt_create_texture = mt_create_texture;
-    rt_create_texture_color = mt_create_texture_color;
-    rt_create_texture_color_float = mt_create_texture_color_float;
-    rt_create_texture_depth = mt_create_texture_depth;
-    rt_create_texture_depth_stencil = mt_create_texture_depth_stencil;
     rt_destroy_texture = mt_destroy_texture;
     rt_bind_texture = mt_bind_texture;
     rt_bind_texture_storage = mt_bind_texture_storage;
@@ -1162,10 +1158,6 @@ void mt_unload_library()
     if (rt_map_buffer == mt_map_buffer) rt_map_buffer = nullptr;
     if (rt_unmap_buffer == mt_unmap_buffer) rt_unmap_buffer = nullptr;
     if (rt_create_texture == mt_create_texture) rt_create_texture = nullptr;
-    if (rt_create_texture_color == mt_create_texture_color) rt_create_texture_color = nullptr;
-    if (rt_create_texture_color_float == mt_create_texture_color_float) rt_create_texture_color_float = nullptr;
-    if (rt_create_texture_depth == mt_create_texture_depth) rt_create_texture_depth = nullptr;
-    if (rt_create_texture_depth_stencil == mt_create_texture_depth_stencil) rt_create_texture_depth_stencil = nullptr;
     if (rt_destroy_texture == mt_destroy_texture) rt_destroy_texture = nullptr;
     if (rt_bind_texture == mt_bind_texture) rt_bind_texture = nullptr;
     if (rt_bind_texture_storage == mt_bind_texture_storage) rt_bind_texture_storage = nullptr;
@@ -1401,46 +1393,6 @@ rt_texture_t mt_create_texture(rt_texture_info_t const& info)
         .level_count = native.levels,
     });
     return result;
-}
-
-rt_texture_t mt_create_texture_color(uint32_t width, uint32_t height)
-{
-    return mt_create_texture({
-        .width = width, .height = height, .target = RT_TEXTURE_2D,
-        .format = RT_TEXTURE_RGBA8UNORM,
-        .min_filter = RT_LINEAR, .mag_filter = RT_LINEAR,
-        .address_u = RT_CLAMP_TO_EDGE, .address_v = RT_CLAMP_TO_EDGE, .address_w = RT_CLAMP_TO_EDGE,
-    });
-}
-
-rt_texture_t mt_create_texture_color_float(uint32_t width, uint32_t height)
-{
-    return mt_create_texture({
-        .width = width, .height = height, .target = RT_TEXTURE_2D,
-        .format = RT_TEXTURE_RGBA32FLOAT,
-        .min_filter = RT_LINEAR, .mag_filter = RT_LINEAR,
-        .address_u = RT_CLAMP_TO_EDGE, .address_v = RT_CLAMP_TO_EDGE, .address_w = RT_CLAMP_TO_EDGE,
-    });
-}
-
-rt_texture_t mt_create_texture_depth(uint32_t width, uint32_t height)
-{
-    return mt_create_texture({
-        .width = width, .height = height, .target = RT_TEXTURE_2D,
-        .format = RT_TEXTURE_DEPTH32FLOAT,
-        .min_filter = RT_LINEAR, .mag_filter = RT_LINEAR,
-        .address_u = RT_CLAMP_TO_EDGE, .address_v = RT_CLAMP_TO_EDGE, .address_w = RT_CLAMP_TO_EDGE,
-    });
-}
-
-rt_texture_t mt_create_texture_depth_stencil(uint32_t width, uint32_t height)
-{
-    return mt_create_texture({
-        .width = width, .height = height, .target = RT_TEXTURE_2D,
-        .format = RT_TEXTURE_DEPTH32FLOAT_STENCIL8,
-        .min_filter = RT_LINEAR, .mag_filter = RT_LINEAR,
-        .address_u = RT_CLAMP_TO_EDGE, .address_v = RT_CLAMP_TO_EDGE, .address_w = RT_CLAMP_TO_EDGE,
-    });
 }
 
 void mt_destroy_texture(rt_texture_t& texture)

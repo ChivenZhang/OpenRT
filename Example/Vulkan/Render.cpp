@@ -10,9 +10,9 @@
 * =================================================*/
 #define OPENRTX_IMPLEMENTATION
 #include "../../OpenRTX.h"
-#include "../../Vulkan.h"
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_vulkan.h>
+#include <vulkan/vulkan.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <cstdio>
@@ -469,7 +469,7 @@ int main()
     VkFenceCreateInfo fenceInfo = {.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO, .flags = VK_FENCE_CREATE_SIGNALED_BIT};
     vkCreateFence(device, &fenceInfo, nullptr, &fence);
 
-    vk_load_library(instance, physical, device, queue, cmdBuffer, family);
+    rt_load_library("vulkan", {.vulkan = {.instance = instance, .physical = physical, .device = device, .queue = queue, .cmdbuf = cmdBuffer, .family = family}});
 
     bool running = true;
     while (running)

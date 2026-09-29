@@ -1087,6 +1087,31 @@ static void vk_flush_descriptors()
 
 void vk_load_library(VkInstance instance, VkPhysicalDevice physical, VkDevice device, VkQueue queue, VkCommandBuffer cmdbuf, uint32_t family)
 {
+    if (!instance)
+    {
+        fprintf(stderr, "Vulkan: instance is null\n");
+        abort();
+    }
+    if (!physical)
+    {
+        fprintf(stderr, "Vulkan: physical device is null\n");
+        abort();
+    }
+    if (!device)
+    {
+        fprintf(stderr, "Vulkan: device is null\n");
+        abort();
+    }
+    if (!queue)
+    {
+        fprintf(stderr, "Vulkan: queue is null\n");
+        abort();
+    }
+    if (!cmdbuf)
+    {
+        fprintf(stderr, "Vulkan: command buffer is null\n");
+        abort();
+    }
     vulkan.instance = instance;
     vulkan.physicalDevice = physical;
     vulkan.device = device;
@@ -1144,9 +1169,6 @@ void vk_load_library(VkInstance instance, VkPhysicalDevice physical, VkDevice de
     rt_map_buffer = vk_map_buffer;
     rt_unmap_buffer = vk_unmap_buffer;
     rt_create_texture = vk_create_texture;
-    rt_create_texture_color = vk_create_texture_color;
-    rt_create_texture_depth = vk_create_texture_depth;
-    rt_create_texture_depth_stencil = vk_create_texture_depth_stencil;
     rt_destroy_texture = vk_destroy_texture;
     rt_bind_texture = vk_bind_texture;
     rt_bind_texture_storage = vk_bind_texture_storage;
@@ -1281,9 +1303,6 @@ void vk_unload_library()
     if (rt_map_buffer == vk_map_buffer) rt_map_buffer = nullptr;
     if (rt_unmap_buffer == vk_unmap_buffer) rt_unmap_buffer = nullptr;
     if (rt_create_texture == vk_create_texture) rt_create_texture = nullptr;
-    if (rt_create_texture_color == vk_create_texture_color) rt_create_texture_color = nullptr;
-    if (rt_create_texture_depth == vk_create_texture_depth) rt_create_texture_depth = nullptr;
-    if (rt_create_texture_depth_stencil == vk_create_texture_depth_stencil) rt_create_texture_depth_stencil = nullptr;
     if (rt_destroy_texture == vk_destroy_texture) rt_destroy_texture = nullptr;
     if (rt_bind_texture == vk_bind_texture) rt_bind_texture = nullptr;
     if (rt_bind_texture_storage == vk_bind_texture_storage) rt_bind_texture_storage = nullptr;
@@ -1633,36 +1652,6 @@ rt_texture_t vk_create_texture(rt_texture_info_t const& info)
         .level_count = native.levels,
     });
     return result;
-}
-
-rt_texture_t vk_create_texture_color(uint32_t width, uint32_t height)
-{
-    return vk_create_texture({
-        .width = width, .height = height, .target = RT_TEXTURE_2D,
-        .format = RT_TEXTURE_RGBA8UNORM,
-        .min_filter = RT_LINEAR, .mag_filter = RT_LINEAR,
-        .address_u = RT_CLAMP_TO_EDGE, .address_v = RT_CLAMP_TO_EDGE, .address_w = RT_CLAMP_TO_EDGE,
-    });
-}
-
-rt_texture_t vk_create_texture_depth(uint32_t width, uint32_t height)
-{
-    return vk_create_texture({
-        .width = width, .height = height, .target = RT_TEXTURE_2D,
-        .format = RT_TEXTURE_DEPTH32FLOAT,
-        .min_filter = RT_LINEAR, .mag_filter = RT_LINEAR,
-        .address_u = RT_CLAMP_TO_EDGE, .address_v = RT_CLAMP_TO_EDGE, .address_w = RT_CLAMP_TO_EDGE,
-    });
-}
-
-rt_texture_t vk_create_texture_depth_stencil(uint32_t width, uint32_t height)
-{
-    return vk_create_texture({
-        .width = width, .height = height, .target = RT_TEXTURE_2D,
-        .format = RT_TEXTURE_DEPTH24PLUS_STENCIL8,
-        .min_filter = RT_LINEAR, .mag_filter = RT_LINEAR,
-        .address_u = RT_CLAMP_TO_EDGE, .address_v = RT_CLAMP_TO_EDGE, .address_w = RT_CLAMP_TO_EDGE,
-    });
 }
 
 void vk_destroy_texture(rt_texture_t& texture)

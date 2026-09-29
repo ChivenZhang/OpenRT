@@ -850,7 +850,10 @@ void wg_load_library(WGPUDevice device, WGPUQueue queue)
         abort();
     }
     if (!webgpu.queue)
-        webgpu.queue = wgpuDeviceGetQueue(webgpu.device);
+    {
+        fprintf(stderr, "WebGPU: queue is null\n");
+        abort();
+    }
     wg_ensure_encoder();
 
     WGPUBufferDescriptor push = {};
@@ -865,10 +868,6 @@ void wg_load_library(WGPUDevice device, WGPUQueue queue)
     rt_map_buffer = wg_map_buffer;
     rt_unmap_buffer = wg_unmap_buffer;
     rt_create_texture = wg_create_texture;
-    rt_create_texture_color = wg_create_texture_color;
-    rt_create_texture_color_float = wg_create_texture_color_float;
-    rt_create_texture_depth = wg_create_texture_depth;
-    rt_create_texture_depth_stencil = wg_create_texture_depth_stencil;
     rt_destroy_texture = wg_destroy_texture;
     rt_bind_texture = wg_bind_texture;
     rt_bind_texture_storage = wg_bind_texture_storage;
@@ -979,10 +978,6 @@ void wg_unload_library()
     if (rt_map_buffer == wg_map_buffer) rt_map_buffer = nullptr;
     if (rt_unmap_buffer == wg_unmap_buffer) rt_unmap_buffer = nullptr;
     if (rt_create_texture == wg_create_texture) rt_create_texture = nullptr;
-    if (rt_create_texture_color == wg_create_texture_color) rt_create_texture_color = nullptr;
-    if (rt_create_texture_color_float == wg_create_texture_color_float) rt_create_texture_color_float = nullptr;
-    if (rt_create_texture_depth == wg_create_texture_depth) rt_create_texture_depth = nullptr;
-    if (rt_create_texture_depth_stencil == wg_create_texture_depth_stencil) rt_create_texture_depth_stencil = nullptr;
     if (rt_destroy_texture == wg_destroy_texture) rt_destroy_texture = nullptr;
     if (rt_bind_texture == wg_bind_texture) rt_bind_texture = nullptr;
     if (rt_bind_texture_storage == wg_bind_texture_storage) rt_bind_texture_storage = nullptr;
@@ -1211,46 +1206,6 @@ rt_texture_t wg_create_texture(rt_texture_info_t const& info)
         .level_count = native.levels,
     });
     return result;
-}
-
-rt_texture_t wg_create_texture_color(uint32_t width, uint32_t height)
-{
-    return wg_create_texture({
-        .width = width, .height = height, .target = RT_TEXTURE_2D,
-        .format = RT_TEXTURE_RGBA8UNORM,
-        .min_filter = RT_LINEAR, .mag_filter = RT_LINEAR,
-        .address_u = RT_CLAMP_TO_EDGE, .address_v = RT_CLAMP_TO_EDGE, .address_w = RT_CLAMP_TO_EDGE,
-    });
-}
-
-rt_texture_t wg_create_texture_color_float(uint32_t width, uint32_t height)
-{
-    return wg_create_texture({
-        .width = width, .height = height, .target = RT_TEXTURE_2D,
-        .format = RT_TEXTURE_RGBA32FLOAT,
-        .min_filter = RT_LINEAR, .mag_filter = RT_LINEAR,
-        .address_u = RT_CLAMP_TO_EDGE, .address_v = RT_CLAMP_TO_EDGE, .address_w = RT_CLAMP_TO_EDGE,
-    });
-}
-
-rt_texture_t wg_create_texture_depth(uint32_t width, uint32_t height)
-{
-    return wg_create_texture({
-        .width = width, .height = height, .target = RT_TEXTURE_2D,
-        .format = RT_TEXTURE_DEPTH32FLOAT,
-        .min_filter = RT_LINEAR, .mag_filter = RT_LINEAR,
-        .address_u = RT_CLAMP_TO_EDGE, .address_v = RT_CLAMP_TO_EDGE, .address_w = RT_CLAMP_TO_EDGE,
-    });
-}
-
-rt_texture_t wg_create_texture_depth_stencil(uint32_t width, uint32_t height)
-{
-    return wg_create_texture({
-        .width = width, .height = height, .target = RT_TEXTURE_2D,
-        .format = RT_TEXTURE_DEPTH32FLOAT_STENCIL8,
-        .min_filter = RT_LINEAR, .mag_filter = RT_LINEAR,
-        .address_u = RT_CLAMP_TO_EDGE, .address_v = RT_CLAMP_TO_EDGE, .address_w = RT_CLAMP_TO_EDGE,
-    });
 }
 
 void wg_destroy_texture(rt_texture_t& texture)

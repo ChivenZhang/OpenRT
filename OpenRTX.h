@@ -12,6 +12,10 @@ rt_image_t rt_load_image_file(const char* filename, bool flip = false);
 void rt_destroy_image(rt_image_t& image);
 rt_texture_t rt_load_texture(rt_image_t image);
 rt_texture_t rt_load_texture_file(const char* filename, bool flip = false);
+rt_texture_t rt_create_texture_color(uint32_t width, uint32_t height);
+rt_texture_t rt_create_texture_color_float(uint32_t width, uint32_t height);
+rt_texture_t rt_create_texture_depth(uint32_t width, uint32_t height);
+rt_texture_t rt_create_texture_depth_stencil(uint32_t width, uint32_t height);
 rt_mesh_t rt_create_mesh_screen();
 rt_mesh_t rt_create_mesh_cube(float width, float height, float length);
 rt_mesh_t rt_create_mesh_plane(float size, int N = 1);
@@ -125,6 +129,46 @@ rt_texture_t rt_load_texture_file(const char* filename, bool flip)
     auto texture = rt_load_texture(image);
     rt_destroy_image(image);
     return texture;
+}
+
+rt_texture_t rt_create_texture_color(uint32_t width, uint32_t height)
+{
+    return rt_create_texture({
+        .width = width, .height = height, .target = RT_TEXTURE_2D,
+        .format = RT_TEXTURE_RGBA8UNORM,
+        .min_filter = RT_LINEAR, .mag_filter = RT_LINEAR,
+        .address_u = RT_CLAMP_TO_EDGE, .address_v = RT_CLAMP_TO_EDGE, .address_w = RT_CLAMP_TO_EDGE,
+    });
+}
+
+rt_texture_t rt_create_texture_color_float(uint32_t width, uint32_t height)
+{
+    return rt_create_texture({
+        .width = width, .height = height, .target = RT_TEXTURE_2D,
+        .format = RT_TEXTURE_RGBA32FLOAT,
+        .min_filter = RT_LINEAR, .mag_filter = RT_LINEAR,
+        .address_u = RT_CLAMP_TO_EDGE, .address_v = RT_CLAMP_TO_EDGE, .address_w = RT_CLAMP_TO_EDGE,
+    });
+}
+
+rt_texture_t rt_create_texture_depth(uint32_t width, uint32_t height)
+{
+    return rt_create_texture({
+        .width = width, .height = height, .target = RT_TEXTURE_2D,
+        .format = RT_TEXTURE_DEPTH32FLOAT,
+        .min_filter = RT_LINEAR, .mag_filter = RT_LINEAR,
+        .address_u = RT_CLAMP_TO_EDGE, .address_v = RT_CLAMP_TO_EDGE, .address_w = RT_CLAMP_TO_EDGE,
+    });
+}
+
+rt_texture_t rt_create_texture_depth_stencil(uint32_t width, uint32_t height)
+{
+    return rt_create_texture({
+        .width = width, .height = height, .target = RT_TEXTURE_2D,
+        .format = RT_TEXTURE_DEPTH24PLUS_STENCIL8,
+        .min_filter = RT_LINEAR, .mag_filter = RT_LINEAR,
+        .address_u = RT_CLAMP_TO_EDGE, .address_v = RT_CLAMP_TO_EDGE, .address_w = RT_CLAMP_TO_EDGE,
+    });
 }
 
 rt_mesh_t rt_create_mesh_screen()
