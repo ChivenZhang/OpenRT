@@ -252,7 +252,7 @@ static VkDescriptorType rt_to_vk_descriptor(rt_binding_type_t bindingType)
         case RT_BINDING_NONE: return VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
         case RT_BINDING_BUFFER: return VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
         case RT_BINDING_SAMPLER: return VK_DESCRIPTOR_TYPE_SAMPLER;
-        case RT_BINDING_TEXTURE: return VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        case RT_BINDING_TEXTURE: return VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
         case RT_BINDING_STORAGE_TEXTURE: return VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
         default: return VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
     }
@@ -553,7 +553,6 @@ struct vk_texture_native_t
 {
     VkImage handle = nullptr;
     VkDeviceMemory memory = nullptr;
-    VkImageView imageView = nullptr;
     VkFormat format = VK_FORMAT_UNDEFINED;
     VkImageLayout layout = VK_IMAGE_LAYOUT_UNDEFINED;
     VkImageAspectFlags aspect = VK_IMAGE_ASPECT_COLOR_BIT;
@@ -562,6 +561,12 @@ struct vk_texture_native_t
     VkExtent3D extent = {1, 1, 1};
     VkPipelineStageFlags stage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
     VkAccessFlags access = 0;
+};
+
+struct vk_texture_view_native_t
+{
+    VkImageView handle = nullptr;
+    uint32_t texture = 0;
 };
 
 struct vk_sampler_native_t
@@ -606,7 +611,6 @@ struct vk_pass_compute_native_t
 
 struct vk_pass_render_native_t
 {
-    bool offscreen = false;
     bool rendering = false;
     uint32_t width = 0;
     uint32_t height = 0;
@@ -632,6 +636,7 @@ struct vk_native_t
 {
     uint32_t bufferID = 0;
     uint32_t textureID = 0;
+    uint32_t textureViewID = 0;
     uint32_t samplerID = 0;
     uint32_t moduleID = 0;
     uint32_t meshID = 0;
@@ -640,13 +645,14 @@ struct vk_native_t
 
     std::map<uint32_t, vk_buffer_native_t> buffers;
     std::map<uint32_t, vk_texture_native_t> textures;
+    std::map<uint32_t, vk_texture_view_native_t> textureViews;
     std::map<uint32_t, vk_sampler_native_t> samplers;
     std::map<uint32_t, vk_module_native_t> modules;
     std::map<uint32_t, vk_mesh_native_t> meshes;
     std::map<uint32_t, vk_meshlet_native_t> meshlets;
     std::map<uint32_t, vk_pass_compute_native_t> computePasses;
-    std::map<uint32_t, vk_pass_render_native_t> renderPasses;
     std::map<uint32_t, vk_pass_transfer_native_t> transferPasses;
+    vk_pass_render_native_t renderPass = {};
 
     VkInstance instance = nullptr;
     VkPhysicalDevice physicalDevice = nullptr;
@@ -658,7 +664,6 @@ struct vk_native_t
     VkCommandBuffer cmdBuffer = nullptr;
     VkDescriptorPool descriptorPool = nullptr;
     VkPipelineCache pipelineCache = nullptr;
-    VkSampler defaultSampler = nullptr;
     std::vector<vk_staging_t> pendingStaging;
 
     PFN_vkCmdDrawMeshTasksNV fnDrawMeshTasksNV = nullptr;
@@ -666,14 +671,29 @@ struct vk_native_t
     struct
     {
         rt_binding_type_t type = RT_BINDING_NONE;
-        rt_buffer_t buffer = {};
-        rt_buffer_bind_t buffer_bind = {};
-        rt_texture_t texture = {};
-        rt_texture_bind_t texture_bind = {};
-        rt_texture_t storage_texture = {};
-        rt_texture_storage_bind_t storage_texture_bind = {};
-        rt_sampler_t sampler = {};
-        rt_sampler_bind_t sampler_bind = {};
+        union
+        {
+            struct
+            {
+                rt_buffer_t buffer;
+                rt_buffer_bind_t buffer_bind;
+            };
+            struct
+            {
+                rt_texture_view_t texture_view;
+                rt_texture_bind_t texture_bind;
+            };
+            struct
+            {
+                rt_texture_t storage_texture;
+                rt_texture_storage_bind_t storage_texture_bind;
+            };
+            struct
+            {
+                rt_sampler_t sampler;
+                rt_sampler_bind_t sampler_bind;
+            };
+        };
     } currentBinding[RT_MAX_BINDING_HANDLE_NUM] = {};
 
     rt_module_type_t currentPassType = RT_MODULE_NONE;
@@ -866,6 +886,58 @@ static vk_texture_native_t* vk_texture_native(rt_texture_t const& texture)
     return &it->second;
 }
 
+static vk_texture_view_native_t* vk_texture_view_native(uint32_t handle)
+{
+    if (handle == 0) return nullptr;
+    auto it = vulkan.textureViews.find(handle);
+    return it == vulkan.textureViews.end() ? nullptr : &it->second;
+}
+
+static void vk_begin_rendering()
+{
+    if (vulkan.currentPassType != RT_MODULE_RENDER || !vulkan.currentRenderPass || !vulkan.currentRenderPass->native)
+        return;
+    auto* renderPass = (vk_pass_render_native_t*)vulkan.currentRenderPass->native;
+    if (renderPass->rendering)
+        return;
+
+    auto& pass = *vulkan.currentRenderPass;
+    for (uint32_t i = 0; i < RT_MAX_COLOR_TEXTURE_NUM; ++i)
+    {
+        if (pass.module.colors[i].format == RT_TEXTURE_NONE || pass.colors[i].texture_view.format == RT_TEXTURE_NONE)
+            continue;
+        if (auto* view = vk_texture_view_native(pass.colors[i].texture_view.handle))
+        {
+            auto texIt = vulkan.textures.find(view->texture);
+            if (texIt != vulkan.textures.end() && view->handle)
+                vk_transition_image(texIt->second, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+        }
+    }
+    if (auto* view = vk_texture_view_native(pass.depth.texture_view.handle))
+    {
+        auto texIt = vulkan.textures.find(view->texture);
+        if (texIt != vulkan.textures.end() && view->handle)
+            vk_transition_image(texIt->second, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
+    }
+
+    VkRenderingInfo renderingInfo = {};
+    renderingInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
+    renderingInfo.renderArea.extent = {std::max(1u, renderPass->width), std::max(1u, renderPass->height)};
+    renderingInfo.layerCount = 1;
+    renderingInfo.colorAttachmentCount = renderPass->colorCount;
+    renderingInfo.pColorAttachments = renderPass->colorCount ? renderPass->colorAttachments : nullptr;
+    renderingInfo.pDepthAttachment = renderPass->hasDepth ? &renderPass->depthAttachment : nullptr;
+    renderingInfo.pStencilAttachment = renderPass->hasStencil ? &renderPass->depthAttachment : nullptr;
+    vkCmdBeginRendering(vulkan.cmdBuffer, &renderingInfo);
+    renderPass->rendering = true;
+}
+
+static VkImageView vk_image_view(rt_texture_view_t const& view)
+{
+    auto* native = vk_texture_view_native(view.handle);
+    return native ? native->handle : nullptr;
+}
+
 static vk_sampler_native_t* vk_sampler_native(rt_sampler_t const& sampler)
 {
     if (!sampler.native || sampler.handle == 0) return nullptr;
@@ -972,23 +1044,25 @@ static void vk_flush_descriptors()
             imageInfos[writeCount] = {samp->handle, VK_NULL_HANDLE, VK_IMAGE_LAYOUT_UNDEFINED};
             writes[writeCount].pImageInfo = &imageInfos[writeCount];
         }
-        else if (type == VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER || type == VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE)
+        else if (type == VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE)
         {
-            auto* tex = vk_texture_native(slot.texture);
-            if (!tex || !tex->imageView) continue;
+            auto* view = vk_texture_view_native(slot.texture_view.handle);
+            if (!view || !view->handle) continue;
+            auto texIt = vulkan.textures.find(view->texture);
+            if (texIt == vulkan.textures.end()) continue;
+            auto* tex = &texIt->second;
+            VkImageView imageView = view->handle;
             vk_transition_image(*tex, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-            VkSampler sampler = vulkan.defaultSampler;
-            if (auto* samp = vk_sampler_native(slot.sampler))
-                sampler = samp->handle;
-            imageInfos[writeCount] = {sampler, tex->imageView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
+            imageInfos[writeCount] = {VK_NULL_HANDLE, imageView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
             writes[writeCount].pImageInfo = &imageInfos[writeCount];
         }
         else if (type == VK_DESCRIPTOR_TYPE_STORAGE_IMAGE)
         {
             auto* tex = vk_texture_native(slot.storage_texture);
-            if (!tex || !tex->imageView) continue;
+            VkImageView imageView = vk_image_view(slot.storage_texture.default_view);
+            if (!tex || !imageView) continue;
             vk_transition_image(*tex, VK_IMAGE_LAYOUT_GENERAL);
-            imageInfos[writeCount] = {VK_NULL_HANDLE, tex->imageView, VK_IMAGE_LAYOUT_GENERAL};
+            imageInfos[writeCount] = {VK_NULL_HANDLE, imageView, VK_IMAGE_LAYOUT_GENERAL};
             writes[writeCount].pImageInfo = &imageInfos[writeCount];
         }
         else continue;
@@ -1040,7 +1114,6 @@ void vk_load_library(VkInstance instance, VkPhysicalDevice physical, VkDevice de
         {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 256},
         {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 256},
         {VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 256},
-        {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 256},
         {VK_DESCRIPTOR_TYPE_SAMPLER, 256},
         {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 256}
     };
@@ -1055,15 +1128,6 @@ void vk_load_library(VkInstance instance, VkPhysicalDevice physical, VkDevice de
     VkPipelineCacheCreateInfo cacheInfo = {};
     cacheInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO;
     vkCreatePipelineCache(vulkan.device, &cacheInfo, vulkan.allocator, &vulkan.pipelineCache);
-
-    VkSamplerCreateInfo samplerInfo = {};
-    samplerInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
-    samplerInfo.magFilter = VK_FILTER_LINEAR;
-    samplerInfo.minFilter = VK_FILTER_LINEAR;
-    samplerInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
-    samplerInfo.addressModeU = samplerInfo.addressModeV = samplerInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-    samplerInfo.maxLod = VK_LOD_CLAMP_NONE;
-    vkCreateSampler(vulkan.device, &samplerInfo, vulkan.allocator, &vulkan.defaultSampler);
 
     vulkan.fnDrawMeshTasksNV = (PFN_vkCmdDrawMeshTasksNV)vkGetDeviceProcAddr(vulkan.device, "vkCmdDrawMeshTasksNV");
 
@@ -1080,6 +1144,9 @@ void vk_load_library(VkInstance instance, VkPhysicalDevice physical, VkDevice de
     rt_destroy_texture = vk_destroy_texture;
     rt_bind_texture = vk_bind_texture;
     rt_bind_texture_storage = vk_bind_texture_storage;
+    rt_create_texture_view = vk_create_texture_view;
+    rt_destroy_texture_view = vk_destroy_texture_view;
+    rt_bind_texture_view = vk_bind_texture_view;
     rt_create_sampler = vk_create_sampler;
     rt_destroy_sampler = vk_destroy_sampler;
     rt_bind_sampler = vk_bind_sampler;
@@ -1157,10 +1224,16 @@ void vk_unload_library()
     }
     vulkan.buffers.clear();
 
+    for (auto& item : vulkan.textureViews)
+    {
+        if (item.second.handle)
+            vkDestroyImageView(vulkan.device, item.second.handle, vulkan.allocator);
+    }
+    vulkan.textureViews.clear();
+
     for (auto& item : vulkan.textures)
     {
         auto& texture = item.second;
-        if (texture.imageView) vkDestroyImageView(vulkan.device, texture.imageView, vulkan.allocator);
         if (texture.handle) vkDestroyImage(vulkan.device, texture.handle, vulkan.allocator);
         if (texture.memory) vkFreeMemory(vulkan.device, texture.memory, vulkan.allocator);
     }
@@ -1172,11 +1245,6 @@ void vk_unload_library()
     }
     vulkan.samplers.clear();
 
-    if (vulkan.defaultSampler)
-    {
-        vkDestroySampler(vulkan.device, vulkan.defaultSampler, vulkan.allocator);
-        vulkan.defaultSampler = nullptr;
-    }
     if (vulkan.descriptorPool)
     {
         vkDestroyDescriptorPool(vulkan.device, vulkan.descriptorPool, vulkan.allocator);
@@ -1191,13 +1259,13 @@ void vk_unload_library()
     vulkan.meshes.clear();
     vulkan.meshlets.clear();
     vulkan.computePasses.clear();
-    vulkan.renderPasses.clear();
+    vulkan.renderPass = {};
     vulkan.transferPasses.clear();
     vulkan.queue = nullptr;
     vulkan.device = nullptr;
     vulkan.instance = nullptr;
     vulkan.physicalDevice = nullptr;
-    vulkan.bufferID = vulkan.textureID = vulkan.samplerID = 0;
+    vulkan.bufferID = vulkan.textureID = vulkan.textureViewID = vulkan.samplerID = 0;
     vulkan.moduleID = vulkan.meshID = vulkan.meshletID = vulkan.passID = 0;
     vulkan.currentPassType = RT_MODULE_NONE;
     vulkan.currentPipeline = nullptr;
@@ -1215,6 +1283,9 @@ void vk_unload_library()
     if (rt_destroy_texture == vk_destroy_texture) rt_destroy_texture = nullptr;
     if (rt_bind_texture == vk_bind_texture) rt_bind_texture = nullptr;
     if (rt_bind_texture_storage == vk_bind_texture_storage) rt_bind_texture_storage = nullptr;
+    if (rt_create_texture_view == vk_create_texture_view) rt_create_texture_view = nullptr;
+    if (rt_destroy_texture_view == vk_destroy_texture_view) rt_destroy_texture_view = nullptr;
+    if (rt_bind_texture_view == vk_bind_texture_view) rt_bind_texture_view = nullptr;
     if (rt_create_sampler == vk_create_sampler) rt_create_sampler = nullptr;
     if (rt_destroy_sampler == vk_destroy_sampler) rt_destroy_sampler = nullptr;
     if (rt_bind_sampler == vk_bind_sampler) rt_bind_sampler = nullptr;
@@ -1493,17 +1564,6 @@ rt_texture_t vk_create_texture(rt_texture_info_t const& info)
     }
     vkBindImageMemory(vulkan.device, native.handle, native.memory, 0);
 
-    VkImageViewCreateInfo viewInfo = {};
-    viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-    viewInfo.image = native.handle;
-    viewInfo.viewType = (info.target == RT_TEXTURE_3D) ? VK_IMAGE_VIEW_TYPE_3D : VK_IMAGE_VIEW_TYPE_2D;
-    viewInfo.format = native.format;
-    viewInfo.subresourceRange.aspectMask = native.aspect;
-    viewInfo.subresourceRange.levelCount = native.mipLevels;
-    viewInfo.subresourceRange.layerCount = native.layers;
-    if (vkCreateImageView(vulkan.device, &viewInfo, vulkan.allocator, &native.imageView) != VK_SUCCESS)
-        native.imageView = nullptr;
-
     if (info.data && samples == RT_TEXTURE_SAMPLE_1X)
     {
         VkDeviceSize bytes = (VkDeviceSize)info.width * info.height * native.extent.depth * vk_format_bytes(native.format);
@@ -1565,6 +1625,15 @@ rt_texture_t vk_create_texture(rt_texture_info_t const& info)
     if (samples == RT_TEXTURE_SAMPLE_4X && (info.target == RT_TEXTURE_2D || info.target == RT_TEXTURE_2D_MULTISAMPLE))
         result.target = RT_TEXTURE_2D_MULTISAMPLE;
     result.native = &native;
+    result.default_view = vk_create_texture_view({
+        .texture = result,
+        .target = result.target,
+        .format = result.format,
+        .aspect = RT_TEXTURE_ASPECT_ALL,
+        .usage = result.usage,
+        .layer_count = native.layers,
+        .level_count = native.mipLevels,
+    });
     return result;
 }
 
@@ -1608,8 +1677,18 @@ void vk_destroy_texture(rt_texture_t& texture)
         auto it = vulkan.textures.find(texture.handle);
         if (it != vulkan.textures.end())
         {
+            for (auto view = vulkan.textureViews.begin(); view != vulkan.textureViews.end(); )
+            {
+                if (view->second.texture == texture.handle)
+                {
+                    if (view->second.handle)
+                        vkDestroyImageView(vulkan.device, view->second.handle, vulkan.allocator);
+                    view = vulkan.textureViews.erase(view);
+                }
+                else
+                    ++view;
+            }
             auto& native = it->second;
-            if (native.imageView) vkDestroyImageView(vulkan.device, native.imageView, vulkan.allocator);
             if (native.handle) vkDestroyImage(vulkan.device, native.handle, vulkan.allocator);
             if (native.memory) vkFreeMemory(vulkan.device, native.memory, vulkan.allocator);
             vulkan.textures.erase(it);
@@ -1626,7 +1705,7 @@ void vk_bind_texture(rt_texture_t& texture, rt_texture_bind_t bind)
         abort();
     }
     vulkan.currentBinding[bind.binding].type = RT_BINDING_TEXTURE;
-    vulkan.currentBinding[bind.binding].texture = texture;
+    vulkan.currentBinding[bind.binding].texture_view = texture.default_view;
     vulkan.currentBinding[bind.binding].texture_bind = bind;
 }
 
@@ -1640,6 +1719,93 @@ void vk_bind_texture_storage(rt_texture_t& texture, rt_texture_storage_bind_t bi
     vulkan.currentBinding[bind.binding].type = RT_BINDING_STORAGE_TEXTURE;
     vulkan.currentBinding[bind.binding].storage_texture = texture;
     vulkan.currentBinding[bind.binding].storage_texture_bind = bind;
+}
+
+rt_texture_view_t vk_create_texture_view(rt_texture_view_info_t const& info)
+{
+    rt_texture_view_t result{
+        0, info.target,
+        info.format != RT_TEXTURE_NONE ? info.format : info.texture.format,
+        info.aspect, info.usage ? info.usage : info.texture.usage,
+        info.base_layer, info.layer_count, info.base_level, info.level_count, nullptr};
+    auto* tex = vk_texture_native(info.texture);
+    if (!vulkan.device || !tex || !tex->handle) return result;
+    uint32_t levelCount = info.level_count ? info.level_count : tex->mipLevels - info.base_level;
+    if (info.base_level >= tex->mipLevels || levelCount == 0) return result;
+    if (info.base_level + levelCount > tex->mipLevels)
+        levelCount = tex->mipLevels - info.base_level;
+    uint32_t baseLayer = 0;
+    uint32_t layerCount = 1;
+    if (info.target != RT_TEXTURE_3D)
+    {
+        baseLayer = info.base_layer;
+        layerCount = info.layer_count ? info.layer_count : (tex->layers > baseLayer ? tex->layers - baseLayer : 0);
+        if (baseLayer >= tex->layers || layerCount == 0) return result;
+        if (baseLayer + layerCount > tex->layers)
+            layerCount = tex->layers - baseLayer;
+    }
+    result.base_layer = baseLayer;
+    result.layer_count = layerCount;
+    result.base_level = info.base_level;
+    result.level_count = levelCount;
+
+    VkImageViewType viewType = VK_IMAGE_VIEW_TYPE_2D;
+    if (info.target == RT_TEXTURE_3D) viewType = VK_IMAGE_VIEW_TYPE_3D;
+    else if (info.target == RT_TEXTURE_1D) viewType = VK_IMAGE_VIEW_TYPE_1D;
+    else if (info.target == RT_TEXTURE_2D_ARRAY || layerCount > 1) viewType = VK_IMAGE_VIEW_TYPE_2D_ARRAY;
+
+    VkFormat format = info.format != RT_TEXTURE_NONE ? rt_to_vk_texture_format(info.format) : tex->format;
+    VkImageViewUsageCreateInfo usageInfo = {};
+    usageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_USAGE_CREATE_INFO;
+    usageInfo.usage = rt_to_vk_image_usage(result.usage, result.format);
+    VkImageViewCreateInfo viewInfo = {};
+    viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+    viewInfo.pNext = info.usage ? &usageInfo : nullptr;
+    viewInfo.image = tex->handle;
+    viewInfo.viewType = viewType;
+    viewInfo.format = format;
+    viewInfo.subresourceRange.aspectMask = rt_to_vk_aspect(info.aspect, result.format);
+    viewInfo.subresourceRange.baseMipLevel = info.base_level;
+    viewInfo.subresourceRange.levelCount = levelCount;
+    viewInfo.subresourceRange.baseArrayLayer = baseLayer;
+    viewInfo.subresourceRange.layerCount = layerCount;
+    VkImageView imageView = nullptr;
+    if (vkCreateImageView(vulkan.device, &viewInfo, vulkan.allocator, &imageView) != VK_SUCCESS)
+        return result;
+    uint32_t handle = vulkan.textureViewID + 1;
+    auto& native = vulkan.textureViews[handle];
+    native.handle = imageView;
+    native.texture = info.texture.handle;
+    vulkan.textureViewID = handle;
+    result.handle = handle;
+    result.native = &native;
+    return result;
+}
+
+void vk_destroy_texture_view(rt_texture_view_t& view)
+{
+    auto it = vulkan.textureViews.find(view.handle);
+    if (it != vulkan.textureViews.end())
+    {
+        if (vulkan.device && it->second.handle)
+            vkDestroyImageView(vulkan.device, it->second.handle, vulkan.allocator);
+        vulkan.textureViews.erase(it);
+    }
+    view.handle = 0;
+    view.native = nullptr;
+}
+
+void vk_bind_texture_view(rt_texture_view_t& view, rt_texture_view_bind_t bind)
+{
+    if (vulkan.currentPipeline == nullptr)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    vulkan.currentBinding[bind.binding].type = RT_BINDING_TEXTURE;
+    vulkan.currentBinding[bind.binding].texture_view = view;
+    vulkan.currentBinding[bind.binding].texture_bind = {};
+    vulkan.currentBinding[bind.binding].texture_bind.binding = bind.binding;
 }
 
 rt_sampler_t vk_create_sampler(rt_sampler_info_t const& info)
@@ -2416,9 +2582,8 @@ void vk_begin_render(rt_pass_render_t& pass)
     }
     for (auto& binding : vulkan.currentBinding)
         binding = {};
-    auto handle = vulkan.passID + 1;
-    auto& native = vulkan.renderPasses[handle];
-    pass.handle = handle;
+    vulkan.renderPass = {};
+    auto& native = vulkan.renderPass;
     pass.native = &native;
     vulkan.currentPassType = RT_MODULE_RENDER;
     vulkan.currentRenderPass = &pass;
@@ -2427,29 +2592,30 @@ void vk_begin_render(rt_pass_render_t& pass)
     if (mod && mod->pipeline)
         vkCmdBindPipeline(vulkan.cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, mod->pipeline);
 
-    native.offscreen = pass.depth.texture.handle != 0;
-    for (auto& color : pass.colors)
-        if (color.texture.handle) native.offscreen = true;
-
     uint32_t colorCount = 0;
     uint32_t width = 0, height = 0;
     VkRenderingAttachmentInfo colorAttachments[RT_MAX_COLOR_TEXTURE_NUM] = {};
     for (uint32_t i = 0; i < RT_MAX_COLOR_TEXTURE_NUM; ++i)
     {
-        if (pass.module.colors[i].format == RT_TEXTURE_NONE || pass.colors[i].texture.format == RT_TEXTURE_NONE)
+        if (pass.module.colors[i].format == RT_TEXTURE_NONE || pass.colors[i].texture_view.format == RT_TEXTURE_NONE)
             continue;
         colorAttachments[i].sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
         colorAttachments[i].imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
         colorAttachments[i].loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
         colorAttachments[i].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-        if (auto* tex = vk_texture_native(pass.colors[i].texture))
+        if (auto* view = vk_texture_view_native(pass.colors[i].texture_view.handle))
         {
-            vk_transition_image(*tex, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
-            colorAttachments[i].imageView = tex->imageView;
-            colorAttachments[i].loadOp = pass.colors[i].clear ? VK_ATTACHMENT_LOAD_OP_CLEAR : VK_ATTACHMENT_LOAD_OP_LOAD;
-            colorAttachments[i].clearValue.color = {{pass.colors[i].value.r, pass.colors[i].value.g, pass.colors[i].value.b, pass.colors[i].value.a}};
-            width = std::max(width, pass.colors[i].texture.width);
-            height = std::max(height, pass.colors[i].texture.height);
+            auto texIt = vulkan.textures.find(view->texture);
+            if (texIt != vulkan.textures.end() && view->handle)
+            {
+                auto* tex = &texIt->second;
+                colorAttachments[i].imageView = view->handle;
+                colorAttachments[i].loadOp = pass.colors[i].clear ? VK_ATTACHMENT_LOAD_OP_CLEAR : VK_ATTACHMENT_LOAD_OP_LOAD;
+                colorAttachments[i].clearValue.color = {{pass.colors[i].value.r, pass.colors[i].value.g, pass.colors[i].value.b, pass.colors[i].value.a}};
+                uint32_t mip = std::min(pass.colors[i].texture_view.base_level, 31u);
+                width = std::max(width, std::max(1u, tex->extent.width >> mip));
+                height = std::max(height, std::max(1u, tex->extent.height >> mip));
+            }
         }
         colorCount = i + 1;
     }
@@ -2460,28 +2626,32 @@ void vk_begin_render(rt_pass_render_t& pass)
     depthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
     depthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
     bool hasDepth = false;
-    if (auto* tex = vk_texture_native(pass.depth.texture))
+    if (auto* view = vk_texture_view_native(pass.depth.texture_view.handle))
     {
-        vk_transition_image(*tex, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
-        depthAttachment.imageView = tex->imageView;
-        depthAttachment.loadOp = pass.depth.clear ? VK_ATTACHMENT_LOAD_OP_CLEAR : VK_ATTACHMENT_LOAD_OP_LOAD;
-        depthAttachment.clearValue.depthStencil.depth = pass.depth.value;
-        depthAttachment.clearValue.depthStencil.stencil = (uint32_t)pass.stencil.value;
-        width = std::max(width, pass.depth.texture.width);
-        height = std::max(height, pass.depth.texture.height);
-        hasDepth = true;
+        auto texIt = vulkan.textures.find(view->texture);
+        if (texIt != vulkan.textures.end() && view->handle)
+        {
+            auto* tex = &texIt->second;
+            depthAttachment.imageView = view->handle;
+            depthAttachment.loadOp = pass.depth.clear ? VK_ATTACHMENT_LOAD_OP_CLEAR : VK_ATTACHMENT_LOAD_OP_LOAD;
+            depthAttachment.clearValue.depthStencil.depth = pass.depth.value;
+            depthAttachment.clearValue.depthStencil.stencil = (uint32_t)pass.stencil.value;
+            uint32_t mip = std::min(pass.depth.texture_view.base_level, 31u);
+            width = std::max(width, std::max(1u, tex->extent.width >> mip));
+            height = std::max(height, std::max(1u, tex->extent.height >> mip));
+            hasDepth = true;
+        }
     }
 
     native.width = width;
     native.height = height;
     native.colorCount = colorCount;
     native.hasDepth = hasDepth;
-    native.hasStencil = hasDepth && rt_texture_has_stencil(pass.depth.texture.format);
+    native.hasStencil = hasDepth && rt_texture_has_stencil(pass.depth.texture_view.format);
     std::memcpy(native.colorAttachments, colorAttachments, sizeof(colorAttachments));
     native.depthAttachment = depthAttachment;
     vk_set_viewport(0, 0, (int32_t)width, (int32_t)height);
     vk_set_scissor(0, 0, (int32_t)width, (int32_t)height);
-    vulkan.passID = handle;
 }
 
 void vk_end_render(rt_pass_render_t& pass)
@@ -2493,13 +2663,15 @@ void vk_end_render(rt_pass_render_t& pass)
     }
 
     for (auto& color : pass.colors)
-        if (auto* tex = vk_texture_native(color.texture))
-            vk_transition_image(*tex, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-    if (auto* tex = vk_texture_native(pass.depth.texture))
-        vk_transition_image(*tex, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-    vulkan.renderPasses.erase(pass.handle);
+        if (auto* view = vk_texture_view_native(color.texture_view.handle))
+            if (auto texIt = vulkan.textures.find(view->texture); texIt != vulkan.textures.end())
+                vk_transition_image(texIt->second, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+    if (auto* view = vk_texture_view_native(pass.depth.texture_view.handle))
+        if (auto texIt = vulkan.textures.find(view->texture); texIt != vulkan.textures.end())
+            vk_transition_image(texIt->second, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
     pass.handle = 0;
     pass.native = nullptr;
+    vulkan.renderPass = {};
     vulkan.currentPassType = RT_MODULE_NONE;
     vulkan.currentPipeline = nullptr;
     for (auto& binding : vulkan.currentBinding)
@@ -2554,23 +2726,7 @@ void vk_draw_mesh_task(uint32_t groupX, uint32_t groupY, uint32_t groupZ)
         abort();
     }
     vk_flush_descriptors();
-    if (vulkan.currentPassType == RT_MODULE_RENDER && vulkan.currentRenderPass && vulkan.currentRenderPass->native)
-    {
-        auto* renderPass = (vk_pass_render_native_t*)vulkan.currentRenderPass->native;
-        if (!renderPass->rendering)
-        {
-            VkRenderingInfo renderingInfo = {};
-            renderingInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
-            renderingInfo.renderArea.extent = {std::max(1u, renderPass->width), std::max(1u, renderPass->height)};
-            renderingInfo.layerCount = 1;
-            renderingInfo.colorAttachmentCount = renderPass->colorCount;
-            renderingInfo.pColorAttachments = renderPass->colorCount ? renderPass->colorAttachments : nullptr;
-            renderingInfo.pDepthAttachment = renderPass->hasDepth ? &renderPass->depthAttachment : nullptr;
-            renderingInfo.pStencilAttachment = renderPass->hasStencil ? &renderPass->depthAttachment : nullptr;
-            vkCmdBeginRendering(vulkan.cmdBuffer, &renderingInfo);
-            renderPass->rendering = true;
-        }
-    }
+    vk_begin_rendering();
     if (vulkan.fnDrawMeshTasksNV)
         vulkan.fnDrawMeshTasksNV(vulkan.cmdBuffer, std::max(1u, groupX) * std::max(1u, groupY) * std::max(1u, groupZ), 0);
 }
@@ -2879,23 +3035,7 @@ void vk_draw_mesh(rt_mesh_t& mesh)
         indexNative = vk_buffer_native(mesh.index);
     if (indexNative)
         vk_transition_buffer(*indexNative, VK_PIPELINE_STAGE_VERTEX_INPUT_BIT, VK_ACCESS_INDEX_READ_BIT);
-    if (vulkan.currentPassType == RT_MODULE_RENDER && vulkan.currentRenderPass && vulkan.currentRenderPass->native)
-    {
-        auto* renderPass = (vk_pass_render_native_t*)vulkan.currentRenderPass->native;
-        if (!renderPass->rendering)
-        {
-            VkRenderingInfo renderingInfo = {};
-            renderingInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
-            renderingInfo.renderArea.extent = {std::max(1u, renderPass->width), std::max(1u, renderPass->height)};
-            renderingInfo.layerCount = 1;
-            renderingInfo.colorAttachmentCount = renderPass->colorCount;
-            renderingInfo.pColorAttachments = renderPass->colorCount ? renderPass->colorAttachments : nullptr;
-            renderingInfo.pDepthAttachment = renderPass->hasDepth ? &renderPass->depthAttachment : nullptr;
-            renderingInfo.pStencilAttachment = renderPass->hasStencil ? &renderPass->depthAttachment : nullptr;
-            vkCmdBeginRendering(vulkan.cmdBuffer, &renderingInfo);
-            renderPass->rendering = true;
-        }
-    }
+    vk_begin_rendering();
     for (uint32_t i = 0; i < vertexBindCount; ++i)
     {
         VkDeviceSize offset = 0;
@@ -2974,23 +3114,7 @@ void vk_draw_meshlet(rt_meshlet_t& meshlet)
     if (meshlet.index.handle)
         vk_bind_buffer(meshlet.index, {.binding = index_binding, .target = RT_SHADER_STORAGE_BUFFER});
     vk_flush_descriptors();
-    if (vulkan.currentPassType == RT_MODULE_RENDER && vulkan.currentRenderPass && vulkan.currentRenderPass->native)
-    {
-        auto* renderPass = (vk_pass_render_native_t*)vulkan.currentRenderPass->native;
-        if (!renderPass->rendering)
-        {
-            VkRenderingInfo renderingInfo = {};
-            renderingInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
-            renderingInfo.renderArea.extent = {std::max(1u, renderPass->width), std::max(1u, renderPass->height)};
-            renderingInfo.layerCount = 1;
-            renderingInfo.colorAttachmentCount = renderPass->colorCount;
-            renderingInfo.pColorAttachments = renderPass->colorCount ? renderPass->colorAttachments : nullptr;
-            renderingInfo.pDepthAttachment = renderPass->hasDepth ? &renderPass->depthAttachment : nullptr;
-            renderingInfo.pStencilAttachment = renderPass->hasStencil ? &renderPass->depthAttachment : nullptr;
-            vkCmdBeginRendering(vulkan.cmdBuffer, &renderingInfo);
-            renderPass->rendering = true;
-        }
-    }
+    vk_begin_rendering();
     auto* native = (vk_meshlet_native_t*)meshlet.native;
     uint32_t tasks = native && native->indexCount ? native->indexCount / 3 : 1;
     if (vulkan.fnDrawMeshTasksNV)

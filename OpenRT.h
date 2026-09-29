@@ -372,6 +372,20 @@ struct rt_buffer_bind_t
 
 // ====================================================================
 
+struct rt_texture_view_t
+{
+    uint32_t handle = 0;
+    rt_texture_target_t target = RT_TEXTURE_2D;
+    rt_texture_format_t format = RT_TEXTURE_NONE;
+    rt_texture_aspect_t aspect = RT_TEXTURE_ASPECT_ALL;
+    rt_texture_usages_t usage = 0;
+    uint32_t base_layer = 0;
+    uint32_t layer_count = 1;
+    uint32_t base_level = 0;
+    uint32_t level_count = 1;
+    void* native = nullptr;
+};
+
 struct rt_texture_t
 {
     uint32_t handle = 0;
@@ -381,6 +395,7 @@ struct rt_texture_t
     rt_texture_usages_t usage = 0;
     uint32_t mipmaps = 0;
     rt_texture_sample_t samples = RT_TEXTURE_SAMPLE_1X;
+    rt_texture_view_t default_view = {};
     void* native = nullptr;
 };
 
@@ -410,11 +425,31 @@ struct rt_texture_bind_t
 struct rt_texture_storage_bind_t
 {
     uint32_t binding = 0;
-    uint32_t base_level = 0;
     uint32_t base_layer = 0;
-    uint32_t level_count = 1;
     uint32_t layer_count = 1;
+    uint32_t base_level = 0;
+    uint32_t level_count = 1;
     rt_access_t access = RT_WRITE_ONLY; // RT_WRITE_ONLY / RT_READ_ONLY / RT_READ_WRITE
+};
+
+// ====================================================================
+
+struct rt_texture_view_info_t
+{
+    rt_texture_t& texture;
+    rt_texture_target_t target = RT_TEXTURE_2D;
+    rt_texture_format_t format = RT_TEXTURE_NONE;
+    rt_texture_aspect_t aspect = RT_TEXTURE_ASPECT_ALL;
+    rt_texture_usages_t usage = 0;
+    uint32_t base_layer = 0;
+    uint32_t layer_count = 1;
+    uint32_t base_level = 0;
+    uint32_t level_count = 1;
+};
+
+struct rt_texture_view_bind_t
+{
+    uint32_t binding = 0;
 };
 
 // ====================================================================
@@ -591,13 +626,13 @@ struct rt_pass_render_t
 
     struct
     {
-        rt_texture_t texture;
+        rt_texture_view_t texture_view = {};
         bool clear = false;
         rt_color_t value;
     } colors[RT_MAX_COLOR_TEXTURE_NUM];
     struct
     {
-        rt_texture_t texture;
+        rt_texture_view_t texture_view = {};
         bool clear = false;
         float value = 1.0f;
     } depth;
@@ -740,6 +775,10 @@ OPENRT_API rt_texture_t (*rt_create_texture_depth_stencil)(uint32_t width, uint3
 OPENRT_API void (*rt_destroy_texture)(rt_texture_t& texture);
 OPENRT_API void (*rt_bind_texture)(rt_texture_t& texture, rt_texture_bind_t bind);
 OPENRT_API void (*rt_bind_texture_storage)(rt_texture_t& texture, rt_texture_storage_bind_t bind);
+
+OPENRT_API rt_texture_view_t (*rt_create_texture_view)(rt_texture_view_info_t const& info);
+OPENRT_API void (*rt_destroy_texture_view)(rt_texture_view_t& view);
+OPENRT_API void (*rt_bind_texture_view)(rt_texture_view_t& view, rt_texture_view_bind_t bind);
 
 OPENRT_API rt_sampler_t (*rt_create_sampler)(rt_sampler_info_t const& info);
 OPENRT_API void (*rt_destroy_sampler)(rt_sampler_t& sampler);

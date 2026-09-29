@@ -44,60 +44,56 @@ void frame(int width, int height)
         in vec2 uv;
         out vec4 final;
 
-        layout(binding = 0) uniform sampler2D texture0;
+        layout(binding = 0) uniform texture2D texture0;
+        layout(binding = 1) uniform sampler sampler0;
 
-        // 光源属性
         const vec3 LIGHT_POSITION = vec3(5.0, 5.0, 5.0);
         const vec3 LIGHT_COLOR = vec3(1.0, 0.98, 0.94);
         const float LIGHT_INTENSITY = 1.5;
 
-        // 材质属性
         const vec3 AMBIENT_COLOR = vec3(0.1, 0.1, 0.1);
         const vec3 DIFFUSE_COLOR = vec3(1.0, 1.0, 1.0);
         const vec3 SPECULAR_COLOR = vec3(0.5, 0.5, 0.5);
         const float SHININESS = 32.0;
 
-        // 相机位置（用于计算观察方向）
         const vec3 CAMERA_POSITION = vec3(0.0, 0.0, 10.0);
 
         void main()
         {
-            // 归一化法线
             vec3 N = normalize(normal);
 
-            // 计算光照方向
             vec3 L = normalize(LIGHT_POSITION - vertex);
 
-            // 计算观察方向
             vec3 V = normalize(CAMERA_POSITION - vertex);
 
-            // 计算半程向量（Blinn-Phong 的核心）
             vec3 H = normalize(L + V);
 
-            // ===== 环境光 =====
             vec3 ambient = AMBIENT_COLOR;
 
-            // ===== 漫反射 =====
             float diff = max(dot(N, L), 0.0);
-            vec3 diffuse = diff * DIFFUSE_COLOR * texture(texture0, uv).rgb;
+            vec3 diffuse = diff * DIFFUSE_COLOR;
 
-            // ===== 镜面反射（Blinn-Phong）=====
             float spec = pow(max(dot(N, H), 0.0), SHININESS);
             vec3 specular = spec * SPECULAR_COLOR;
 
-            // ===== 组合光照 =====
             vec3 result = ambient + LIGHT_INTENSITY * LIGHT_COLOR * (diffuse + specular);
 
-            // 输出最终颜色
             final = vec4(result, 1.0);
         }
     )";
 
-    static auto module = rt_create_module_render({.vshader = {VS}, .fshader = {FS}, .colors = {{.format = RT_TEXTURE_RGBA8UNORM,}}, .depth = {.write = true, .func = RT_LEQUAL,}, .vertex = {rt_vertex_vertex, rt_vertex_normal, rt_vertex_uv,}, });
+    static auto module = rt_create_module_render({
+        .vshader = {VS},
+        .fshader = {FS},
+        .colors = {{.format = RT_TEXTURE_RGBA8UNORM,}},
+        .depth = {.write = true, .func = RT_LEQUAL,},
+        .vertex = {rt_vertex_vertex, rt_vertex_normal, rt_vertex_uv,},
+        .binding = {{.binding = 0, .type = RT_BINDING_TEXTURE,}, {.binding = 1, .type = RT_BINDING_SAMPLER,},},
+    });
     static auto pass_color = rt_create_texture_color(width, height, nullptr);
     static auto pass_depth = rt_create_texture_depth(width, height, nullptr);
     {
-        rt_pass_render_t pass = {.module = module, .colors = {{.texture = pass_color, .clear = true,}}, .depth = {.texture = pass_depth, .clear = true,},};
+        rt_pass_render_t pass = {.module = module, .colors = {{.texture_view = pass_color.default_view, .clear = true,}}, .depth = {.texture_view = pass_depth.default_view, .clear = true,},};
         rt_begin_render(pass);
 
         auto projMat = glm::perspective(glm::radians(60.0f), (float)width / (float)height, 0.1f, 100.0f);
@@ -109,7 +105,9 @@ void frame(int width, int height)
         rt_push_const_mat4("meshMat", &meshMat[0][0]);
 
         static auto texture0 = rt_load_texture_file("../../Earth.png", true);
+        static auto sampler0 = rt_create_sampler({.min_filter = RT_LINEAR, .mag_filter = RT_LINEAR, .wrap_s = RT_REPEAT, .wrap_t = RT_REPEAT,});
         rt_bind_texture(texture0, {.binding = 0,});
+        rt_bind_sampler(sampler0, {.binding = 1,});
 
         static auto mesh = rt_create_mesh_sphere(2, 64, 32);
         rt_draw_mesh(mesh);

@@ -79,7 +79,7 @@ static constexpr auto FS = R"(
     constant float SHININESS = 32.0;
     constant float3 CAMERA_POSITION = float3(0.0, 0.0, 10.0);
 
-    fragment float4 main(PSIn input [[stage_in]], texture2d<float> texture0 [[texture(0)]], sampler sampler0 [[sampler(0)]])
+    fragment float4 main(PSIn input [[stage_in]], texture2d<float> texture0 [[texture(0)]], sampler sampler0 [[sampler(1)]])
     {
         float3 N = normalize(input.normal);
         float3 L = normalize(LIGHT_POSITION - input.vertex);
@@ -140,7 +140,7 @@ void frame(int width, int height)
     });
     static auto pass_depth = rt_create_texture_depth(width, height, nullptr);
     {
-        rt_pass_render_t pass = {.module = module, .colors = {{.texture = pass_color, .clear = true,}}, .depth = {.texture = pass_depth, .clear = true,},};
+        rt_pass_render_t pass = {.module = module, .colors = {{.texture_view = pass_color.default_view, .clear = true,}}, .depth = {.texture_view = pass_depth.default_view, .clear = true,},};
         rt_begin_render(pass);
 
         auto projMat = glm::perspectiveRH_ZO(glm::radians(60.0f), (float)width / (float)height, 0.1f, 100.0f);
@@ -150,7 +150,9 @@ void frame(int width, int height)
         rt_push_constant((const uint8_t*)push, sizeof(push));
 
         static auto texture0 = rt_load_texture_file("../../Earth.png", true);
+        static auto sampler0 = rt_create_sampler({.min_filter = RT_LINEAR, .mag_filter = RT_LINEAR, .wrap_s = RT_REPEAT, .wrap_t = RT_REPEAT,});
         rt_bind_texture(texture0, {.binding = 0,});
+        rt_bind_sampler(sampler0, {.binding = 1,});
 
         static auto mesh = rt_create_mesh_sphere(2, 64, 32);
         rt_draw_mesh(mesh);

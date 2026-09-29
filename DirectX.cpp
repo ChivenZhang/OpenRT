@@ -513,6 +513,12 @@ struct dx_texture_native_t
     uint32_t samples = 1;
 };
 
+struct dx_texture_view_native_t
+{
+    D3D12_SHADER_RESOURCE_VIEW_DESC srv = {};
+    uint32_t texture = 0;
+};
+
 struct dx_sampler_native_t
 {
     D3D12_SAMPLER_DESC desc = {};
@@ -545,7 +551,6 @@ struct dx_meshlet_native_t
 };
 
 struct dx_pass_compute_native_t { uint32_t dummy = 0; };
-struct dx_pass_render_native_t { bool offscreen = false; uint32_t width = 0, height = 0; };
 struct dx_pass_transfer_native_t { uint32_t dummy = 0; };
 
 struct dx_staging_t
@@ -555,17 +560,17 @@ struct dx_staging_t
 
 struct dx_native_t
 {
-    uint32_t bufferID = 0, textureID = 0, samplerID = 0, moduleID = 0;
+    uint32_t bufferID = 0, textureID = 0, textureViewID = 0, samplerID = 0, moduleID = 0;
     uint32_t meshID = 0, meshletID = 0, passID = 0;
 
     std::map<uint32_t, dx_buffer_native_t> buffers;
     std::map<uint32_t, dx_texture_native_t> textures;
+    std::map<uint32_t, dx_texture_view_native_t> textureViews;
     std::map<uint32_t, dx_sampler_native_t> samplers;
     std::map<uint32_t, dx_module_native_t> modules;
     std::map<uint32_t, dx_mesh_native_t> meshes;
     std::map<uint32_t, dx_meshlet_native_t> meshlets;
     std::map<uint32_t, dx_pass_compute_native_t> computePasses;
-    std::map<uint32_t, dx_pass_render_native_t> renderPasses;
     std::map<uint32_t, dx_pass_transfer_native_t> transferPasses;
 
     ComPtr<ID3D12Device> device;
@@ -582,7 +587,6 @@ struct dx_native_t
     uint64_t fenceValue = 0;
     uint32_t rtvSize = 0, dsvSize = 0, srvSize = 0, samplerSize = 0;
     uint32_t srvCursor = 0, samplerCursor = 0;
-    D3D12_CPU_DESCRIPTOR_HANDLE defaultSamplerCPU = {};
     std::vector<dx_staging_t> pendingStaging;
     uint8_t pushData[128] = {};
     uint32_t pushCount = 0;
@@ -592,7 +596,7 @@ struct dx_native_t
         rt_binding_type_t type = RT_BINDING_NONE;
         rt_buffer_t buffer = {};
         rt_buffer_bind_t buffer_bind = {};
-        rt_texture_t texture = {};
+        rt_texture_view_t texture_view = {};
         rt_texture_bind_t texture_bind = {};
         rt_texture_t storage_texture = {};
         rt_texture_storage_bind_t storage_texture_bind = {};
@@ -691,6 +695,13 @@ static dx_texture_native_t* dx_texture_native(rt_texture_t const& texture)
     return it == direct.textures.end() ? nullptr : &it->second;
 }
 
+static dx_texture_view_native_t* dx_texture_view_native(uint32_t handle)
+{
+    if (handle == 0) return nullptr;
+    auto it = direct.textureViews.find(handle);
+    return it == direct.textureViews.end() ? nullptr : &it->second;
+}
+
 static dx_sampler_native_t* dx_sampler_native(rt_sampler_t const& sampler)
 {
     if (!sampler.native || sampler.handle == 0) return nullptr;
@@ -732,7 +743,7 @@ static D3D12_CPU_DESCRIPTOR_HANDLE dx_srv_cpu(D3D12_GPU_DESCRIPTOR_HANDLE gpu)
 
 static D3D12_GPU_DESCRIPTOR_HANDLE dx_alloc_sampler()
 {
-    if (direct.samplerCursor >= 255) direct.samplerCursor = 1;
+    if (direct.samplerCursor >= 256) direct.samplerCursor = 0;
     uint32_t index = direct.samplerCursor++;
     D3D12_GPU_DESCRIPTOR_HANDLE handle = direct.samplerHeap->GetGPUDescriptorHandleForHeapStart();
     handle.ptr += (SIZE_T)index * direct.samplerSize;
@@ -803,48 +814,23 @@ static void dx_flush_descriptors()
         }
         else if (mod->kinds[i] == DX_KIND_SAMPLER)
         {
+            auto* samp = dx_sampler_native(slot.sampler);
+            if (!samp) continue;
             auto gpu = dx_alloc_sampler();
-            D3D12_SAMPLER_DESC desc = {};
-            desc.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
-            desc.AddressU = desc.AddressV = desc.AddressW = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
-            desc.MaxLOD = D3D12_FLOAT32_MAX;
-            if (auto* samp = dx_sampler_native(slot.sampler))
-                desc = samp->desc;
-            direct.device->CreateSampler(&desc, dx_sampler_cpu(gpu));
+            direct.device->CreateSampler(&samp->desc, dx_sampler_cpu(gpu));
             if (mod->cshader.BytecodeLength) direct.cmd->SetComputeRootDescriptorTable(root, gpu);
             else direct.cmd->SetGraphicsRootDescriptorTable(root, gpu);
         }
         else if (mod->kinds[i] == DX_KIND_SRV)
         {
-            auto* tex = dx_texture_native(slot.texture);
-            if (!tex || !tex->handle) continue;
+            auto* view = dx_texture_view_native(slot.texture_view.handle);
+            if (!view) continue;
+            auto texIt = direct.textures.find(view->texture);
+            if (texIt == direct.textures.end() || !texIt->second.handle) continue;
+            auto* tex = &texIt->second;
             dx_transition_image(*tex, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
             auto gpu = dx_alloc_srv();
-            D3D12_SHADER_RESOURCE_VIEW_DESC srv = {};
-            srv.Format = dx_srv_format(tex->format);
-            srv.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-            if (tex->target == RT_TEXTURE_3D)
-            {
-                srv.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE3D;
-                srv.Texture3D.MipLevels = tex->mipLevels;
-            }
-            else if (tex->target == RT_TEXTURE_2D_ARRAY)
-            {
-                srv.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2DARRAY;
-                srv.Texture2DArray.MipLevels = tex->mipLevels;
-                srv.Texture2DArray.ArraySize = tex->layers;
-            }
-            else if (tex->target == RT_TEXTURE_1D)
-            {
-                srv.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE1D;
-                srv.Texture1D.MipLevels = tex->mipLevels;
-            }
-            else
-            {
-                srv.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
-                srv.Texture2D.MipLevels = tex->mipLevels;
-            }
-            direct.device->CreateShaderResourceView(tex->handle.Get(), &srv, dx_srv_cpu(gpu));
+            direct.device->CreateShaderResourceView(tex->handle.Get(), &view->srv, dx_srv_cpu(gpu));
             if (mod->cshader.BytecodeLength) direct.cmd->SetComputeRootDescriptorTable(root, gpu);
             else direct.cmd->SetGraphicsRootDescriptorTable(root, gpu);
         }
@@ -909,14 +895,7 @@ void dx_load_library(ID3D12Device* device, ID3D12CommandQueue* queue)
     direct.srvSize = direct.device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
     direct.samplerSize = direct.device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER);
     direct.srvCursor = 1;
-    direct.samplerCursor = 1;
-
-    D3D12_SAMPLER_DESC samp = {};
-    samp.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
-    samp.AddressU = samp.AddressV = samp.AddressW = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
-    samp.MaxLOD = D3D12_FLOAT32_MAX;
-    direct.defaultSamplerCPU = direct.samplerHeap->GetCPUDescriptorHandleForHeapStart();
-    direct.device->CreateSampler(&samp, direct.defaultSamplerCPU);
+    direct.samplerCursor = 0;
 
     direct.device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&direct.fence));
     direct.fenceEvent = CreateEventW(nullptr, FALSE, FALSE, nullptr);
@@ -935,6 +914,9 @@ void dx_load_library(ID3D12Device* device, ID3D12CommandQueue* queue)
     rt_destroy_texture = dx_destroy_texture;
     rt_bind_texture = dx_bind_texture;
     rt_bind_texture_storage = dx_bind_texture_storage;
+    rt_create_texture_view = dx_create_texture_view;
+    rt_destroy_texture_view = dx_destroy_texture_view;
+    rt_bind_texture_view = dx_bind_texture_view;
     rt_create_sampler = dx_create_sampler;
     rt_destroy_sampler = dx_destroy_sampler;
     rt_bind_sampler = dx_bind_sampler;
@@ -1007,6 +989,7 @@ void dx_unload_library()
         item.second.handle.Reset();
     }
     direct.buffers.clear();
+    direct.textureViews.clear();
     for (auto& item : direct.textures)
         item.second.handle.Reset();
     direct.textures.clear();
@@ -1014,7 +997,6 @@ void dx_unload_library()
     direct.meshes.clear();
     direct.meshlets.clear();
     direct.computePasses.clear();
-    direct.renderPasses.clear();
     direct.transferPasses.clear();
     direct.cmdMesh.Reset();
     direct.cmd.Reset();
@@ -1026,7 +1008,7 @@ void dx_unload_library()
     direct.fence.Reset();
     direct.queue.Reset();
     direct.device.Reset();
-    direct.bufferID = direct.textureID = direct.samplerID = direct.moduleID = 0;
+    direct.bufferID = direct.textureID = direct.textureViewID = direct.samplerID = direct.moduleID = 0;
     direct.meshID = direct.meshletID = direct.passID = 0;
     direct.currentPassType = RT_MODULE_NONE;
     direct.currentPipeline = nullptr;
@@ -1045,6 +1027,9 @@ void dx_unload_library()
     if (rt_destroy_texture == dx_destroy_texture) rt_destroy_texture = nullptr;
     if (rt_bind_texture == dx_bind_texture) rt_bind_texture = nullptr;
     if (rt_bind_texture_storage == dx_bind_texture_storage) rt_bind_texture_storage = nullptr;
+    if (rt_create_texture_view == dx_create_texture_view) rt_create_texture_view = nullptr;
+    if (rt_destroy_texture_view == dx_destroy_texture_view) rt_destroy_texture_view = nullptr;
+    if (rt_bind_texture_view == dx_bind_texture_view) rt_bind_texture_view = nullptr;
     if (rt_create_sampler == dx_create_sampler) rt_create_sampler = nullptr;
     if (rt_destroy_sampler == dx_destroy_sampler) rt_destroy_sampler = nullptr;
     if (rt_bind_sampler == dx_bind_sampler) rt_bind_sampler = nullptr;
@@ -1332,6 +1317,15 @@ rt_texture_t dx_create_texture(rt_texture_info_t const& info)
     if (result.samples == RT_TEXTURE_SAMPLE_4X && (info.target == RT_TEXTURE_2D || info.target == RT_TEXTURE_2D_MULTISAMPLE))
         result.target = RT_TEXTURE_2D_MULTISAMPLE;
     result.native = &native;
+    result.default_view = dx_create_texture_view({
+        .texture = result,
+        .target = result.target,
+        .format = result.format,
+        .aspect = RT_TEXTURE_ASPECT_ALL,
+        .usage = result.usage,
+        .layer_count = native.layers,
+        .level_count = native.mipLevels,
+    });
     return result;
 }
 
@@ -1381,6 +1375,16 @@ rt_texture_t dx_create_texture_depth_stencil(uint32_t width, uint32_t height, co
 
 void dx_destroy_texture(rt_texture_t& texture)
 {
+    if (texture.handle)
+    {
+        for (auto it = direct.textureViews.begin(); it != direct.textureViews.end(); )
+        {
+            if (it->second.texture == texture.handle)
+                it = direct.textureViews.erase(it);
+            else
+                ++it;
+        }
+    }
     if (texture.native)
         direct.textures.erase(texture.handle);
     texture = {};
@@ -1394,7 +1398,7 @@ void dx_bind_texture(rt_texture_t& texture, rt_texture_bind_t bind)
         abort();
     }
     direct.currentBinding[bind.binding].type = RT_BINDING_TEXTURE;
-    direct.currentBinding[bind.binding].texture = texture;
+    direct.currentBinding[bind.binding].texture_view = texture.default_view;
     direct.currentBinding[bind.binding].texture_bind = bind;
 }
 
@@ -1408,6 +1412,114 @@ void dx_bind_texture_storage(rt_texture_t& texture, rt_texture_storage_bind_t bi
     direct.currentBinding[bind.binding].type = RT_BINDING_STORAGE_TEXTURE;
     direct.currentBinding[bind.binding].storage_texture = texture;
     direct.currentBinding[bind.binding].storage_texture_bind = bind;
+}
+
+rt_texture_view_t dx_create_texture_view(rt_texture_view_info_t const& info)
+{
+    rt_texture_view_t result{
+        0, info.target,
+        info.format != RT_TEXTURE_NONE ? info.format : info.texture.format,
+        info.aspect, info.usage ? info.usage : info.texture.usage,
+        info.base_layer, info.layer_count, info.base_level, info.level_count, nullptr};
+    auto* tex = dx_texture_native(info.texture);
+    if (!tex || !tex->handle) return result;
+    uint32_t levelCount = info.level_count ? info.level_count : tex->mipLevels - info.base_level;
+    if (info.base_level >= tex->mipLevels || levelCount == 0) return result;
+    if (info.base_level + levelCount > tex->mipLevels)
+        levelCount = tex->mipLevels - info.base_level;
+    uint32_t baseLayer = 0;
+    uint32_t layerCount = 1;
+    if (info.target != RT_TEXTURE_3D)
+    {
+        baseLayer = info.base_layer;
+        layerCount = info.layer_count ? info.layer_count : (tex->layers > baseLayer ? tex->layers - baseLayer : 0);
+        if (baseLayer >= tex->layers || layerCount == 0) return result;
+        if (baseLayer + layerCount > tex->layers)
+            layerCount = tex->layers - baseLayer;
+    }
+    result.base_layer = baseLayer;
+    result.layer_count = layerCount;
+    result.base_level = info.base_level;
+    result.level_count = levelCount;
+
+    DXGI_FORMAT format = info.format != RT_TEXTURE_NONE ? rt_to_dx_texture_format(info.format) : tex->format;
+    UINT plane = 0;
+    DXGI_FORMAT srvFormat = dx_srv_format(format);
+    if (info.aspect == RT_TEXTURE_ASPECT_STENCIL)
+    {
+        if (tex->format == DXGI_FORMAT_D24_UNORM_S8_UINT)
+            srvFormat = DXGI_FORMAT_X24_TYPELESS_G8_UINT;
+        else if (tex->format == DXGI_FORMAT_D32_FLOAT_S8X24_UINT)
+            srvFormat = DXGI_FORMAT_X32_TYPELESS_G8X24_UINT;
+        plane = 1;
+    }
+    else if (dx_is_depth(tex->format) || dx_is_depth(format))
+        srvFormat = dx_srv_format(tex->format);
+
+    D3D12_SHADER_RESOURCE_VIEW_DESC srv = {};
+    srv.Format = srvFormat;
+    srv.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+    if (info.target == RT_TEXTURE_3D)
+    {
+        srv.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE3D;
+        srv.Texture3D.MostDetailedMip = info.base_level;
+        srv.Texture3D.MipLevels = levelCount;
+    }
+    else if (info.target == RT_TEXTURE_1D)
+    {
+        srv.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE1D;
+        srv.Texture1D.MostDetailedMip = info.base_level;
+        srv.Texture1D.MipLevels = levelCount;
+    }
+    else if (tex->samples > 1)
+    {
+        srv.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2DMS;
+    }
+    else if (info.target == RT_TEXTURE_2D_ARRAY || layerCount > 1 || baseLayer != 0)
+    {
+        srv.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2DARRAY;
+        srv.Texture2DArray.MostDetailedMip = info.base_level;
+        srv.Texture2DArray.MipLevels = levelCount;
+        srv.Texture2DArray.FirstArraySlice = baseLayer;
+        srv.Texture2DArray.ArraySize = layerCount;
+        srv.Texture2DArray.PlaneSlice = plane;
+    }
+    else
+    {
+        srv.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+        srv.Texture2D.MostDetailedMip = info.base_level;
+        srv.Texture2D.MipLevels = levelCount;
+        srv.Texture2D.PlaneSlice = plane;
+    }
+
+    uint32_t handle = direct.textureViewID + 1;
+    auto& native = direct.textureViews[handle];
+    native.texture = info.texture.handle;
+    native.srv = srv;
+    direct.textureViewID = handle;
+    result.handle = handle;
+    result.native = &native;
+    return result;
+}
+
+void dx_destroy_texture_view(rt_texture_view_t& view)
+{
+    direct.textureViews.erase(view.handle);
+    view.handle = 0;
+    view.native = nullptr;
+}
+
+void dx_bind_texture_view(rt_texture_view_t& view, rt_texture_view_bind_t bind)
+{
+    if (direct.currentPipeline == nullptr)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    direct.currentBinding[bind.binding].type = RT_BINDING_TEXTURE;
+    direct.currentBinding[bind.binding].texture_view = view;
+    direct.currentBinding[bind.binding].texture_bind = {};
+    direct.currentBinding[bind.binding].texture_bind.binding = bind.binding;
 }
 
 rt_sampler_t dx_create_sampler(rt_sampler_info_t const& info)
@@ -2006,10 +2118,6 @@ void dx_begin_render(rt_pass_render_t& pass)
     for (auto& binding : direct.currentBinding)
         binding = {};
     direct.pushCount = 0;
-    auto handle = direct.passID + 1;
-    auto& native = direct.renderPasses[handle];
-    pass.handle = handle;
-    pass.native = &native;
     direct.currentPassType = RT_MODULE_RENDER;
     direct.currentRenderPass = &pass;
 
@@ -2021,68 +2129,72 @@ void dx_begin_render(rt_pass_render_t& pass)
     if (mod)
         direct.cmd->IASetPrimitiveTopology(mod->topology);
 
-    native.offscreen = pass.depth.texture.handle != 0;
-    for (auto& color : pass.colors)
-        if (color.texture.handle) native.offscreen = true;
-
     D3D12_CPU_DESCRIPTOR_HANDLE rtvs[RT_MAX_COLOR_TEXTURE_NUM] = {};
     uint32_t colorCount = 0;
     uint32_t width = 0, height = 0;
     D3D12_CPU_DESCRIPTOR_HANDLE rtvStart = direct.rtvHeap->GetCPUDescriptorHandleForHeapStart();
     for (uint32_t i = 0; i < RT_MAX_COLOR_TEXTURE_NUM; ++i)
     {
-        if (pass.colors[i].texture.format == RT_TEXTURE_NONE)
+        if (pass.colors[i].texture_view.format == RT_TEXTURE_NONE)
             continue;
-        if (auto* tex = dx_texture_native(pass.colors[i].texture))
+        auto* view = dx_texture_view_native(pass.colors[i].texture_view.handle);
+        if (!view) continue;
+        auto texIt = direct.textures.find(view->texture);
+        if (texIt == direct.textures.end() || !texIt->second.handle) continue;
+        auto* tex = &texIt->second;
+        dx_transition_image(*tex, D3D12_RESOURCE_STATE_RENDER_TARGET);
+        D3D12_CPU_DESCRIPTOR_HANDLE rtv = rtvStart;
+        rtv.ptr += (SIZE_T)i * direct.rtvSize;
+        D3D12_RENDER_TARGET_VIEW_DESC rtvDesc = {};
+        rtvDesc.Format = tex->format;
+        rtvDesc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2D;
+        rtvDesc.Texture2D.MipSlice = pass.colors[i].texture_view.base_level;
+        direct.device->CreateRenderTargetView(tex->handle.Get(), &rtvDesc, rtv);
+        rtvs[i] = rtv;
+        if (pass.colors[i].clear)
         {
-            dx_transition_image(*tex, D3D12_RESOURCE_STATE_RENDER_TARGET);
-            D3D12_CPU_DESCRIPTOR_HANDLE rtv = rtvStart;
-            rtv.ptr += (SIZE_T)i * direct.rtvSize;
-            D3D12_RENDER_TARGET_VIEW_DESC rtvDesc = {};
-            rtvDesc.Format = tex->format;
-            rtvDesc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2D;
-            direct.device->CreateRenderTargetView(tex->handle.Get(), &rtvDesc, rtv);
-            rtvs[i] = rtv;
-            if (pass.colors[i].clear)
-            {
-                float clear[4] = {pass.colors[i].value.r, pass.colors[i].value.g, pass.colors[i].value.b, pass.colors[i].value.a};
-                direct.cmd->ClearRenderTargetView(rtv, clear, 0, nullptr);
-            }
-            width = max(width, pass.colors[i].texture.width);
-            height = max(height, pass.colors[i].texture.height);
-            colorCount = i + 1;
+            float clear[4] = {pass.colors[i].value.r, pass.colors[i].value.g, pass.colors[i].value.b, pass.colors[i].value.a};
+            direct.cmd->ClearRenderTargetView(rtv, clear, 0, nullptr);
         }
+        uint32_t mip = min(pass.colors[i].texture_view.base_level, 31u);
+        width = max(width, max(1u, tex->width >> mip));
+        height = max(height, max(1u, tex->height >> mip));
+        colorCount = i + 1;
     }
 
     D3D12_CPU_DESCRIPTOR_HANDLE dsv = {};
     bool hasDepth = false;
-    if (auto* tex = dx_texture_native(pass.depth.texture))
+    if (auto* view = dx_texture_view_native(pass.depth.texture_view.handle))
     {
-        dx_transition_image(*tex, D3D12_RESOURCE_STATE_DEPTH_WRITE);
-        dsv = direct.dsvHeap->GetCPUDescriptorHandleForHeapStart();
-        D3D12_DEPTH_STENCIL_VIEW_DESC dsvDesc = {};
-        dsvDesc.Format = tex->format;
-        dsvDesc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D;
-        direct.device->CreateDepthStencilView(tex->handle.Get(), &dsvDesc, dsv);
-        if (pass.depth.clear || pass.stencil.clear)
+        auto texIt = direct.textures.find(view->texture);
+        if (texIt != direct.textures.end() && texIt->second.handle)
         {
-            D3D12_CLEAR_FLAGS flags = {};
-            if (pass.depth.clear) flags |= D3D12_CLEAR_FLAG_DEPTH;
-            if (pass.stencil.clear) flags |= D3D12_CLEAR_FLAG_STENCIL;
-            direct.cmd->ClearDepthStencilView(dsv, flags, pass.depth.value, (UINT8)pass.stencil.value, 0, nullptr);
+            auto* tex = &texIt->second;
+            dx_transition_image(*tex, D3D12_RESOURCE_STATE_DEPTH_WRITE);
+            dsv = direct.dsvHeap->GetCPUDescriptorHandleForHeapStart();
+            D3D12_DEPTH_STENCIL_VIEW_DESC dsvDesc = {};
+            dsvDesc.Format = tex->format;
+            dsvDesc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D;
+            dsvDesc.Texture2D.MipSlice = pass.depth.texture_view.base_level;
+            direct.device->CreateDepthStencilView(tex->handle.Get(), &dsvDesc, dsv);
+            if (pass.depth.clear || pass.stencil.clear)
+            {
+                D3D12_CLEAR_FLAGS flags = {};
+                if (pass.depth.clear) flags |= D3D12_CLEAR_FLAG_DEPTH;
+                if (pass.stencil.clear) flags |= D3D12_CLEAR_FLAG_STENCIL;
+                direct.cmd->ClearDepthStencilView(dsv, flags, pass.depth.value, (UINT8)pass.stencil.value, 0, nullptr);
+            }
+            uint32_t mip = min(pass.depth.texture_view.base_level, 31u);
+            width = max(width, max(1u, tex->width >> mip));
+            height = max(height, max(1u, tex->height >> mip));
+            hasDepth = true;
         }
-        width = max(width, pass.depth.texture.width);
-        height = max(height, pass.depth.texture.height);
-        hasDepth = true;
     }
 
-    native.width = width;
-    native.height = height;
     uint32_t rtvCount = mod ? mod->colorCount : colorCount;
     direct.cmd->OMSetRenderTargets(rtvCount, rtvCount ? rtvs : nullptr, FALSE, hasDepth ? &dsv : nullptr);
     dx_set_viewport(0, 0, (int32_t)width, (int32_t)height);
     dx_set_scissor(0, 0, (int32_t)width, (int32_t)height);
-    direct.passID = handle;
 }
 
 void dx_end_render(rt_pass_render_t& pass)
@@ -2093,11 +2205,12 @@ void dx_end_render(rt_pass_render_t& pass)
         abort();
     }
     for (auto& color : pass.colors)
-        if (auto* tex = dx_texture_native(color.texture))
-            dx_transition_image(*tex, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-    if (auto* tex = dx_texture_native(pass.depth.texture))
-        dx_transition_image(*tex, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-    direct.renderPasses.erase(pass.handle);
+        if (auto* view = dx_texture_view_native(color.texture_view.handle))
+            if (auto texIt = direct.textures.find(view->texture); texIt != direct.textures.end())
+                dx_transition_image(texIt->second, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+    if (auto* view = dx_texture_view_native(pass.depth.texture_view.handle))
+        if (auto texIt = direct.textures.find(view->texture); texIt != direct.textures.end())
+            dx_transition_image(texIt->second, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
     pass.handle = 0;
     pass.native = nullptr;
     direct.currentPassType = RT_MODULE_NONE;

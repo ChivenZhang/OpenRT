@@ -449,7 +449,6 @@ struct wg_buffer_native_t
 struct wg_texture_native_t
 {
     WGPUTexture handle = nullptr;
-    WGPUTextureView view = nullptr;
     WGPUTextureFormat format = WGPUTextureFormat_Undefined;
     wg_res_state_t state = WG_STATE_UNKNOWN;
     uint32_t mipLevels = 1;
@@ -458,9 +457,34 @@ struct wg_texture_native_t
     rt_texture_target_t target = RT_TEXTURE_2D;
     ~wg_texture_native_t()
     {
-        if (view) wgpuTextureViewRelease(view);
         if (handle) wgpuTextureRelease(handle);
     }
+};
+
+struct wg_texture_view_native_t
+{
+    WGPUTextureView handle = nullptr;
+    uint32_t texture = 0;
+
+    wg_texture_view_native_t() = default;
+    wg_texture_view_native_t(const wg_texture_view_native_t&) = delete;
+    wg_texture_view_native_t& operator=(const wg_texture_view_native_t&) = delete;
+    wg_texture_view_native_t(wg_texture_view_native_t&& other) noexcept : handle(other.handle), texture(other.texture)
+    {
+        other.handle = nullptr;
+    }
+    wg_texture_view_native_t& operator=(wg_texture_view_native_t&& other) noexcept
+    {
+        if (this != &other)
+        {
+            if (handle) wgpuTextureViewRelease(handle);
+            handle = other.handle;
+            texture = other.texture;
+            other.handle = nullptr;
+        }
+        return *this;
+    }
+    ~wg_texture_view_native_t() { if (handle) wgpuTextureViewRelease(handle); }
 };
 
 struct wg_sampler_native_t
@@ -490,22 +514,21 @@ struct wg_module_native_t
 struct wg_mesh_native_t { uint32_t vertexCount = 0, indexCount = 0; };
 struct wg_meshlet_native_t { uint32_t vertexCount = 0, indexCount = 0; };
 struct wg_pass_compute_native_t { uint32_t dummy = 0; };
-struct wg_pass_render_native_t { bool offscreen = false; uint32_t width = 0, height = 0; };
 struct wg_pass_transfer_native_t { uint32_t dummy = 0; };
 
 struct wg_native_t
 {
-    uint32_t bufferID = 0, textureID = 0, samplerID = 0, moduleID = 0;
+    uint32_t bufferID = 0, textureID = 0, textureViewID = 0, samplerID = 0, moduleID = 0;
     uint32_t meshID = 0, meshletID = 0, passID = 0;
 
     std::map<uint32_t, wg_buffer_native_t> buffers;
     std::map<uint32_t, wg_texture_native_t> textures;
+    std::map<uint32_t, wg_texture_view_native_t> textureViews;
     std::map<uint32_t, wg_sampler_native_t> samplers;
     std::map<uint32_t, wg_module_native_t> modules;
     std::map<uint32_t, wg_mesh_native_t> meshes;
     std::map<uint32_t, wg_meshlet_native_t> meshlets;
     std::map<uint32_t, wg_pass_compute_native_t> computePasses;
-    std::map<uint32_t, wg_pass_render_native_t> renderPasses;
     std::map<uint32_t, wg_pass_transfer_native_t> transferPasses;
 
     WGPUDevice device = nullptr;
@@ -513,7 +536,6 @@ struct wg_native_t
     WGPUCommandEncoder encoder = nullptr;
     WGPURenderPassEncoder renderPass = nullptr;
     WGPUComputePassEncoder computePass = nullptr;
-    WGPUSampler defaultSampler = nullptr;
     WGPUBuffer pushBuffer = nullptr;
     uint8_t pushData[256] = {};
     uint32_t pushLength = 0;
@@ -523,7 +545,7 @@ struct wg_native_t
         rt_binding_type_t type = RT_BINDING_NONE;
         rt_buffer_t buffer = {};
         rt_buffer_bind_t buffer_bind = {};
-        rt_texture_t texture = {};
+        rt_texture_view_t texture_view = {};
         rt_texture_bind_t texture_bind = {};
         rt_texture_t storage_texture = {};
         rt_texture_storage_bind_t storage_texture_bind = {};
@@ -625,6 +647,19 @@ static wg_texture_native_t* wg_texture_native(rt_texture_t const& texture)
     if (!texture.native || texture.handle == 0) return nullptr;
     auto it = webgpu.textures.find(texture.handle);
     return it == webgpu.textures.end() ? nullptr : &it->second;
+}
+
+static wg_texture_view_native_t* wg_texture_view_native(uint32_t handle)
+{
+    if (handle == 0) return nullptr;
+    auto it = webgpu.textureViews.find(handle);
+    return it == webgpu.textureViews.end() ? nullptr : &it->second;
+}
+
+static WGPUTextureView wg_image_view(rt_texture_view_t const& view)
+{
+    auto* native = wg_texture_view_native(view.handle);
+    return native ? native->handle : nullptr;
 }
 
 static wg_sampler_native_t* wg_sampler_native(rt_sampler_t const& sampler)
@@ -755,24 +790,28 @@ static void wg_flush_descriptors()
         }
         else if (mod->kinds[i] == WG_KIND_TEXTURE)
         {
-            auto* tex = wg_texture_native(slot.texture);
-            if (!tex || !tex->view) continue;
+            auto* view = wg_texture_view_native(slot.texture_view.handle);
+            if (!view || !view->handle) continue;
+            auto texIt = webgpu.textures.find(view->texture);
+            if (texIt == webgpu.textures.end()) continue;
+            auto* tex = &texIt->second;
+            WGPUTextureView gpuView = view->handle;
             wg_transition_image(*tex, WG_STATE_SHADER_READ);
-            entries[count].textureView = tex->view;
+            entries[count].textureView = gpuView;
         }
         else if (mod->kinds[i] == WG_KIND_STORAGE_TEXTURE)
         {
             auto* tex = wg_texture_native(slot.storage_texture);
-            if (!tex || !tex->view) continue;
+            WGPUTextureView gpuView = wg_image_view(slot.storage_texture.default_view);
+            if (!tex || !gpuView) continue;
             wg_transition_image(*tex, WG_STATE_SHADER_WRITE);
-            entries[count].textureView = tex->view;
+            entries[count].textureView = gpuView;
         }
         else if (mod->kinds[i] == WG_KIND_SAMPLER)
         {
-            WGPUSampler samp = webgpu.defaultSampler;
-            if (auto* s = wg_sampler_native(slot.sampler))
-                samp = s->handle;
-            entries[count].sampler = samp;
+            auto* samp = wg_sampler_native(slot.sampler);
+            if (!samp || !samp->handle) continue;
+            entries[count].sampler = samp->handle;
         }
         else
             continue;
@@ -809,16 +848,6 @@ void wg_load_library(WGPUDevice device, WGPUQueue queue)
         webgpu.queue = wgpuDeviceGetQueue(webgpu.device);
     wg_ensure_encoder();
 
-    WGPUSamplerDescriptor samp = {};
-    samp.minFilter = WGPUFilterMode_Linear;
-    samp.magFilter = WGPUFilterMode_Linear;
-    samp.mipmapFilter = WGPUMipmapFilterMode_Linear;
-    samp.addressModeU = WGPUAddressMode_Repeat;
-    samp.addressModeV = WGPUAddressMode_Repeat;
-    samp.addressModeW = WGPUAddressMode_Repeat;
-    samp.maxAnisotropy = 1;
-    webgpu.defaultSampler = wgpuDeviceCreateSampler(webgpu.device, &samp);
-
     WGPUBufferDescriptor push = {};
     push.size = 256;
     push.usage = (WGPUBufferUsage)(WGPUBufferUsage_Uniform | WGPUBufferUsage_CopyDst);
@@ -838,6 +867,9 @@ void wg_load_library(WGPUDevice device, WGPUQueue queue)
     rt_destroy_texture = wg_destroy_texture;
     rt_bind_texture = wg_bind_texture;
     rt_bind_texture_storage = wg_bind_texture_storage;
+    rt_create_texture_view = wg_create_texture_view;
+    rt_destroy_texture_view = wg_destroy_texture_view;
+    rt_bind_texture_view = wg_bind_texture_view;
     rt_create_sampler = wg_create_sampler;
     rt_destroy_sampler = wg_destroy_sampler;
     rt_bind_sampler = wg_bind_sampler;
@@ -906,13 +938,9 @@ void wg_unload_library()
         }
     }
     webgpu.buffers.clear();
+    webgpu.textureViews.clear();
     for (auto& item : webgpu.textures)
     {
-        if (item.second.view)
-        {
-            wgpuTextureViewRelease(item.second.view);
-            item.second.view = nullptr;
-        }
         if (item.second.handle)
         {
             wgpuTextureRelease(item.second.handle);
@@ -932,13 +960,11 @@ void wg_unload_library()
     webgpu.meshes.clear();
     webgpu.meshlets.clear();
     webgpu.computePasses.clear();
-    webgpu.renderPasses.clear();
     webgpu.transferPasses.clear();
     if (webgpu.pushBuffer) { wgpuBufferRelease(webgpu.pushBuffer); webgpu.pushBuffer = nullptr; }
-    if (webgpu.defaultSampler) { wgpuSamplerRelease(webgpu.defaultSampler); webgpu.defaultSampler = nullptr; }
     webgpu.queue = nullptr;
     webgpu.device = nullptr;
-    webgpu.bufferID = webgpu.textureID = webgpu.samplerID = webgpu.moduleID = 0;
+    webgpu.bufferID = webgpu.textureID = webgpu.textureViewID = webgpu.samplerID = webgpu.moduleID = 0;
     webgpu.meshID = webgpu.meshletID = webgpu.passID = 0;
     webgpu.currentPassType = RT_MODULE_NONE;
     webgpu.currentPipeline = nullptr;
@@ -957,6 +983,9 @@ void wg_unload_library()
     if (rt_destroy_texture == wg_destroy_texture) rt_destroy_texture = nullptr;
     if (rt_bind_texture == wg_bind_texture) rt_bind_texture = nullptr;
     if (rt_bind_texture_storage == wg_bind_texture_storage) rt_bind_texture_storage = nullptr;
+    if (rt_create_texture_view == wg_create_texture_view) rt_create_texture_view = nullptr;
+    if (rt_destroy_texture_view == wg_destroy_texture_view) rt_destroy_texture_view = nullptr;
+    if (rt_bind_texture_view == wg_bind_texture_view) rt_bind_texture_view = nullptr;
     if (rt_create_sampler == wg_create_sampler) rt_create_sampler = nullptr;
     if (rt_destroy_sampler == wg_destroy_sampler) rt_destroy_sampler = nullptr;
     if (rt_bind_sampler == wg_bind_sampler) rt_bind_sampler = nullptr;
@@ -1146,7 +1175,6 @@ rt_texture_t wg_create_texture(rt_texture_info_t const& info)
         webgpu.textures.erase(handle);
         return {};
     }
-    native.view = wgpuTextureCreateView(native.handle, nullptr);
 
     if (info.data && samples == RT_TEXTURE_SAMPLE_1X)
     {
@@ -1177,6 +1205,15 @@ rt_texture_t wg_create_texture(rt_texture_info_t const& info)
     if (samples == RT_TEXTURE_SAMPLE_4X && (info.target == RT_TEXTURE_2D || info.target == RT_TEXTURE_2D_MULTISAMPLE))
         result.target = RT_TEXTURE_2D_MULTISAMPLE;
     result.native = &native;
+    result.default_view = wg_create_texture_view({
+        .texture = result,
+        .target = result.target,
+        .format = result.format,
+        .aspect = RT_TEXTURE_ASPECT_ALL,
+        .usage = result.usage,
+        .layer_count = native.layers,
+        .level_count = native.mipLevels,
+    });
     return result;
 }
 
@@ -1226,14 +1263,18 @@ rt_texture_t wg_create_texture_depth_stencil(uint32_t width, uint32_t height, co
 
 void wg_destroy_texture(rt_texture_t& texture)
 {
-    if (texture.native)
+    if (texture.handle)
     {
-        auto it = webgpu.textures.find(texture.handle);
-        if (it != webgpu.textures.end())
+        for (auto it = webgpu.textureViews.begin(); it != webgpu.textureViews.end(); )
         {
-            webgpu.textures.erase(it);
+            if (it->second.texture == texture.handle)
+                it = webgpu.textureViews.erase(it);
+            else
+                ++it;
         }
     }
+    if (texture.native)
+        webgpu.textures.erase(texture.handle);
     texture = {};
 }
 
@@ -1245,7 +1286,7 @@ void wg_bind_texture(rt_texture_t& texture, rt_texture_bind_t bind)
         abort();
     }
     webgpu.currentBinding[bind.binding].type = RT_BINDING_TEXTURE;
-    webgpu.currentBinding[bind.binding].texture = texture;
+    webgpu.currentBinding[bind.binding].texture_view = texture.default_view;
     webgpu.currentBinding[bind.binding].texture_bind = bind;
 }
 
@@ -1259,6 +1300,79 @@ void wg_bind_texture_storage(rt_texture_t& texture, rt_texture_storage_bind_t bi
     webgpu.currentBinding[bind.binding].type = RT_BINDING_STORAGE_TEXTURE;
     webgpu.currentBinding[bind.binding].storage_texture = texture;
     webgpu.currentBinding[bind.binding].storage_texture_bind = bind;
+}
+
+rt_texture_view_t wg_create_texture_view(rt_texture_view_info_t const& info)
+{
+    rt_texture_view_t result{
+        0, info.target,
+        info.format != RT_TEXTURE_NONE ? info.format : info.texture.format,
+        info.aspect, info.usage ? info.usage : info.texture.usage,
+        info.base_layer, info.layer_count, info.base_level, info.level_count, nullptr};
+    auto* tex = wg_texture_native(info.texture);
+    if (!tex || !tex->handle) return result;
+    uint32_t levelCount = info.level_count ? info.level_count : tex->mipLevels - info.base_level;
+    if (info.base_level >= tex->mipLevels || levelCount == 0) return result;
+    if (info.base_level + levelCount > tex->mipLevels)
+        levelCount = tex->mipLevels - info.base_level;
+    uint32_t baseLayer = 0;
+    uint32_t layerCount = 1;
+    if (info.target != RT_TEXTURE_3D)
+    {
+        baseLayer = info.base_layer;
+        layerCount = info.layer_count ? info.layer_count : (tex->layers > baseLayer ? tex->layers - baseLayer : 0);
+        if (baseLayer >= tex->layers || layerCount == 0) return result;
+        if (baseLayer + layerCount > tex->layers)
+            layerCount = tex->layers - baseLayer;
+    }
+    result.base_layer = baseLayer;
+    result.layer_count = layerCount;
+    result.base_level = info.base_level;
+    result.level_count = levelCount;
+
+    WGPUTextureViewDescriptor desc = {};
+    desc.format = info.format != RT_TEXTURE_NONE ? rt_to_wg_texture_format(info.format) : tex->format;
+    if (info.target == RT_TEXTURE_1D) desc.dimension = WGPUTextureViewDimension_1D;
+    else if (info.target == RT_TEXTURE_3D) desc.dimension = WGPUTextureViewDimension_3D;
+    else if (info.target == RT_TEXTURE_2D_ARRAY || layerCount > 1) desc.dimension = WGPUTextureViewDimension_2DArray;
+    else desc.dimension = WGPUTextureViewDimension_2D;
+    desc.baseMipLevel = info.base_level;
+    desc.mipLevelCount = levelCount;
+    desc.baseArrayLayer = baseLayer;
+    desc.arrayLayerCount = layerCount;
+    if (info.aspect == RT_TEXTURE_ASPECT_STENCIL) desc.aspect = WGPUTextureAspect_StencilOnly;
+    else if (info.aspect == RT_TEXTURE_ASPECT_DEPTH) desc.aspect = WGPUTextureAspect_DepthOnly;
+    else desc.aspect = WGPUTextureAspect_All;
+    WGPUTextureView view = wgpuTextureCreateView(tex->handle, &desc);
+    if (!view) return result;
+    uint32_t handle = webgpu.textureViewID + 1;
+    auto& native = webgpu.textureViews[handle];
+    native.handle = view;
+    native.texture = info.texture.handle;
+    webgpu.textureViewID = handle;
+    result.handle = handle;
+    result.native = &native;
+    return result;
+}
+
+void wg_destroy_texture_view(rt_texture_view_t& view)
+{
+    webgpu.textureViews.erase(view.handle);
+    view.handle = 0;
+    view.native = nullptr;
+}
+
+void wg_bind_texture_view(rt_texture_view_t& view, rt_texture_view_bind_t bind)
+{
+    if (webgpu.currentPipeline == nullptr)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    webgpu.currentBinding[bind.binding].type = RT_BINDING_TEXTURE;
+    webgpu.currentBinding[bind.binding].texture_view = view;
+    webgpu.currentBinding[bind.binding].texture_bind = {};
+    webgpu.currentBinding[bind.binding].texture_bind.binding = bind.binding;
 }
 
 rt_sampler_t wg_create_sampler(rt_sampler_info_t const& info)
@@ -1643,35 +1757,30 @@ void wg_begin_render(rt_pass_render_t& pass)
     }
     for (auto& binding : webgpu.currentBinding)
         binding = {};
-    auto handle = webgpu.passID + 1;
-    auto& native = webgpu.renderPasses[handle];
-    pass.handle = handle;
-    pass.native = &native;
     webgpu.currentPassType = RT_MODULE_RENDER;
     webgpu.currentRenderPass = &pass;
-
-    native.offscreen = pass.depth.texture.handle != 0;
-    for (auto& color : pass.colors)
-        if (color.texture.handle) native.offscreen = true;
 
     WGPURenderPassColorAttachment colors[RT_MAX_COLOR_TEXTURE_NUM] = {};
     uint32_t colorCount = 0;
     uint32_t width = 0, height = 0;
     for (uint32_t i = 0; i < RT_MAX_COLOR_TEXTURE_NUM; ++i)
     {
-        if (auto* tex = wg_texture_native(pass.colors[i].texture))
-        {
-            if (pass.colors[i].texture.format == RT_TEXTURE_NONE)
-                continue;
-            wg_transition_image(*tex, WG_STATE_COLOR);
-            colors[i].view = tex->view;
-            colors[i].loadOp = pass.colors[i].clear ? WGPULoadOp_Clear : WGPULoadOp_Load;
-            colors[i].storeOp = WGPUStoreOp_Store;
-            colors[i].clearValue = {pass.colors[i].value.r, pass.colors[i].value.g, pass.colors[i].value.b, pass.colors[i].value.a};
-            width = std::max(width, pass.colors[i].texture.width);
-            height = std::max(height, pass.colors[i].texture.height);
-            colorCount = i + 1;
-        }
+        if (pass.colors[i].texture_view.format == RT_TEXTURE_NONE)
+            continue;
+        auto* view = wg_texture_view_native(pass.colors[i].texture_view.handle);
+        if (!view || !view->handle) continue;
+        auto texIt = webgpu.textures.find(view->texture);
+        if (texIt == webgpu.textures.end()) continue;
+        auto* tex = &texIt->second;
+        wg_transition_image(*tex, WG_STATE_COLOR);
+        colors[i].view = view->handle;
+        colors[i].loadOp = pass.colors[i].clear ? WGPULoadOp_Clear : WGPULoadOp_Load;
+        colors[i].storeOp = WGPUStoreOp_Store;
+        colors[i].clearValue = {pass.colors[i].value.r, pass.colors[i].value.g, pass.colors[i].value.b, pass.colors[i].value.a};
+        uint32_t mip = std::min(pass.colors[i].texture_view.base_level, 31u);
+        width = std::max(width, std::max(1u, tex->width >> mip));
+        height = std::max(height, std::max(1u, tex->height >> mip));
+        colorCount = i + 1;
     }
     for (uint32_t i = 0; i < colorCount; ++i)
     {
@@ -1683,26 +1792,29 @@ void wg_begin_render(rt_pass_render_t& pass)
 
     WGPURenderPassDepthStencilAttachment depth = {};
     bool hasDepth = false;
-    if (auto* tex = wg_texture_native(pass.depth.texture))
+    if (auto* view = wg_texture_view_native(pass.depth.texture_view.handle))
     {
-        wg_transition_image(*tex, WG_STATE_DEPTH);
-        depth.view = tex->view;
-        depth.depthLoadOp = pass.depth.clear ? WGPULoadOp_Clear : WGPULoadOp_Load;
-        depth.depthStoreOp = WGPUStoreOp_Store;
-        depth.depthClearValue = pass.depth.value;
-        if (rt_texture_has_stencil(pass.depth.texture.format))
+        auto texIt = webgpu.textures.find(view->texture);
+        if (texIt != webgpu.textures.end() && view->handle)
         {
-            depth.stencilLoadOp = pass.stencil.clear ? WGPULoadOp_Clear : WGPULoadOp_Load;
-            depth.stencilStoreOp = WGPUStoreOp_Store;
-            depth.stencilClearValue = (uint32_t)pass.stencil.value;
+            auto* tex = &texIt->second;
+            wg_transition_image(*tex, WG_STATE_DEPTH);
+            depth.view = view->handle;
+            depth.depthLoadOp = pass.depth.clear ? WGPULoadOp_Clear : WGPULoadOp_Load;
+            depth.depthStoreOp = WGPUStoreOp_Store;
+            depth.depthClearValue = pass.depth.value;
+            if (rt_texture_has_stencil(pass.depth.texture_view.format))
+            {
+                depth.stencilLoadOp = pass.stencil.clear ? WGPULoadOp_Clear : WGPULoadOp_Load;
+                depth.stencilStoreOp = WGPUStoreOp_Store;
+                depth.stencilClearValue = (uint32_t)pass.stencil.value;
+            }
+            uint32_t mip = std::min(pass.depth.texture_view.base_level, 31u);
+            width = std::max(width, std::max(1u, tex->width >> mip));
+            height = std::max(height, std::max(1u, tex->height >> mip));
+            hasDepth = true;
         }
-        width = std::max(width, pass.depth.texture.width);
-        height = std::max(height, pass.depth.texture.height);
-        hasDepth = true;
     }
-    native.width = width;
-    native.height = height;
-
     WGPURenderPassDescriptor desc = {};
     desc.colorAttachmentCount = colorCount;
     desc.colorAttachments = colors;
@@ -1715,7 +1827,6 @@ void wg_begin_render(rt_pass_render_t& pass)
         wgpuRenderPassEncoderSetPipeline(webgpu.renderPass, mod->renderPipeline);
     wg_set_viewport(0, 0, (int32_t)width, (int32_t)height);
     wg_set_scissor(0, 0, (int32_t)width, (int32_t)height);
-    webgpu.passID = handle;
 }
 
 void wg_end_render(rt_pass_render_t& pass)
@@ -1732,11 +1843,12 @@ void wg_end_render(rt_pass_render_t& pass)
         webgpu.renderPass = nullptr;
     }
     for (auto& color : pass.colors)
-        if (auto* tex = wg_texture_native(color.texture))
-            wg_transition_image(*tex, WG_STATE_SHADER_READ);
-    if (auto* tex = wg_texture_native(pass.depth.texture))
-        wg_transition_image(*tex, WG_STATE_SHADER_READ);
-    webgpu.renderPasses.erase(pass.handle);
+        if (auto* view = wg_texture_view_native(color.texture_view.handle))
+            if (auto texIt = webgpu.textures.find(view->texture); texIt != webgpu.textures.end())
+                wg_transition_image(texIt->second, WG_STATE_SHADER_READ);
+    if (auto* view = wg_texture_view_native(pass.depth.texture_view.handle))
+        if (auto texIt = webgpu.textures.find(view->texture); texIt != webgpu.textures.end())
+            wg_transition_image(texIt->second, WG_STATE_SHADER_READ);
     pass.handle = 0;
     pass.native = nullptr;
     webgpu.currentPassType = RT_MODULE_NONE;

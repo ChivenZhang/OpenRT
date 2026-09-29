@@ -535,6 +535,32 @@ struct mt_texture_native_t
     ~mt_texture_native_t() { mt_release(handle); }
 };
 
+struct mt_texture_view_native_t
+{
+    MTL::Texture* handle = nullptr;
+    uint32_t texture = 0;
+
+    mt_texture_view_native_t() = default;
+    mt_texture_view_native_t(const mt_texture_view_native_t&) = delete;
+    mt_texture_view_native_t& operator=(const mt_texture_view_native_t&) = delete;
+    mt_texture_view_native_t(mt_texture_view_native_t&& other) noexcept : handle(other.handle), texture(other.texture)
+    {
+        other.handle = nullptr;
+    }
+    mt_texture_view_native_t& operator=(mt_texture_view_native_t&& other) noexcept
+    {
+        if (this != &other)
+        {
+            mt_release(handle);
+            handle = other.handle;
+            texture = other.texture;
+            other.handle = nullptr;
+        }
+        return *this;
+    }
+    ~mt_texture_view_native_t() { mt_release(handle); }
+};
+
 struct mt_sampler_native_t
 {
     MTL::SamplerState* handle = nullptr;
@@ -609,7 +635,6 @@ struct mt_module_native_t
 struct mt_mesh_native_t { uint32_t vertexCount = 0, indexCount = 0; };
 struct mt_meshlet_native_t { uint32_t vertexCount = 0, indexCount = 0; };
 struct mt_pass_compute_native_t { uint32_t dummy = 0; };
-struct mt_pass_render_native_t { bool offscreen = false; uint32_t width = 0, height = 0; };
 struct mt_pass_transfer_native_t { uint32_t dummy = 0; };
 
 struct mt_staging_t
@@ -635,17 +660,17 @@ struct mt_staging_t
 
 struct mt_native_t
 {
-    uint32_t bufferID = 0, textureID = 0, samplerID = 0, moduleID = 0;
+    uint32_t bufferID = 0, textureID = 0, textureViewID = 0, samplerID = 0, moduleID = 0;
     uint32_t meshID = 0, meshletID = 0, passID = 0;
 
     std::map<uint32_t, mt_buffer_native_t> buffers;
     std::map<uint32_t, mt_texture_native_t> textures;
+    std::map<uint32_t, mt_texture_view_native_t> textureViews;
     std::map<uint32_t, mt_sampler_native_t> samplers;
     std::map<uint32_t, mt_module_native_t> modules;
     std::map<uint32_t, mt_mesh_native_t> meshes;
     std::map<uint32_t, mt_meshlet_native_t> meshlets;
     std::map<uint32_t, mt_pass_compute_native_t> computePasses;
-    std::map<uint32_t, mt_pass_render_native_t> renderPasses;
     std::map<uint32_t, mt_pass_transfer_native_t> transferPasses;
 
     MTL::Device* device = nullptr;
@@ -654,7 +679,6 @@ struct mt_native_t
     MTL::RenderCommandEncoder* renderEncoder = nullptr;
     MTL::ComputeCommandEncoder* computeEncoder = nullptr;
     MTL::BlitCommandEncoder* blitEncoder = nullptr;
-    MTL::SamplerState* defaultSampler = nullptr;
     bool ownsQueue = false;
     std::vector<mt_staging_t> pendingStaging;
     uint8_t pushData[128] = {};
@@ -665,7 +689,7 @@ struct mt_native_t
         rt_binding_type_t type = RT_BINDING_NONE;
         rt_buffer_t buffer = {};
         rt_buffer_bind_t buffer_bind = {};
-        rt_texture_t texture = {};
+        rt_texture_view_t texture_view = {};
         rt_texture_bind_t texture_bind = {};
         rt_texture_t storage_texture = {};
         rt_texture_storage_bind_t storage_texture_bind = {};
@@ -741,6 +765,19 @@ static mt_texture_native_t* mt_texture_native(rt_texture_t const& texture)
     if (!texture.native || texture.handle == 0) return nullptr;
     auto it = metal.textures.find(texture.handle);
     return it == metal.textures.end() ? nullptr : &it->second;
+}
+
+static mt_texture_view_native_t* mt_texture_view_native(uint32_t handle)
+{
+    if (handle == 0) return nullptr;
+    auto it = metal.textureViews.find(handle);
+    return it == metal.textureViews.end() ? nullptr : &it->second;
+}
+
+static MTL::Texture* mt_image_view(rt_texture_view_t const& view)
+{
+    auto* native = mt_texture_view_native(view.handle);
+    return native ? native->handle : nullptr;
 }
 
 static mt_sampler_native_t* mt_sampler_native(rt_sampler_t const& sampler)
@@ -929,32 +966,30 @@ static void mt_flush_descriptors()
         }
         else if (slot.type == RT_BINDING_TEXTURE)
         {
-            auto* tex = mt_texture_native(slot.texture);
-            if (!tex) continue;
+            auto* view = mt_texture_view_native(slot.texture_view.handle);
+            if (!view) continue;
+            auto texIt = metal.textures.find(view->texture);
+            if (texIt == metal.textures.end()) continue;
+            auto* tex = &texIt->second;
+            MTL::Texture* gpuTex = view->handle ? view->handle : tex->handle;
+            if (!gpuTex) continue;
             mt_transition_image(*tex, MTL_STATE_SHADER_READ);
-            MTL::SamplerState* samp = metal.defaultSampler;
-            if (auto* s = mt_sampler_native(slot.sampler))
-                samp = s->handle;
             if (metal.renderEncoder)
-            {
-                metal.renderEncoder->setFragmentTexture(tex->handle, slot.texture_bind.binding);
-                metal.renderEncoder->setFragmentSamplerState(samp, slot.texture_bind.binding);
-            }
+                metal.renderEncoder->setFragmentTexture(gpuTex, slot.texture_bind.binding);
             if (metal.computeEncoder)
-            {
-                metal.computeEncoder->setTexture(tex->handle, slot.texture_bind.binding);
-                metal.computeEncoder->setSamplerState(samp, slot.texture_bind.binding);
-            }
+                metal.computeEncoder->setTexture(gpuTex, slot.texture_bind.binding);
         }
         else if (slot.type == RT_BINDING_STORAGE_TEXTURE)
         {
             auto* tex = mt_texture_native(slot.storage_texture);
             if (!tex) continue;
+            MTL::Texture* gpuTex = mt_image_view(slot.storage_texture.default_view);
+            if (!gpuTex) gpuTex = tex->handle;
             mt_transition_image(*tex, MTL_STATE_SHADER_WRITE);
             if (metal.renderEncoder)
-                metal.renderEncoder->setFragmentTexture(tex->handle, slot.storage_texture_bind.binding);
+                metal.renderEncoder->setFragmentTexture(gpuTex, slot.storage_texture_bind.binding);
             if (metal.computeEncoder)
-                metal.computeEncoder->setTexture(tex->handle, slot.storage_texture_bind.binding);
+                metal.computeEncoder->setTexture(gpuTex, slot.storage_texture_bind.binding);
         }
         else if (slot.type == RT_BINDING_SAMPLER)
         {
@@ -984,14 +1019,6 @@ void mt_load_library(MTL::Device* device, MTL::CommandQueue* queue)
         metal.ownsQueue = true;
     }
     mt_retain_cmd(metal.queue->commandBuffer());
-    MTL::SamplerDescriptor* samp = MTL::SamplerDescriptor::alloc()->init();
-    samp->setMinFilter(MTL::SamplerMinMagFilterLinear);
-    samp->setMagFilter(MTL::SamplerMinMagFilterLinear);
-    samp->setSAddressMode(MTL::SamplerAddressModeRepeat);
-    samp->setTAddressMode(MTL::SamplerAddressModeRepeat);
-    samp->setRAddressMode(MTL::SamplerAddressModeRepeat);
-    metal.defaultSampler = metal.device->newSamplerState(samp);
-    mt_release(samp);
 
     rt_unload_library = mt_unload_library;
     rt_create_buffer = mt_create_buffer;
@@ -1007,6 +1034,9 @@ void mt_load_library(MTL::Device* device, MTL::CommandQueue* queue)
     rt_destroy_texture = mt_destroy_texture;
     rt_bind_texture = mt_bind_texture;
     rt_bind_texture_storage = mt_bind_texture_storage;
+    rt_create_texture_view = mt_create_texture_view;
+    rt_destroy_texture_view = mt_destroy_texture_view;
+    rt_bind_texture_view = mt_bind_texture_view;
     rt_create_sampler = mt_create_sampler;
     rt_destroy_sampler = mt_destroy_sampler;
     rt_bind_sampler = mt_bind_sampler;
@@ -1070,6 +1100,7 @@ void mt_unload_library()
     for (auto& item : metal.buffers)
         mt_release(item.second.handle);
     metal.buffers.clear();
+    metal.textureViews.clear();
     for (auto& item : metal.textures)
         mt_release(item.second.handle);
     metal.textures.clear();
@@ -1079,14 +1110,12 @@ void mt_unload_library()
     metal.meshes.clear();
     metal.meshlets.clear();
     metal.computePasses.clear();
-    metal.renderPasses.clear();
     metal.transferPasses.clear();
-    mt_release(metal.defaultSampler);
     if (metal.ownsQueue) mt_release(metal.queue);
     else metal.queue = nullptr;
     metal.device = nullptr;
     metal.ownsQueue = false;
-    metal.bufferID = metal.textureID = metal.samplerID = metal.moduleID = 0;
+    metal.bufferID = metal.textureID = metal.textureViewID = metal.samplerID = metal.moduleID = 0;
     metal.meshID = metal.meshletID = metal.passID = 0;
     metal.currentPassType = RT_MODULE_NONE;
     metal.currentPipeline = nullptr;
@@ -1105,6 +1134,9 @@ void mt_unload_library()
     if (rt_destroy_texture == mt_destroy_texture) rt_destroy_texture = nullptr;
     if (rt_bind_texture == mt_bind_texture) rt_bind_texture = nullptr;
     if (rt_bind_texture_storage == mt_bind_texture_storage) rt_bind_texture_storage = nullptr;
+    if (rt_create_texture_view == mt_create_texture_view) rt_create_texture_view = nullptr;
+    if (rt_destroy_texture_view == mt_destroy_texture_view) rt_destroy_texture_view = nullptr;
+    if (rt_bind_texture_view == mt_bind_texture_view) rt_bind_texture_view = nullptr;
     if (rt_create_sampler == mt_create_sampler) rt_create_sampler = nullptr;
     if (rt_destroy_sampler == mt_destroy_sampler) rt_destroy_sampler = nullptr;
     if (rt_bind_sampler == mt_bind_sampler) rt_bind_sampler = nullptr;
@@ -1331,6 +1363,15 @@ rt_texture_t mt_create_texture(rt_texture_info_t const& info)
     if (multisample)
         result.target = RT_TEXTURE_2D_MULTISAMPLE;
     result.native = &native;
+    result.default_view = mt_create_texture_view({
+        .texture = result,
+        .target = result.target,
+        .format = result.format,
+        .aspect = RT_TEXTURE_ASPECT_ALL,
+        .usage = result.usage,
+        .layer_count = native.layers,
+        .level_count = native.mipLevels,
+    });
     return result;
 }
 
@@ -1380,6 +1421,16 @@ rt_texture_t mt_create_texture_depth_stencil(uint32_t width, uint32_t height, co
 
 void mt_destroy_texture(rt_texture_t& texture)
 {
+    if (texture.handle)
+    {
+        for (auto it = metal.textureViews.begin(); it != metal.textureViews.end(); )
+        {
+            if (it->second.texture == texture.handle)
+                it = metal.textureViews.erase(it);
+            else
+                ++it;
+        }
+    }
     if (texture.native)
         metal.textures.erase(texture.handle);
     texture = {};
@@ -1393,7 +1444,7 @@ void mt_bind_texture(rt_texture_t& texture, rt_texture_bind_t bind)
         abort();
     }
     metal.currentBinding[bind.binding].type = RT_BINDING_TEXTURE;
-    metal.currentBinding[bind.binding].texture = texture;
+    metal.currentBinding[bind.binding].texture_view = texture.default_view;
     metal.currentBinding[bind.binding].texture_bind = bind;
 }
 
@@ -1407,6 +1458,84 @@ void mt_bind_texture_storage(rt_texture_t& texture, rt_texture_storage_bind_t bi
     metal.currentBinding[bind.binding].type = RT_BINDING_STORAGE_TEXTURE;
     metal.currentBinding[bind.binding].storage_texture = texture;
     metal.currentBinding[bind.binding].storage_texture_bind = bind;
+}
+
+rt_texture_view_t mt_create_texture_view(rt_texture_view_info_t const& info)
+{
+    rt_texture_view_t result{
+        0, info.target,
+        info.format != RT_TEXTURE_NONE ? info.format : info.texture.format,
+        info.aspect, info.usage ? info.usage : info.texture.usage,
+        info.base_layer, info.layer_count, info.base_level, info.level_count, nullptr};
+    auto* tex = mt_texture_native(info.texture);
+    if (!tex || !tex->handle) return result;
+    uint32_t levelCount = info.level_count ? info.level_count : tex->mipLevels - info.base_level;
+    if (info.base_level >= tex->mipLevels || levelCount == 0) return result;
+    if (info.base_level + levelCount > tex->mipLevels)
+        levelCount = tex->mipLevels - info.base_level;
+    uint32_t baseLayer = 0;
+    uint32_t layerCount = 1;
+    if (info.target != RT_TEXTURE_3D)
+    {
+        baseLayer = info.base_layer;
+        layerCount = info.layer_count ? info.layer_count : (tex->layers > baseLayer ? tex->layers - baseLayer : 0);
+        if (baseLayer >= tex->layers || layerCount == 0) return result;
+        if (baseLayer + layerCount > tex->layers)
+            layerCount = tex->layers - baseLayer;
+    }
+    result.base_layer = baseLayer;
+    result.layer_count = layerCount;
+    result.base_level = info.base_level;
+    result.level_count = levelCount;
+
+    MTL::PixelFormat pixel = info.format != RT_TEXTURE_NONE ? rt_to_mt_texture_format(info.format) : tex->format;
+    if (info.aspect == RT_TEXTURE_ASPECT_STENCIL)
+    {
+        if (tex->format == MTL::PixelFormatDepth32Float_Stencil8)
+            pixel = MTL::PixelFormatX32_Stencil8;
+        else if (tex->format == MTL::PixelFormatDepth24Unorm_Stencil8)
+            pixel = MTL::PixelFormatX24_Stencil8;
+    }
+    else if (info.aspect == RT_TEXTURE_ASPECT_DEPTH && tex->format == MTL::PixelFormatDepth32Float_Stencil8)
+        pixel = MTL::PixelFormatDepth32Float;
+
+    MTL::TextureType type = MTL::TextureType2D;
+    if (info.target == RT_TEXTURE_1D) type = MTL::TextureType1D;
+    else if (info.target == RT_TEXTURE_3D) type = MTL::TextureType3D;
+    else if (info.target == RT_TEXTURE_2D_ARRAY) type = MTL::TextureType2DArray;
+    else if (info.target == RT_TEXTURE_2D_MULTISAMPLE || tex->target == RT_TEXTURE_2D_MULTISAMPLE)
+        type = MTL::TextureType2DMultisample;
+
+    MTL::Texture* view = tex->handle->newTextureView(pixel, type, NS::Range::Make(info.base_level, levelCount), NS::Range::Make(baseLayer, layerCount));
+    if (!view) return result;
+    uint32_t handle = metal.textureViewID + 1;
+    auto& native = metal.textureViews[handle];
+    native.handle = view;
+    native.texture = info.texture.handle;
+    metal.textureViewID = handle;
+    result.handle = handle;
+    result.native = &native;
+    return result;
+}
+
+void mt_destroy_texture_view(rt_texture_view_t& view)
+{
+    metal.textureViews.erase(view.handle);
+    view.handle = 0;
+    view.native = nullptr;
+}
+
+void mt_bind_texture_view(rt_texture_view_t& view, rt_texture_view_bind_t bind)
+{
+    if (metal.currentPipeline == nullptr)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    metal.currentBinding[bind.binding].type = RT_BINDING_TEXTURE;
+    metal.currentBinding[bind.binding].texture_view = view;
+    metal.currentBinding[bind.binding].texture_bind = {};
+    metal.currentBinding[bind.binding].texture_bind.binding = bind.binding;
 }
 
 rt_sampler_t mt_create_sampler(rt_sampler_info_t const& info)
@@ -1705,54 +1834,59 @@ void mt_begin_render(rt_pass_render_t& pass)
     }
     for (auto& binding : metal.currentBinding)
         binding = {};
-    auto handle = metal.passID + 1;
-    auto& native = metal.renderPasses[handle];
-    pass.handle = handle;
-    pass.native = &native;
     metal.currentPassType = RT_MODULE_RENDER;
     metal.currentRenderPass = &pass;
-
-    native.offscreen = pass.depth.texture.handle != 0;
-    for (auto& color : pass.colors)
-        if (color.texture.handle) native.offscreen = true;
 
     MTL::RenderPassDescriptor* desc = MTL::RenderPassDescriptor::renderPassDescriptor();
     uint32_t width = 0, height = 0;
     for (uint32_t i = 0; i < RT_MAX_COLOR_TEXTURE_NUM; ++i)
     {
-        if (pass.colors[i].texture.format == RT_TEXTURE_NONE)
+        if (pass.colors[i].texture_view.format == RT_TEXTURE_NONE)
             continue;
-        if (auto* tex = mt_texture_native(pass.colors[i].texture))
-        {
-            mt_transition_image(*tex, MTL_STATE_COLOR);
-            auto* attachment = desc->colorAttachments()->object(i);
-            attachment->setTexture(tex->handle);
-            attachment->setLoadAction(pass.colors[i].clear ? MTL::LoadActionClear : MTL::LoadActionLoad);
-            attachment->setStoreAction(MTL::StoreActionStore);
-            attachment->setClearColor(MTL::ClearColor::Make(pass.colors[i].value.r, pass.colors[i].value.g, pass.colors[i].value.b, pass.colors[i].value.a));
-            width = std::max(width, pass.colors[i].texture.width);
-            height = std::max(height, pass.colors[i].texture.height);
-        }
+        auto* view = mt_texture_view_native(pass.colors[i].texture_view.handle);
+        if (!view) continue;
+        auto texIt = metal.textures.find(view->texture);
+        if (texIt == metal.textures.end()) continue;
+        auto* tex = &texIt->second;
+        MTL::Texture* gpuTex = view->handle ? view->handle : tex->handle;
+        if (!gpuTex) continue;
+        mt_transition_image(*tex, MTL_STATE_COLOR);
+        auto* attachment = desc->colorAttachments()->object(i);
+        attachment->setTexture(gpuTex);
+        attachment->setLoadAction(pass.colors[i].clear ? MTL::LoadActionClear : MTL::LoadActionLoad);
+        attachment->setStoreAction(MTL::StoreActionStore);
+        attachment->setClearColor(MTL::ClearColor::Make(pass.colors[i].value.r, pass.colors[i].value.g, pass.colors[i].value.b, pass.colors[i].value.a));
+        uint32_t mip = std::min(pass.colors[i].texture_view.base_level, 31u);
+        width = std::max(width, std::max(1u, tex->width >> mip));
+        height = std::max(height, std::max(1u, tex->height >> mip));
     }
-    if (auto* tex = mt_texture_native(pass.depth.texture))
+    if (auto* view = mt_texture_view_native(pass.depth.texture_view.handle))
     {
-        mt_transition_image(*tex, MTL_STATE_DEPTH);
-        desc->depthAttachment()->setTexture(tex->handle);
-        desc->depthAttachment()->setLoadAction(pass.depth.clear ? MTL::LoadActionClear : MTL::LoadActionLoad);
-        desc->depthAttachment()->setStoreAction(MTL::StoreActionStore);
-        desc->depthAttachment()->setClearDepth(pass.depth.value);
-        if (rt_texture_has_stencil(pass.depth.texture.format))
+        auto texIt = metal.textures.find(view->texture);
+        if (texIt != metal.textures.end())
         {
-            desc->stencilAttachment()->setTexture(tex->handle);
-            desc->stencilAttachment()->setLoadAction(pass.stencil.clear ? MTL::LoadActionClear : MTL::LoadActionLoad);
-            desc->stencilAttachment()->setStoreAction(MTL::StoreActionStore);
-            desc->stencilAttachment()->setClearStencil((uint32_t)pass.stencil.value);
+            auto* tex = &texIt->second;
+            MTL::Texture* gpuTex = view->handle ? view->handle : tex->handle;
+            if (gpuTex)
+            {
+                mt_transition_image(*tex, MTL_STATE_DEPTH);
+                desc->depthAttachment()->setTexture(gpuTex);
+                desc->depthAttachment()->setLoadAction(pass.depth.clear ? MTL::LoadActionClear : MTL::LoadActionLoad);
+                desc->depthAttachment()->setStoreAction(MTL::StoreActionStore);
+                desc->depthAttachment()->setClearDepth(pass.depth.value);
+                if (rt_texture_has_stencil(pass.depth.texture_view.format))
+                {
+                    desc->stencilAttachment()->setTexture(gpuTex);
+                    desc->stencilAttachment()->setLoadAction(pass.stencil.clear ? MTL::LoadActionClear : MTL::LoadActionLoad);
+                    desc->stencilAttachment()->setStoreAction(MTL::StoreActionStore);
+                    desc->stencilAttachment()->setClearStencil((uint32_t)pass.stencil.value);
+                }
+                uint32_t mip = std::min(pass.depth.texture_view.base_level, 31u);
+                width = std::max(width, std::max(1u, tex->width >> mip));
+                height = std::max(height, std::max(1u, tex->height >> mip));
+            }
         }
-        width = std::max(width, pass.depth.texture.width);
-        height = std::max(height, pass.depth.texture.height);
     }
-    native.width = width;
-    native.height = height;
     mt_end_encoder();
     metal.renderEncoder = metal.cmd->renderCommandEncoder(desc);
     if (metal.renderEncoder) metal.renderEncoder->retain();
@@ -1768,7 +1902,6 @@ void mt_begin_render(rt_pass_render_t& pass)
     }
     mt_set_viewport(0, 0, (int32_t)width, (int32_t)height);
     mt_set_scissor(0, 0, (int32_t)width, (int32_t)height);
-    metal.passID = handle;
 }
 
 void mt_end_render(rt_pass_render_t& pass)
@@ -1784,11 +1917,12 @@ void mt_end_render(rt_pass_render_t& pass)
         mt_release(metal.renderEncoder);
     }
     for (auto& color : pass.colors)
-        if (auto* tex = mt_texture_native(color.texture))
-            mt_transition_image(*tex, MTL_STATE_SHADER_READ);
-    if (auto* tex = mt_texture_native(pass.depth.texture))
-        mt_transition_image(*tex, MTL_STATE_SHADER_READ);
-    metal.renderPasses.erase(pass.handle);
+        if (auto* view = mt_texture_view_native(color.texture_view.handle))
+            if (auto texIt = metal.textures.find(view->texture); texIt != metal.textures.end())
+                mt_transition_image(texIt->second, MTL_STATE_SHADER_READ);
+    if (auto* view = mt_texture_view_native(pass.depth.texture_view.handle))
+        if (auto texIt = metal.textures.find(view->texture); texIt != metal.textures.end())
+            mt_transition_image(texIt->second, MTL_STATE_SHADER_READ);
     pass.handle = 0;
     pass.native = nullptr;
     metal.currentPassType = RT_MODULE_NONE;

@@ -30,6 +30,9 @@ rt_texture_t mt_create_texture_depth_stencil(uint32_t width, uint32_t height, co
 void mt_destroy_texture(rt_texture_t& texture);
 void mt_bind_texture(rt_texture_t& texture, rt_texture_bind_t bind = {});
 void mt_bind_texture_storage(rt_texture_t& texture, rt_texture_storage_bind_t bind = {});
+rt_texture_view_t mt_create_texture_view(rt_texture_view_info_t const& info);
+void mt_destroy_texture_view(rt_texture_view_t& view);
+void mt_bind_texture_view(rt_texture_view_t& view, rt_texture_view_bind_t bind = {});
 
 rt_sampler_t mt_create_sampler(rt_sampler_info_t const& info);
 void mt_destroy_sampler(rt_sampler_t& sampler);

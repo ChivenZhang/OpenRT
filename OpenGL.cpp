@@ -480,6 +480,12 @@ struct gl_texture_native_t
     GLuint handle = 0;
 };
 
+struct gl_texture_view_native_t
+{
+    GLuint handle = 0;
+    uint32_t texture = 0;
+};
+
 struct gl_sampler_native_t
 {
     GLuint handle = 0;
@@ -504,13 +510,13 @@ struct gl_meshlet_native_t
 };
 
 struct gl_pass_compute_native_t { uint32_t dummy = 0; };
-struct gl_pass_render_native_t { GLuint framebuffer = 0; };
 struct gl_pass_transfer_native_t { uint32_t dummy = 0; };
 
 struct OpenGL
 {
     uint32_t bufferID = 0;
     uint32_t textureID = 0;
+    uint32_t textureViewID = 0;
     uint32_t samplerID = 0;
     uint32_t moduleID = 0;
     uint32_t meshID = 0;
@@ -519,13 +525,14 @@ struct OpenGL
 
     std::map<uint32_t, gl_buffer_native_t> buffers;
     std::map<uint32_t, gl_texture_native_t> textures;
+    std::map<uint32_t, gl_texture_view_native_t> textureViews;
     std::map<uint32_t, gl_sampler_native_t> samplers;
     std::map<uint32_t, gl_module_native_t> modules;
     std::map<uint32_t, gl_mesh_native_t> meshes;
     std::map<uint32_t, gl_meshlet_native_t> meshlets;
     std::map<uint32_t, gl_pass_compute_native_t> computePasses;
-    std::map<uint32_t, gl_pass_render_native_t> renderPasses;
     std::map<uint32_t, gl_pass_transfer_native_t> transferPasses;
+    GLuint framebuffer = 0;
 
     rt_module_type_t currentPassType = RT_MODULE_NONE;
     union
@@ -577,6 +584,13 @@ static GLuint gl_texture_name(rt_texture_t const& texture)
     return native ? native->handle : 0;
 }
 
+static GLuint gl_texture_view_name(rt_texture_view_t const& view)
+{
+    if (view.handle == 0) return 0;
+    auto it = opengl.textureViews.find(view.handle);
+    return it == opengl.textureViews.end() ? 0 : it->second.handle;
+}
+
 static GLuint gl_sampler_name(rt_sampler_t const& sampler)
 {
     auto* native = gl_sampler_native(sampler);
@@ -620,6 +634,9 @@ void gl_load_library()
     rt_destroy_texture = gl_destroy_texture;
     rt_bind_texture = gl_bind_texture;
     rt_bind_texture_storage = gl_bind_texture_storage;
+    rt_create_texture_view = gl_create_texture_view;
+    rt_destroy_texture_view = gl_destroy_texture_view;
+    rt_bind_texture_view = gl_bind_texture_view;
     rt_create_sampler = gl_create_sampler;
     rt_destroy_sampler = gl_destroy_sampler;
     rt_bind_sampler = gl_bind_sampler;
@@ -673,12 +690,11 @@ void gl_unload_library()
     glBindBuffer(GL_ARRAY_BUFFER, 0);
     glBindTexture(GL_TEXTURE_2D, 0);
 
-    for (auto& item : opengl.renderPasses)
+    if (opengl.framebuffer)
     {
-        if (item.second.framebuffer)
-            glDeleteFramebuffers(1, &item.second.framebuffer);
+        glDeleteFramebuffers(1, &opengl.framebuffer);
+        opengl.framebuffer = 0;
     }
-    opengl.renderPasses.clear();
     for (auto& item : opengl.modules)
     {
         if (item.second.vao)
@@ -693,6 +709,12 @@ void gl_unload_library()
             glDeleteSamplers(1, &item.second.handle);
     }
     opengl.samplers.clear();
+    for (auto& item : opengl.textureViews)
+    {
+        if (item.second.handle)
+            glDeleteTextures(1, &item.second.handle);
+    }
+    opengl.textureViews.clear();
     for (auto& item : opengl.textures)
     {
         if (item.second.handle)
@@ -709,7 +731,7 @@ void gl_unload_library()
     opengl.meshlets.clear();
     opengl.computePasses.clear();
     opengl.transferPasses.clear();
-    opengl.bufferID = opengl.textureID = opengl.samplerID = opengl.moduleID = 0;
+    opengl.bufferID = opengl.textureID = opengl.textureViewID = opengl.samplerID = opengl.moduleID = 0;
     opengl.meshID = opengl.meshletID = opengl.passID = 0;
 
     opengl.currentPassType = RT_MODULE_NONE;
@@ -731,6 +753,9 @@ void gl_unload_library()
     if(rt_destroy_texture == gl_destroy_texture) rt_destroy_texture = nullptr;
     if(rt_bind_texture == gl_bind_texture) rt_bind_texture = nullptr;
     if(rt_bind_texture_storage == gl_bind_texture_storage) rt_bind_texture_storage = nullptr;
+    if(rt_create_texture_view == gl_create_texture_view) rt_create_texture_view = nullptr;
+    if(rt_destroy_texture_view == gl_destroy_texture_view) rt_destroy_texture_view = nullptr;
+    if(rt_bind_texture_view == gl_bind_texture_view) rt_bind_texture_view = nullptr;
     if(rt_create_sampler == gl_create_sampler) rt_create_sampler = nullptr;
     if(rt_destroy_sampler == gl_destroy_sampler) rt_destroy_sampler = nullptr;
     if(rt_bind_sampler == gl_bind_sampler) rt_bind_sampler = nullptr;
@@ -1058,6 +1083,16 @@ rt_texture_t gl_create_texture(rt_texture_info_t const& info)
     result.mipmaps = mipmaps;
     result.samples = samples;
     result.native = &native;
+    uint32_t layers = (result.target == RT_TEXTURE_2D_ARRAY && result.depth) ? result.depth : 1;
+    result.default_view = gl_create_texture_view({
+        .texture = result,
+        .target = result.target,
+        .format = result.format,
+        .aspect = RT_TEXTURE_ASPECT_ALL,
+        .usage = result.usage,
+        .layer_count = layers,
+        .level_count = result.mipmaps ? result.mipmaps : 1,
+    });
     return result;
 }
 
@@ -1134,6 +1169,20 @@ rt_texture_t gl_create_texture_depth_stencil(uint32_t width, uint32_t height, co
 
 void gl_destroy_texture(rt_texture_t& texture)
 {
+    if (texture.handle)
+    {
+        for (auto it = opengl.textureViews.begin(); it != opengl.textureViews.end(); )
+        {
+            if (it->second.texture == texture.handle)
+            {
+                if (it->second.handle)
+                    glDeleteTextures(1, &it->second.handle);
+                it = opengl.textureViews.erase(it);
+            }
+            else
+                ++it;
+        }
+    }
     if (auto* native = gl_texture_native(texture))
     {
         if (native->handle)
@@ -1151,8 +1200,15 @@ void gl_bind_texture(rt_texture_t& texture, rt_texture_bind_t bind)
         abort();
     }
 
+    GLuint name = gl_texture_name(texture);
+    GLenum target = rt_to_gl_texture_target(texture.target);
+    if (texture.default_view.handle)
+    {
+        name = gl_texture_view_name(texture.default_view);
+        target = rt_to_gl_texture_target(texture.default_view.target);
+    }
     glActiveTexture(GL_TEXTURE0 + bind.binding);
-    glBindTexture(rt_to_gl_texture_target(texture.target), gl_texture_name(texture));
+    glBindTexture(target, name);
 
     if (rt_texture_has_depth(texture.format) || rt_texture_has_stencil(texture.format))
     {
@@ -1164,7 +1220,7 @@ void gl_bind_texture(rt_texture_t& texture, rt_texture_bind_t bind)
             case RT_TEXTURE_ASPECT_DEPTH: mode = GL_DEPTH_COMPONENT; break;
             default: break;
         }
-        glTexParameteri(rt_to_gl_texture_target(texture.target), GL_DEPTH_STENCIL_TEXTURE_MODE, mode);
+        glTexParameteri(target, GL_DEPTH_STENCIL_TEXTURE_MODE, mode);
     }
 }
 
@@ -1178,6 +1234,90 @@ void gl_bind_texture_storage(rt_texture_t& texture, rt_texture_storage_bind_t bi
 
     glBindImageTexture(bind.binding, gl_texture_name(texture), (GLint)bind.base_level, 1 < bind.layer_count,
                        (GLint)bind.base_layer, rt_to_gl_access(bind.access), rt_to_gl_texture_format(texture.format));
+}
+
+rt_texture_view_t gl_create_texture_view(rt_texture_view_info_t const& info)
+{
+    rt_texture_view_t result{
+        0, info.target,
+        info.format != RT_TEXTURE_NONE ? info.format : info.texture.format,
+        info.aspect, info.usage ? info.usage : info.texture.usage,
+        info.base_layer, info.layer_count, info.base_level, info.level_count, nullptr};
+    GLuint parent = gl_texture_name(info.texture);
+    if (!parent) return result;
+    uint32_t mipLevels = info.texture.mipmaps ? info.texture.mipmaps : 1;
+    uint32_t layers = info.texture.target == RT_TEXTURE_2D_ARRAY && info.texture.depth ? info.texture.depth : 1;
+    uint32_t levelCount = info.level_count ? info.level_count : mipLevels - info.base_level;
+    if (info.base_level >= mipLevels || levelCount == 0) return result;
+    if (info.base_level + levelCount > mipLevels)
+        levelCount = mipLevels - info.base_level;
+    uint32_t baseLayer = 0;
+    uint32_t layerCount = 1;
+    if (info.target != RT_TEXTURE_3D)
+    {
+        baseLayer = info.base_layer;
+        layerCount = info.layer_count ? info.layer_count : (layers > baseLayer ? layers - baseLayer : 0);
+        if (baseLayer >= layers || layerCount == 0) return result;
+        if (baseLayer + layerCount > layers)
+            layerCount = layers - baseLayer;
+    }
+    result.base_layer = baseLayer;
+    result.layer_count = layerCount;
+    result.base_level = info.base_level;
+    result.level_count = levelCount;
+
+    GLenum internalFormat = rt_to_gl_texture_format(result.format);
+    if (info.aspect == RT_TEXTURE_ASPECT_STENCIL && rt_texture_has_stencil(info.texture.format))
+        internalFormat = GL_STENCIL_INDEX8;
+    else if (info.aspect == RT_TEXTURE_ASPECT_DEPTH && rt_texture_has_depth(info.texture.format) && rt_texture_has_stencil(info.texture.format))
+        internalFormat = info.texture.format == RT_TEXTURE_DEPTH32FLOAT_STENCIL8 ? GL_DEPTH_COMPONENT32F : GL_DEPTH_COMPONENT24;
+
+    uint32_t handle = opengl.textureViewID + 1;
+    auto& native = opengl.textureViews[handle];
+    glGenTextures(1, &native.handle);
+    glTextureView(native.handle, rt_to_gl_texture_target(info.target), parent, internalFormat,
+                  (GLuint)info.base_level, (GLuint)levelCount, (GLuint)baseLayer, (GLuint)layerCount);
+    if (!native.handle)
+    {
+        opengl.textureViews.erase(handle);
+        return result;
+    }
+    native.texture = info.texture.handle;
+    opengl.textureViewID = handle;
+    result.handle = handle;
+    result.native = &native;
+    return result;
+}
+
+void gl_destroy_texture_view(rt_texture_view_t& view)
+{
+    auto it = opengl.textureViews.find(view.handle);
+    if (it != opengl.textureViews.end())
+    {
+        if (it->second.handle)
+            glDeleteTextures(1, &it->second.handle);
+        opengl.textureViews.erase(it);
+    }
+    view.handle = 0;
+    view.native = nullptr;
+}
+
+void gl_bind_texture_view(rt_texture_view_t& view, rt_texture_view_bind_t bind)
+{
+    if (opengl.currentPipeline == nullptr)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    GLenum target = rt_to_gl_texture_target(view.target);
+    glActiveTexture(GL_TEXTURE0 + bind.binding);
+    glBindTexture(target, gl_texture_view_name(view));
+    rt_texture_format_t format = view.format;
+    if (rt_texture_has_depth(format) || rt_texture_has_stencil(format))
+    {
+        GLenum mode = view.aspect == RT_TEXTURE_ASPECT_STENCIL ? GL_STENCIL_INDEX : GL_DEPTH_COMPONENT;
+        glTexParameteri(target, GL_DEPTH_STENCIL_TEXTURE_MODE, mode);
+    }
 }
 
 // ====================================================================
@@ -1716,10 +1856,6 @@ void gl_begin_render(rt_pass_render_t& pass)
         fprintf(stderr, "Pipeline module is not created\n");
         abort();
     }
-    auto handle = opengl.passID + 1;
-    auto& native = opengl.renderPasses[handle];
-    pass.handle = handle;
-    pass.native = &native;
     opengl.currentPassType = RT_MODULE_RENDER;
     opengl.currentRenderPass = &pass;
 
@@ -1729,16 +1865,16 @@ void gl_begin_render(rt_pass_render_t& pass)
 
     glDisable(GL_SCISSOR_TEST);
 
-    bool offscreen = pass.depth.texture.handle;
+    bool offscreen = pass.depth.texture_view.handle;
     for (size_t i = 0; i < std::size(pass.colors) && !offscreen; ++i)
     {
-        if (pass.colors[i].texture.handle)
+        if (pass.colors[i].texture_view.handle)
             offscreen = true;
     }
     if (offscreen)
     {
-        glGenFramebuffers(1, &native.framebuffer);
-        glBindFramebuffer(GL_FRAMEBUFFER, native.framebuffer);
+        glGenFramebuffers(1, &opengl.framebuffer);
+        glBindFramebuffer(GL_FRAMEBUFFER, opengl.framebuffer);
 
         // Render State
 
@@ -1747,39 +1883,49 @@ void gl_begin_render(rt_pass_render_t& pass)
         GLenum colorAttachments[RT_MAX_COLOR_TEXTURE_NUM] = {};
         for (size_t i = 0; i < std::size(pass.colors); ++i)
         {
-            if (pass.colors[i].texture.handle == 0 || pass.colors[i].texture.format == RT_TEXTURE_NONE)
+            if (pass.colors[i].texture_view.handle == 0 || pass.colors[i].texture_view.format == RT_TEXTURE_NONE)
                 continue;
-            glBindTexture(rt_to_gl_texture_target(pass.colors[i].texture.target), gl_texture_name(pass.colors[i].texture));
-            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + (GLenum)i, rt_to_gl_texture_target(pass.colors[i].texture.target), gl_texture_name(pass.colors[i].texture), 0);
+            GLuint name = gl_texture_view_name(pass.colors[i].texture_view);
+            GLenum target = rt_to_gl_texture_target(pass.colors[i].texture_view.target);
+            glBindTexture(target, name);
+            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + (GLenum)i, target, name, 0);
             colorAttachments[i] = GL_COLOR_ATTACHMENT0 + (GLenum)i;
-            width = std::max(width, pass.colors[i].texture.width);
-            height = std::max(height, pass.colors[i].texture.height);
+            GLint texWidth = 0, texHeight = 0;
+            glGetTextureLevelParameteriv(name, 0, GL_TEXTURE_WIDTH, &texWidth);
+            glGetTextureLevelParameteriv(name, 0, GL_TEXTURE_HEIGHT, &texHeight);
+            width = std::max(width, (uint32_t)std::max(0, texWidth));
+            height = std::max(height, (uint32_t)std::max(0, texHeight));
             colorCount = (int32_t)i + 1;
         }
         if (colorCount) glDrawBuffers(colorCount, colorAttachments);
 
-        if (pass.depth.texture.handle)
+        if (pass.depth.texture_view.handle)
         {
-            glBindTexture(rt_to_gl_texture_target(pass.depth.texture.target), gl_texture_name(pass.depth.texture));
-            if (rt_texture_has_depth(pass.depth.texture.format) && rt_texture_has_stencil(pass.depth.texture.format))
+            GLuint name = gl_texture_view_name(pass.depth.texture_view);
+            GLenum target = rt_to_gl_texture_target(pass.depth.texture_view.target);
+            glBindTexture(target, name);
+            if (rt_texture_has_depth(pass.depth.texture_view.format) && rt_texture_has_stencil(pass.depth.texture_view.format))
             {
-                glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, rt_to_gl_texture_target(pass.depth.texture.target), gl_texture_name(pass.depth.texture), 0);
+                glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, target, name, 0);
             }
-            else if (rt_texture_has_depth(pass.depth.texture.format))
+            else if (rt_texture_has_depth(pass.depth.texture_view.format))
             {
-                glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, rt_to_gl_texture_target(pass.depth.texture.target), gl_texture_name(pass.depth.texture), 0);
+                glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, target, name, 0);
             }
-            else if (rt_texture_has_stencil(pass.depth.texture.format))
+            else if (rt_texture_has_stencil(pass.depth.texture_view.format))
             {
-                glFramebufferTexture2D(GL_FRAMEBUFFER, GL_STENCIL_ATTACHMENT, rt_to_gl_texture_target(pass.depth.texture.target), gl_texture_name(pass.depth.texture), 0);
+                glFramebufferTexture2D(GL_FRAMEBUFFER, GL_STENCIL_ATTACHMENT, target, name, 0);
             }
             else
             {
                 fprintf(stderr, "Invalid depth attachment\n");
                 abort();
             }
-            width = std::max(width, pass.depth.texture.width);
-            height = std::max(height, pass.depth.texture.height);
+            GLint texWidth = 0, texHeight = 0;
+            glGetTextureLevelParameteriv(name, 0, GL_TEXTURE_WIDTH, &texWidth);
+            glGetTextureLevelParameteriv(name, 0, GL_TEXTURE_HEIGHT, &texHeight);
+            width = std::max(width, (uint32_t)std::max(0, texWidth));
+            height = std::max(height, (uint32_t)std::max(0, texHeight));
         }
 
         if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
@@ -1792,7 +1938,7 @@ void gl_begin_render(rt_pass_render_t& pass)
         glDisable(GL_BLEND);
         for (size_t i = 0; i < std::size(pass.colors); ++i)
         {
-            if (pass.colors[i].texture.handle == 0 || pass.colors[i].texture.format == RT_TEXTURE_NONE)
+            if (pass.colors[i].texture_view.handle == 0 || pass.colors[i].texture_view.format == RT_TEXTURE_NONE)
                 continue;
 
             if (pass.colors[i].clear)
@@ -1812,14 +1958,14 @@ void gl_begin_render(rt_pass_render_t& pass)
             glBlendFuncSeparatei(i, rt_to_gl_blend_factor(pass.module.colors[i].color.src), rt_to_gl_blend_factor(pass.module.colors[i].color.dst), rt_to_gl_blend_factor(pass.module.colors[i].alpha.src), rt_to_gl_blend_factor(pass.module.colors[i].alpha.dst));
         }
 
-        if (pass.depth.texture.handle &&
-            (rt_texture_has_depth(pass.depth.texture.format) || rt_texture_has_stencil(pass.depth.texture.format)))
+        if (pass.depth.texture_view.handle &&
+            (rt_texture_has_depth(pass.depth.texture_view.format) || rt_texture_has_stencil(pass.depth.texture_view.format)))
         {
-            if (pass.depth.clear && rt_texture_has_depth(pass.depth.texture.format))
+            if (pass.depth.clear && rt_texture_has_depth(pass.depth.texture_view.format))
             {
                 glClearBufferfv(GL_DEPTH, 0, &pass.depth.value);
             }
-            if (pass.stencil.clear && rt_texture_has_stencil(pass.depth.texture.format))
+            if (pass.stencil.clear && rt_texture_has_stencil(pass.depth.texture_view.format))
             {
                 glClearBufferiv(GL_STENCIL, 0, &pass.stencil.value);
             }
@@ -1956,7 +2102,6 @@ void gl_begin_render(rt_pass_render_t& pass)
     }
 
     glPolygonMode(GL_FRONT_AND_BACK, rt_to_gl_fill(pass.module.fill_mode));
-    opengl.passID = handle;
 }
 
 void gl_end_render(rt_pass_render_t& pass)
@@ -1974,22 +2119,21 @@ void gl_end_render(rt_pass_render_t& pass)
     opengl.currentPassType = RT_MODULE_NONE;
     opengl.currentRenderPass = nullptr;
 
-    bool offscreen = pass.depth.texture.handle;
+    bool offscreen = pass.depth.texture_view.handle;
     for (size_t i = 0; i < std::size(pass.colors) && !offscreen; ++i)
     {
-        if (pass.colors[i].texture.handle)
+        if (pass.colors[i].texture_view.handle)
             offscreen = true;
     }
     if (offscreen)
     {
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
-        if (auto* native = (gl_pass_render_native_t*)pass.native)
+        if (opengl.framebuffer)
         {
-            if (native->framebuffer)
-                glDeleteFramebuffers(1, &native->framebuffer);
+            glDeleteFramebuffers(1, &opengl.framebuffer);
+            opengl.framebuffer = 0;
         }
     }
-    opengl.renderPasses.erase(pass.handle);
     pass.handle = 0;
     pass.native = nullptr;
 
@@ -2864,18 +3008,21 @@ void gl_draw_screen(int width, int height, rt_color_t clear, rt_texture_t& textu
         layout(location = 1) in vec3 normal;
         layout(location = 2) in vec2 uv;
         layout(location = 0) out vec4 final;
-        layout(binding = 0) uniform sampler2D texture0;
+        layout(binding = 0) uniform texture2D texture0;
+        layout(binding = 1) uniform sampler sampler0;
 
         void main()
         {
-            final = texture(texture0, uv);
+            final = texture(sampler2D(texture0, sampler0), uv);
         }
     )";
     static auto module = gl_create_module_render({.vshader = {.code = VS}, .fshader = {.code = FS}, .vertex = {rt_vertex_vertex, {}, rt_vertex_uv,},});
+    static auto sampler0 = gl_create_sampler({.min_filter = RT_LINEAR, .mag_filter = RT_LINEAR, .wrap_s = RT_CLAMP_TO_EDGE, .wrap_t = RT_CLAMP_TO_EDGE,});
     rt_pass_render_t pass = {.module = module, .screen = {.color = { .clear = true, .value = clear,}}};
     gl_begin_render(pass);
     gl_set_viewport(0, 0, width, height);
     gl_bind_texture(texture, { .binding = 0, });
+    gl_bind_sampler(sampler0, {.binding = 1,});
     if (texture.handle)
     {
         static auto mesh = gl_create_mesh_screen();

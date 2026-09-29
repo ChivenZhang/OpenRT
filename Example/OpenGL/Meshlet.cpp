@@ -31,7 +31,8 @@ void frame(int width, int height)
             vec2 uv;
         }  ms_out[];
 
-        layout(binding = 1) uniform sampler2D texture1;
+        layout(binding = 1) uniform texture2D texture1;
+        layout(binding = 4) uniform sampler sampler0;
 
         uniform float height;
         uniform mat4 projMat, viewMat, meshMat;
@@ -182,7 +183,7 @@ void frame(int width, int height)
                 uint index = indices[meshlet_id * 3 + i];
                 in_vertex[i] = vec3(meshMat * vec4(vertices[index], 1));
                 in_uv[i] = uvs[index];
-                in_vertex[i].y = texture(texture1, uvs[index]).r * height;
+                in_vertex[i].y = texture(sampler2D(texture1, sampler0), uvs[index]).r * height;
             }
             assembleLOD3(in_vertex, in_uv, vid, iid);
 
@@ -201,8 +202,9 @@ void frame(int width, int height)
         }  fs_in;
         out vec4 final;
 
-        layout(binding = 0) uniform sampler2D texture0;
-        layout(binding = 1) uniform sampler2D texture1;
+        layout(binding = 0) uniform texture2D texture0;
+        layout(binding = 1) uniform texture2D texture1;
+        layout(binding = 4) uniform sampler sampler0;
 
         // 光源属性
         const vec3 LIGHT_POSITION = vec3(5.0, 5.0, 5.0);
@@ -237,7 +239,7 @@ void frame(int width, int height)
 
             // ===== 漫反射 =====
             float diff = max(dot(N, L), 0.0);
-            vec3 diffuse = diff * DIFFUSE_COLOR * texture(texture0, fs_in.uv).rgb;
+            vec3 diffuse = diff * DIFFUSE_COLOR * texture(sampler2D(texture0, sampler0), fs_in.uv).rgb;
 
             // ===== 镜面反射（Blinn-Phong）=====
             float spec = pow(max(dot(N, H), 0.0), SHININESS);
@@ -255,7 +257,7 @@ void frame(int width, int height)
     static auto pass_color = rt_create_texture_color(width, height, nullptr);
     static auto pass_depth = rt_create_texture_depth(width, height, nullptr);
     {
-        rt_pass_render_t pass = {.module = module, .colors = {{.texture = pass_color, .clear = true,}}, .depth = {.texture = pass_depth, .clear = true,},};
+        rt_pass_render_t pass = {.module = module, .colors = {{.texture_view = pass_color.default_view, .clear = true,}}, .depth = {.texture_view = pass_depth.default_view, .clear = true,},};
         rt_begin_render(pass);
 
         auto projMat = glm::perspective(glm::radians(60.0f), (float)width / (float)height, 0.1f, 100.0f);
@@ -269,8 +271,10 @@ void frame(int width, int height)
 
         static auto texture0 = rt_load_texture_file("../../DiffuseTerrain.png");
         static auto texture1 = rt_load_texture_file("../../HeightTerrain.png");
+        static auto sampler0 = rt_create_sampler({.min_filter = RT_LINEAR, .mag_filter = RT_LINEAR, .wrap_s = RT_REPEAT, .wrap_t = RT_REPEAT,});
         rt_bind_texture(texture0, {.binding = 0,});
         rt_bind_texture(texture1, {.binding = 1,});
+        rt_bind_sampler(sampler0, {.binding = 4,});
 
         static auto meshlet = rt_create_meshlet_plane(5, 100);
         rt_draw_meshlet(meshlet);

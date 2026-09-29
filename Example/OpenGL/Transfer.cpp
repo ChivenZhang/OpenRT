@@ -40,11 +40,12 @@ void frame(int width, int height)
         in vec2 uv;
         out vec4 final;
 
-        layout(binding = 0) uniform sampler2D texture0;
+        layout(binding = 0) uniform texture2D texture0;
+        layout(binding = 1) uniform sampler sampler0;
 
         void main()
         {
-            final = texture(texture0, uv);
+            final = texture(sampler2D(texture0, sampler0), uv);
         }
     )";
 
@@ -87,10 +88,12 @@ void frame(int width, int height)
 
     static auto pass_color = rt_create_texture_color(width, height, nullptr);
     {
-        rt_pass_render_t pass = {.module = module, .colors = {{.texture = pass_color, .clear = true,}},};
+        rt_pass_render_t pass = {.module = module, .colors = {{.texture_view = pass_color.default_view, .clear = true,}},};
         rt_begin_render(pass);
 
+        static auto sampler0 = rt_create_sampler({.min_filter = RT_LINEAR, .mag_filter = RT_LINEAR, .wrap_s = RT_REPEAT, .wrap_t = RT_REPEAT,});
         rt_bind_texture(texture0, {.binding = 0,});
+        rt_bind_sampler(sampler0, {.binding = 1,});
 
         static auto mesh = rt_create_mesh_screen();
         rt_draw_mesh(mesh);
