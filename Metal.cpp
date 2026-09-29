@@ -160,6 +160,16 @@ static MTL::PixelFormat rt_to_mt_texture_format(rt_texture_format_t format)
     }
 }
 
+static NS::UInteger rt_to_mt_sample_count(rt_texture_sample_t samples)
+{
+    switch (samples)
+    {
+        case RT_TEXTURE_SAMPLE_1X: return 1;
+        case RT_TEXTURE_SAMPLE_4X: return 4;
+        default: return 1;
+    }
+}
+
 static MTL::VertexFormat rt_to_mt_vertex_format(rt_vertex_format_t format)
 {
     switch (format)
@@ -1307,13 +1317,17 @@ rt_texture_t mt_create_texture(rt_texture_info_t const& info)
     native.depth = info.depth ? info.depth : 1;
     native.target = info.target;
     native.layers = (info.target == RT_TEXTURE_2D_ARRAY) ? native.depth : 1;
+    rt_texture_sample_t samples = info.samples == RT_TEXTURE_SAMPLE_4X ? RT_TEXTURE_SAMPLE_4X : RT_TEXTURE_SAMPLE_1X;
+    if (info.target == RT_TEXTURE_1D || info.target == RT_TEXTURE_3D || info.target == RT_TEXTURE_2D_ARRAY)
+        samples = RT_TEXTURE_SAMPLE_1X;
+    bool multisample = samples == RT_TEXTURE_SAMPLE_4X;
     native.mipLevels = 1;
-    if (info.mipmaps == 0 && rt_has_mipmap_filter(info.min_filter))
+    if (!multisample && info.mipmaps == 0 && rt_has_mipmap_filter(info.min_filter))
     {
         uint32_t maxDim = std::max(native.width, native.height);
         while (maxDim >>= 1) native.mipLevels++;
     }
-    else if (info.mipmaps > 1)
+    else if (!multisample && info.mipmaps > 1)
         native.mipLevels = info.mipmaps;
 
     MTL::TextureDescriptor* desc = MTL::TextureDescriptor::alloc()->init();
@@ -1330,7 +1344,7 @@ rt_texture_t mt_create_texture(rt_texture_info_t const& info)
     if (info.target == RT_TEXTURE_1D) desc->setTextureType(MTL::TextureType1D);
     else if (info.target == RT_TEXTURE_3D) { desc->setTextureType(MTL::TextureType3D); desc->setDepth(native.depth); }
     else if (info.target == RT_TEXTURE_2D_ARRAY) { desc->setTextureType(MTL::TextureType2DArray); desc->setArrayLength(native.layers); }
-    else if (info.target == RT_TEXTURE_2D_MULTISAMPLE) { desc->setTextureType(MTL::TextureType2DMultisample); desc->setSampleCount(info.samples ? info.samples : 1); }
+    else if (multisample) { desc->setTextureType(MTL::TextureType2DMultisample); desc->setSampleCount(rt_to_mt_sample_count(samples)); }
     else desc->setTextureType(MTL::TextureType2D);
     native.handle = metal.device->newTexture(desc);
     mt_release(desc);
@@ -1340,7 +1354,7 @@ rt_texture_t mt_create_texture(rt_texture_info_t const& info)
         return {};
     }
 
-    if (info.data)
+    if (info.data && !multisample)
     {
         size_t bpp = mt_format_bytes(native.format);
         size_t bytes = (size_t)native.width * native.height * ((info.target == RT_TEXTURE_3D) ? native.depth : 1) * bpp;
@@ -1370,7 +1384,9 @@ rt_texture_t mt_create_texture(rt_texture_info_t const& info)
     result.usage = info.usage;
     result.target = info.target;
     result.mipmaps = native.mipLevels;
-    result.samples = info.samples ? info.samples : 1;
+    result.samples = samples;
+    if (multisample)
+        result.target = RT_TEXTURE_2D_MULTISAMPLE;
     result.native = &native;
     return result;
 }

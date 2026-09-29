@@ -95,6 +95,16 @@ static GLenum rt_to_gl_texture_format(rt_texture_format_t format)
     }
 }
 
+static GLsizei rt_to_gl_sample_count(rt_texture_sample_t samples)
+{
+    switch (samples)
+    {
+        case RT_TEXTURE_SAMPLE_1X: return 1;
+        case RT_TEXTURE_SAMPLE_4X: return 4;
+        default: return 1;
+    }
+}
+
 static void rt_to_gl_transfer(rt_texture_format_t texFormat, rt_texture_aspect_t aspect, bool download, GLenum& format, GLenum& type)
 {
     switch (texFormat)
@@ -795,7 +805,7 @@ rt_texture_t gl_create_texture(rt_texture_info_t const& info)
     rt_texture_t result = {};
 
     uint32_t mipmaps = 1;
-    uint32_t samples = info.samples ? info.samples : 1;
+    rt_texture_sample_t samples = info.samples == RT_TEXTURE_SAMPLE_4X ? RT_TEXTURE_SAMPLE_4X : RT_TEXTURE_SAMPLE_1X;
     uint32_t depth = info.depth ? info.depth : 1;
     rt_texture_target_t target = info.target;
     if (info.width == 0 || (target != RT_TEXTURE_1D && info.height == 0))
@@ -803,11 +813,12 @@ rt_texture_t gl_create_texture(rt_texture_info_t const& info)
         fprintf(stderr, "Texture size must not be 0");
         abort();
     }
-    if ((target == RT_TEXTURE_2D_MULTISAMPLE) != (samples > 1))
-    {
-        fprintf(stderr, "RT_TEXTURE_2D_MULTISAMPLE requires samples > 1");
-        abort();
-    }
+    if (samples == RT_TEXTURE_SAMPLE_4X && (target == RT_TEXTURE_2D || target == RT_TEXTURE_2D_MULTISAMPLE))
+        target = RT_TEXTURE_2D_MULTISAMPLE;
+    else if (target == RT_TEXTURE_2D_MULTISAMPLE)
+        target = RT_TEXTURE_2D;
+    if (target == RT_TEXTURE_1D || target == RT_TEXTURE_3D || target == RT_TEXTURE_2D_ARRAY)
+        samples = RT_TEXTURE_SAMPLE_1X;
 
     if (target != RT_TEXTURE_2D_MULTISAMPLE)
     {
@@ -847,7 +858,7 @@ rt_texture_t gl_create_texture(rt_texture_info_t const& info)
     }
     else if (target == RT_TEXTURE_2D_MULTISAMPLE)
     {
-        glTexStorage2DMultisample(glTarget, (GLsizei)samples, glInternal, (GLsizei)info.width, (GLsizei)info.height, GL_TRUE);
+        glTexStorage2DMultisample(glTarget, rt_to_gl_sample_count(samples), glInternal, (GLsizei)info.width, (GLsizei)info.height, GL_TRUE);
     }
     else
     {
@@ -871,7 +882,7 @@ rt_texture_t gl_create_texture(rt_texture_info_t const& info)
         }
     }
 
-    if (info.data == nullptr)
+    if (info.data == nullptr && target != RT_TEXTURE_2D_MULTISAMPLE)
     {
         if (rt_texture_has_depth(info.format) && !rt_texture_has_stencil(info.format))
         {

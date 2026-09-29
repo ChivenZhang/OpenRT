@@ -145,6 +145,16 @@ static VkFormat rt_to_vk_texture_format(rt_texture_format_t format)
     }
 }
 
+static VkSampleCountFlagBits rt_to_vk_sample_count(rt_texture_sample_t samples)
+{
+    switch (samples)
+    {
+        case RT_TEXTURE_SAMPLE_1X: return VK_SAMPLE_COUNT_1_BIT;
+        case RT_TEXTURE_SAMPLE_4X: return VK_SAMPLE_COUNT_4_BIT;
+        default: return VK_SAMPLE_COUNT_1_BIT;
+    }
+}
+
 static VkImageAspectFlags vk_format_aspect(VkFormat format)
 {
     switch (format)
@@ -1443,6 +1453,11 @@ rt_texture_t vk_create_texture(rt_texture_info_t const& info)
         native.mipLevels = 1;
         while (maxDim >>= 1) native.mipLevels++;
     }
+    rt_texture_sample_t samples = info.samples == RT_TEXTURE_SAMPLE_4X ? RT_TEXTURE_SAMPLE_4X : RT_TEXTURE_SAMPLE_1X;
+    if (info.target == RT_TEXTURE_1D || info.target == RT_TEXTURE_3D)
+        samples = RT_TEXTURE_SAMPLE_1X;
+    if (samples == RT_TEXTURE_SAMPLE_4X)
+        native.mipLevels = 1;
 
     VkImageCreateInfo vkInfo = {};
     vkInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
@@ -1454,9 +1469,9 @@ rt_texture_t vk_create_texture(rt_texture_info_t const& info)
     vkInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
     vkInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
     vkInfo.usage = rt_to_vk_image_usage(info.usage, info.format);
-    if (info.data)
+    if (info.data && samples == RT_TEXTURE_SAMPLE_1X)
         vkInfo.usage |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;
-    vkInfo.samples = VK_SAMPLE_COUNT_1_BIT;
+    vkInfo.samples = rt_to_vk_sample_count(samples);
     vkInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
     if (vkCreateImage(vulkan.device, &vkInfo, vulkan.allocator, &native.handle) != VK_SUCCESS)
     {
@@ -1489,7 +1504,7 @@ rt_texture_t vk_create_texture(rt_texture_info_t const& info)
     if (vkCreateImageView(vulkan.device, &viewInfo, vulkan.allocator, &native.imageView) != VK_SUCCESS)
         native.imageView = nullptr;
 
-    if (info.data)
+    if (info.data && samples == RT_TEXTURE_SAMPLE_1X)
     {
         VkDeviceSize bytes = (VkDeviceSize)info.width * info.height * native.extent.depth * vk_format_bytes(native.format);
         vk_staging_t staging = {};
@@ -1546,7 +1561,9 @@ rt_texture_t vk_create_texture(rt_texture_info_t const& info)
     result.usage = info.usage;
     result.target = info.target;
     result.mipmaps = native.mipLevels;
-    result.samples = info.samples ? info.samples : 1;
+    result.samples = samples;
+    if (samples == RT_TEXTURE_SAMPLE_4X && (info.target == RT_TEXTURE_2D || info.target == RT_TEXTURE_2D_MULTISAMPLE))
+        result.target = RT_TEXTURE_2D_MULTISAMPLE;
     result.native = &native;
     return result;
 }

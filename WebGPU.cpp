@@ -155,6 +155,16 @@ static WGPUTextureFormat rt_to_wg_texture_format(rt_texture_format_t format)
     }
 }
 
+static uint32_t rt_to_wg_sample_count(rt_texture_sample_t samples)
+{
+    switch (samples)
+    {
+        case RT_TEXTURE_SAMPLE_1X: return 1;
+        case RT_TEXTURE_SAMPLE_4X: return 4;
+        default: return 1;
+    }
+}
+
 static WGPUVertexFormat rt_to_wg_vertex_format(rt_vertex_format_t format)
 {
     switch (format)
@@ -1195,13 +1205,16 @@ rt_texture_t wg_create_texture(rt_texture_info_t const& info)
     native.depth = info.depth ? info.depth : 1;
     native.target = info.target;
     native.layers = (info.target == RT_TEXTURE_2D_ARRAY) ? native.depth : 1;
+    rt_texture_sample_t samples = info.samples == RT_TEXTURE_SAMPLE_4X ? RT_TEXTURE_SAMPLE_4X : RT_TEXTURE_SAMPLE_1X;
+    if (info.target == RT_TEXTURE_1D || info.target == RT_TEXTURE_3D || info.target == RT_TEXTURE_2D_ARRAY)
+        samples = RT_TEXTURE_SAMPLE_1X;
     native.mipLevels = 1;
-    if (info.mipmaps == 0 && rt_has_mipmap_filter(info.min_filter))
+    if (samples == RT_TEXTURE_SAMPLE_1X && info.mipmaps == 0 && rt_has_mipmap_filter(info.min_filter))
     {
         uint32_t maxDim = std::max(native.width, native.height);
         while (maxDim >>= 1) native.mipLevels++;
     }
-    else if (info.mipmaps > 1)
+    else if (samples == RT_TEXTURE_SAMPLE_1X && info.mipmaps > 1)
         native.mipLevels = info.mipmaps;
 
     WGPUTextureDescriptor desc = {};
@@ -1209,13 +1222,13 @@ rt_texture_t wg_create_texture(rt_texture_info_t const& info)
     desc.size.height = native.height;
     desc.size.depthOrArrayLayers = (info.target == RT_TEXTURE_3D) ? native.depth : native.layers;
     desc.mipLevelCount = native.mipLevels;
-    desc.sampleCount = (info.target == RT_TEXTURE_2D_MULTISAMPLE && info.samples) ? info.samples : 1;
+    desc.sampleCount = rt_to_wg_sample_count(samples);
     desc.dimension = (info.target == RT_TEXTURE_3D) ? WGPUTextureDimension_3D :
                      (info.target == RT_TEXTURE_1D) ? WGPUTextureDimension_1D :
                      WGPUTextureDimension_2D;
     desc.format = native.format;
     desc.usage = wg_texture_usage(info.usage);
-    if (info.data)
+    if (info.data && samples == RT_TEXTURE_SAMPLE_1X)
         desc.usage = (WGPUTextureUsage)(desc.usage | WGPUTextureUsage_CopyDst);
     native.handle = wgpuDeviceCreateTexture(webgpu.device, &desc);
     if (!native.handle)
@@ -1225,7 +1238,7 @@ rt_texture_t wg_create_texture(rt_texture_info_t const& info)
     }
     native.view = wgpuTextureCreateView(native.handle, nullptr);
 
-    if (info.data)
+    if (info.data && samples == RT_TEXTURE_SAMPLE_1X)
     {
         size_t bpp = wg_format_bytes(native.format);
         size_t bytes = (size_t)native.width * native.height * ((info.target == RT_TEXTURE_3D) ? native.depth : 1) * bpp;
@@ -1250,7 +1263,9 @@ rt_texture_t wg_create_texture(rt_texture_info_t const& info)
     result.usage = info.usage;
     result.target = info.target;
     result.mipmaps = native.mipLevels;
-    result.samples = info.samples ? info.samples : 1;
+    result.samples = samples;
+    if (samples == RT_TEXTURE_SAMPLE_4X && (info.target == RT_TEXTURE_2D || info.target == RT_TEXTURE_2D_MULTISAMPLE))
+        result.target = RT_TEXTURE_2D_MULTISAMPLE;
     result.native = &native;
     return result;
 }

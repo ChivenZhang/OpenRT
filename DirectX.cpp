@@ -138,6 +138,16 @@ static DXGI_FORMAT rt_to_dx_texture_format(rt_texture_format_t format)
     }
 }
 
+static UINT rt_to_dx_sample_count(rt_texture_sample_t samples)
+{
+    switch (samples)
+    {
+        case RT_TEXTURE_SAMPLE_1X: return 1;
+        case RT_TEXTURE_SAMPLE_4X: return 4;
+        default: return 1;
+    }
+}
+
 static DXGI_FORMAT rt_to_dx_vertex_format(rt_vertex_format_t format)
 {
     switch (format)
@@ -1391,14 +1401,16 @@ rt_texture_t dx_create_texture(rt_texture_info_t const& info)
     native.depth = info.depth ? info.depth : 1;
     native.target = info.target;
     native.layers = (info.target == RT_TEXTURE_2D_ARRAY) ? native.depth : 1;
-    native.samples = info.samples ? info.samples : 1;
+    native.samples = rt_to_dx_sample_count(info.samples);
+    if (info.target == RT_TEXTURE_1D || info.target == RT_TEXTURE_3D)
+        native.samples = 1;
     native.mipLevels = 1;
-    if (info.mipmaps == 0 && rt_has_mipmap_filter(info.min_filter))
+    if (native.samples == 1 && info.mipmaps == 0 && rt_has_mipmap_filter(info.min_filter))
     {
         uint32_t maxDim = max(native.width, native.height);
         while (maxDim >>= 1) native.mipLevels++;
     }
-    else if (info.mipmaps > 1)
+    else if (native.samples == 1 && info.mipmaps > 1)
         native.mipLevels = info.mipmaps;
 
     D3D12_HEAP_PROPERTIES heap = {};
@@ -1442,7 +1454,7 @@ rt_texture_t dx_create_texture(rt_texture_info_t const& info)
     }
     native.state = init;
 
-    if (info.data)
+    if (info.data && native.samples == 1)
     {
         size_t bytes = (size_t)native.width * native.height * ((info.target == RT_TEXTURE_3D) ? native.depth : 1) * dx_format_bytes(native.format);
         dx_staging_t staging = {};
@@ -1482,7 +1494,9 @@ rt_texture_t dx_create_texture(rt_texture_info_t const& info)
     result.usage = info.usage;
     result.target = info.target;
     result.mipmaps = native.mipLevels;
-    result.samples = native.samples;
+    result.samples = native.samples == 4 ? RT_TEXTURE_SAMPLE_4X : RT_TEXTURE_SAMPLE_1X;
+    if (result.samples == RT_TEXTURE_SAMPLE_4X && (info.target == RT_TEXTURE_2D || info.target == RT_TEXTURE_2D_MULTISAMPLE))
+        result.target = RT_TEXTURE_2D_MULTISAMPLE;
     result.native = &native;
     return result;
 }

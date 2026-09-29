@@ -78,6 +78,12 @@ enum rt_texture_target_t : uint32_t
     RT_TEXTURE_2D_MULTISAMPLE,
 };
 
+enum rt_texture_sample_t : uint32_t
+{
+    RT_TEXTURE_SAMPLE_1X = 1,
+    RT_TEXTURE_SAMPLE_4X = 4,
+};
+
 enum rt_texture_format_t : uint32_t
 {
     RT_TEXTURE_NONE = 0,
@@ -374,7 +380,7 @@ struct rt_texture_t
     rt_texture_format_t format = RT_TEXTURE_NONE;
     rt_texture_usages_t usage = 0;
     uint32_t mipmaps = 0;
-    uint32_t samples = 1;
+    rt_texture_sample_t samples = RT_TEXTURE_SAMPLE_1X;
     void* native = nullptr;
 };
 
@@ -390,7 +396,7 @@ struct rt_texture_info_t
     rt_wrap_t wrap_t = RT_REPEAT;                    // RT_REPEAT / RT_MIRRORED_REPEAT / RT_CLAMP_TO_EDGE / RT_CLAMP_TO_BORDER / RT_MIRROR_CLAMP_TO_EDGE
     rt_wrap_t wrap_r = RT_REPEAT;                    // RT_REPEAT / RT_MIRRORED_REPEAT / RT_CLAMP_TO_EDGE / RT_CLAMP_TO_BORDER / RT_MIRROR_CLAMP_TO_EDGE
     uint32_t mipmaps = 0;   // 0:auto generate
-    uint32_t samples = 1;   // 1x / 4x
+    rt_texture_sample_t samples = RT_TEXTURE_SAMPLE_1X; // RT_TEXTURE_SAMPLE_1X / RT_TEXTURE_SAMPLE_4X
     float border[4] = {0.0f, 0.0f, 0.0f, 0.0f};
     const void* data = nullptr;
 };
