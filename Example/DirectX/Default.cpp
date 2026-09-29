@@ -168,7 +168,7 @@ void frame(int width, int height)
         .colors = {{.format = RT_TEXTURE_RGBA8UNORM,}},
         .vertex = {rt_vertex_vertex, rt_vertex_normal, rt_vertex_uv,},
     });
-    static auto pass_color = rt_create_texture_color(width, height, nullptr);
+    static auto pass_color = rt_create_texture_color(width, height);
     {
         rt_pass_render_t pass = {.module = module, .colors = {{.texture_view = pass_color.default_view, .clear = true,}},};
         rt_begin_render(pass);

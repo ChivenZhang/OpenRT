@@ -8,11 +8,17 @@
 * Created by chivenzhang@gmail.com.
 *
 * =================================================*/
+#define OPENRTX_IMPLEMENTATION
+#include "../../OpenRTX.h"
 #include <SDL3/SDL.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
-#define OPENRTX_IMPLEMENTATION
-#include "../../OpenRTX.h"
+#include "../../OpenGL.h"
+
+static void present(int width, int height, rt_texture_t& color)
+{
+    gl_draw_screen(width, height, {}, color);
+}
 
 void frame(int width, int height)
 {
@@ -88,8 +94,8 @@ void frame(int width, int height)
         .vertex = {rt_vertex_vertex, rt_vertex_normal, rt_vertex_uv,},
         .binding = {{.binding = 0, .type = RT_BINDING_TEXTURE,}, {.binding = 1, .type = RT_BINDING_SAMPLER,},},
     });
-    static auto pass_color = rt_create_texture_color(width, height, nullptr);
-    static auto pass_depth = rt_create_texture_depth(width, height, nullptr);
+    static auto pass_color = rt_create_texture_color(width, height);
+    static auto pass_depth = rt_create_texture_depth(width, height);
     {
         rt_pass_render_t pass = {.module = module, .colors = {{.texture_view = pass_color.default_view, .clear = true,}}, .depth = {.texture_view = pass_depth.default_view, .clear = true,},};
         rt_begin_render(pass);
@@ -103,7 +109,7 @@ void frame(int width, int height)
         rt_push_const_mat4("meshMat", &meshMat[0][0]);
 
         static auto texture0 = rt_load_texture_file("../../Earth.png", true);
-        static auto sampler0 = rt_create_sampler({.min_filter = RT_LINEAR, .mag_filter = RT_LINEAR, .wrap_s = RT_REPEAT, .wrap_t = RT_REPEAT,});
+        static auto sampler0 = rt_create_sampler({.min_filter = RT_LINEAR, .mag_filter = RT_LINEAR, .address_u = RT_REPEAT, .address_v = RT_REPEAT,});
         rt_bind_texture(texture0, {.binding = 0,});
         rt_bind_sampler(sampler0, {.binding = 0,});
 
@@ -113,7 +119,7 @@ void frame(int width, int height)
         rt_end_render(pass);
     }
 
-    rt_draw_screen(width, height, {}, pass_color);
+    present(width, height, pass_color);
 
     rt_submit();
 }

@@ -8,11 +8,17 @@
 * Created by chivenzhang@gmail.com.
 *
 * =================================================*/
+#define OPENRTX_IMPLEMENTATION
+#include "../../OpenRTX.h"
+#include "../../OpenGL.h"
 #include <SDL3/SDL.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
-#define OPENRTX_IMPLEMENTATION
-#include "../../OpenRTX.h"
+
+static void present(int width, int height, rt_texture_t& color)
+{
+    gl_draw_screen(width, height, {}, color);
+}
 
 void frame(int width, int height)
 {
@@ -252,8 +258,8 @@ void frame(int width, int height)
     )";
 
     static auto module = rt_create_module_meshlet({.mshader = {MS}, .fshader = {FS}, .colors = {{.format = RT_TEXTURE_RGBA8UNORM,}}, .depth = {.write = true, .func = RT_LEQUAL,}, .vertex = {rt_vertex_vertex, rt_vertex_normal, rt_vertex_uv,}, .fill_mode = RT_FILL,});
-    static auto pass_color = rt_create_texture_color(width, height, nullptr);
-    static auto pass_depth = rt_create_texture_depth(width, height, nullptr);
+    static auto pass_color = rt_create_texture_color(width, height);
+    static auto pass_depth = rt_create_texture_depth(width, height);
     {
         rt_pass_render_t pass = {.module = module, .colors = {{.texture_view = pass_color.default_view, .clear = true,}}, .depth = {.texture_view = pass_depth.default_view, .clear = true,},};
         rt_begin_render(pass);
@@ -278,7 +284,7 @@ void frame(int width, int height)
         rt_end_render(pass);
     }
 
-    rt_draw_screen(width, height, {}, pass_color);
+    present(width, height, pass_color);
 
     rt_submit();
 }

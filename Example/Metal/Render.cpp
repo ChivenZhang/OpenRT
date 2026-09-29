@@ -99,10 +99,10 @@ static MTL::Device* device = nullptr;
 static MTL::CommandQueue* queue = nullptr;
 static CA::MetalLayer* layer = nullptr;
 
-static void present(rt_texture_t& color)
+static void present(rt_texture_t& color, uint32_t width, uint32_t height)
 {
     NS::AutoreleasePool* pool = NS::AutoreleasePool::alloc()->init();
-    CGSize drawableSize = {(CGFloat)color.width, (CGFloat)color.height};
+    CGSize drawableSize = {(CGFloat)width, (CGFloat)height};
     layer->setDrawableSize(drawableSize);
     CA::MetalDrawable* drawable = layer->nextDrawable();
     if (!drawable)
@@ -132,13 +132,15 @@ void frame(int width, int height)
         .depth = {.write = true, .func = RT_LEQUAL,},
         .vertex = {rt_vertex_vertex, rt_vertex_normal, rt_vertex_uv,},
     });
+    static uint32_t colorWidth = (uint32_t)width;
+    static uint32_t colorHeight = (uint32_t)height;
     static auto pass_color = rt_create_texture({
-        .width = (uint32_t)width, .height = (uint32_t)height,
+        .width = colorWidth, .height = colorHeight,
         .format = RT_TEXTURE_BGRA8UNORM,
         .min_filter = RT_LINEAR, .mag_filter = RT_LINEAR,
         .mipmaps = 1,
     });
-    static auto pass_depth = rt_create_texture_depth(width, height, nullptr);
+    static auto pass_depth = rt_create_texture_depth(width, height);
     {
         rt_pass_render_t pass = {.module = module, .colors = {{.texture_view = pass_color.default_view, .clear = true,}}, .depth = {.texture_view = pass_depth.default_view, .clear = true,},};
         rt_begin_render(pass);
@@ -150,7 +152,7 @@ void frame(int width, int height)
         rt_push_constant((const uint8_t*)push, sizeof(push));
 
         static auto texture0 = rt_load_texture_file("../../Earth.png", true);
-        static auto sampler0 = rt_create_sampler({.min_filter = RT_LINEAR, .mag_filter = RT_LINEAR, .wrap_s = RT_REPEAT, .wrap_t = RT_REPEAT,});
+        static auto sampler0 = rt_create_sampler({.min_filter = RT_LINEAR, .mag_filter = RT_LINEAR, .address_u = RT_REPEAT, .address_v = RT_REPEAT,});
         rt_bind_texture(texture0, {.binding = 0,});
         rt_bind_sampler(sampler0, {.binding = 1,});
 
@@ -161,7 +163,7 @@ void frame(int width, int height)
     }
 
     rt_submit();
-    present(pass_color);
+    present(pass_color, colorWidth, colorHeight);
 }
 
 int main()

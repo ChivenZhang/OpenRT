@@ -58,16 +58,14 @@ void (*rt_unload_library)() = nullptr;
 rt_buffer_t (*rt_create_buffer)(rt_buffer_info_t const& info) = nullptr;
 void (*rt_destroy_buffer)(rt_buffer_t& buffer) = nullptr;
 void (*rt_bind_buffer)(rt_buffer_t& buffer, rt_buffer_bind_t bind) = nullptr;
-void (*rt_read_buffer)(rt_buffer_t buffer, size_t offset, size_t size, void* data) = nullptr;
-void (*rt_write_buffer)(rt_buffer_t buffer, size_t offset, size_t size, const void* data) = nullptr;
 void* (*rt_map_buffer)(rt_buffer_t& buffer, rt_access_t mode, size_t offset, size_t size) = nullptr; // mode: RT_READ_ONLY / RT_WRITE_ONLY / RT_READ_WRITE
 void (*rt_unmap_buffer)(rt_buffer_t& buffer) = nullptr;
 
 rt_texture_t (*rt_create_texture)(rt_texture_info_t const& info) = nullptr;
-rt_texture_t (*rt_create_texture_color)(uint32_t width, uint32_t height, const void* data) = nullptr;
-rt_texture_t (*rt_create_texture_color_float)(uint32_t width, uint32_t height, const void* data) = nullptr;
-rt_texture_t (*rt_create_texture_depth)(uint32_t width, uint32_t height, const void* data) = nullptr;
-rt_texture_t (*rt_create_texture_depth_stencil)(uint32_t width, uint32_t height, const void* data) = nullptr;
+rt_texture_t (*rt_create_texture_color)(uint32_t width, uint32_t height) = nullptr;
+rt_texture_t (*rt_create_texture_color_float)(uint32_t width, uint32_t height) = nullptr;
+rt_texture_t (*rt_create_texture_depth)(uint32_t width, uint32_t height) = nullptr;
+rt_texture_t (*rt_create_texture_depth_stencil)(uint32_t width, uint32_t height) = nullptr;
 void (*rt_destroy_texture)(rt_texture_t& texture) = nullptr;
 void (*rt_bind_texture)(rt_texture_t& texture, rt_texture_bind_t bind) = nullptr;
 void (*rt_bind_texture_storage)(rt_texture_t& texture, rt_texture_storage_bind_t bind) = nullptr;
@@ -123,8 +121,5 @@ void (*rt_draw_mesh_multi)(rt_mesh_t& mesh, uint32_t count) = nullptr;
 rt_meshlet_t (*rt_create_meshlet)(const float* vertices, const float* normals, const float* uvs, size_t vertex_count, const unsigned int* indices, size_t index_count) = nullptr;
 void (*rt_destroy_meshlet)(rt_meshlet_t& meshlet) = nullptr;
 void (*rt_draw_meshlet)(rt_meshlet_t& meshlet) = nullptr;
-
-rt_mesh_t (*rt_create_mesh_screen)() = nullptr;
-void (*rt_draw_screen)(int width, int height, rt_color_t clear, rt_texture_t& texture) = nullptr;
 
 void (*rt_submit)() = nullptr;

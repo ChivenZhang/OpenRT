@@ -23,10 +23,10 @@ void* dx_map_buffer(rt_buffer_t& buffer, rt_access_t mode, size_t offset, size_t
 void dx_unmap_buffer(rt_buffer_t& buffer);
 
 rt_texture_t dx_create_texture(rt_texture_info_t const& info);
-rt_texture_t dx_create_texture_color(uint32_t width, uint32_t height, const void* data);
-rt_texture_t dx_create_texture_color_float(uint32_t width, uint32_t height, const void* data);
-rt_texture_t dx_create_texture_depth(uint32_t width, uint32_t height, const void* data);
-rt_texture_t dx_create_texture_depth_stencil(uint32_t width, uint32_t height, const void* data);
+rt_texture_t dx_create_texture_color(uint32_t width, uint32_t height);
+rt_texture_t dx_create_texture_color_float(uint32_t width, uint32_t height);
+rt_texture_t dx_create_texture_depth(uint32_t width, uint32_t height);
+rt_texture_t dx_create_texture_depth_stencil(uint32_t width, uint32_t height);
 void dx_destroy_texture(rt_texture_t& texture);
 void dx_bind_texture(rt_texture_t& texture, rt_texture_bind_t bind = {});
 void dx_bind_texture_storage(rt_texture_t& texture, rt_texture_storage_bind_t bind = {});
@@ -81,9 +81,6 @@ void dx_draw_mesh_multi(rt_mesh_t& mesh, uint32_t count);
 rt_meshlet_t dx_create_meshlet(const float* vertices, const float* normals, const float* uvs, size_t vertex_count, const unsigned int* indices, size_t index_count);
 void dx_destroy_meshlet(rt_meshlet_t& meshlet);
 void dx_draw_meshlet(rt_meshlet_t& meshlet);
-
-rt_mesh_t dx_create_mesh_screen();
-void dx_draw_screen(int width, int height, rt_color_t clear, rt_texture_t& texture);
 
 void dx_submit();
 

@@ -10,9 +10,15 @@
 * =================================================*/
 #define OPENRTX_IMPLEMENTATION
 #include "../../OpenRTX.h"
+#include "../../OpenGL.h"
 #include <SDL3/SDL.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
+
+static void present(int width, int height, rt_texture_t& color)
+{
+    gl_draw_screen(width, height, {}, color);
+}
 
 void frame(int width, int height)
 {
@@ -56,7 +62,7 @@ void frame(int width, int height)
         .colors = {{.format = RT_TEXTURE_RGBA8UNORM,}},
         .vertex = {rt_vertex_vertex, rt_vertex_normal, rt_vertex_uv,},
     });
-    static auto pass_color = rt_create_texture_color(width, height, nullptr);
+    static auto pass_color = rt_create_texture_color(width, height);
     {
         rt_pass_render_t pass = {.module = module, .colors = {{.texture_view = pass_color.default_view, .clear = true,}},};
         rt_begin_render(pass);
@@ -67,7 +73,7 @@ void frame(int width, int height)
         rt_end_render(pass);
     }
 
-    rt_draw_screen(width, height, {}, pass_color);
+    present(width, height, pass_color);
 
     rt_submit();
 }

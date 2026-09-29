@@ -8,11 +8,17 @@
 * Created by chivenzhang@gmail.com.
 *
 * =================================================*/
+#define OPENRTX_IMPLEMENTATION
+#include "../../OpenRTX.h"
+#include "../../OpenGL.h"
 #include <SDL3/SDL.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
-#define OPENRTX_IMPLEMENTATION
-#include "../../OpenRTX.h"
+
+static void present(int width, int height, rt_texture_t& color)
+{
+    gl_draw_screen(width, height, {}, color);
+}
 
 void frame(int width, int height)
 {
@@ -57,34 +63,36 @@ void frame(int width, int height)
 
     static auto texture0 = []()
     {
-        auto texture = rt_load_texture_file("../../Earth.png");
-        auto width = texture.width;
-        auto height = texture.height;
+        auto image = rt_load_image_file("../../Earth.png");
+        auto imageWidth = image.width;
+        auto imageHeight = image.height;
+        auto texture = rt_load_texture(image);
+        rt_destroy_image(image);
 
         // Copy Texture To Buffer
 
-        auto buffer = rt_create_buffer({.size = texture.width * texture.height * 4,});
+        auto buffer = rt_create_buffer({.size = imageWidth * imageHeight * 4,});
         {
             rt_pass_transfer_t pass = {};
             rt_begin_transfer(pass);
             rt_copy_buffer_texture(
                 {.texture = texture,},
-                {.buffer = buffer, .bytesPerRow = texture.width * 4, .rowsPerImage = texture.height,},
-                {texture.width, texture.height, 1});
+                {.buffer = buffer, .bytesPerRow = imageWidth * 4, .rowsPerImage = imageHeight,},
+                {imageWidth, imageHeight, 1});
             rt_end_transfer(pass);
         }
         rt_destroy_texture(texture);
 
         // Copy Buffer To Texture
 
-        texture = rt_create_texture({.width = width, .height = height, .format = RT_TEXTURE_RGBA8UNORM, });
+        texture = rt_create_texture({.width = imageWidth, .height = imageHeight, .format = RT_TEXTURE_RGBA8UNORM, });
         {
             rt_pass_transfer_t pass = {};
             rt_begin_transfer(pass);
             rt_copy_texture_buffer(
-                {.buffer = buffer, .bytesPerRow = texture.width * 4, .rowsPerImage = texture.height,},
+                {.buffer = buffer, .bytesPerRow = imageWidth * 4, .rowsPerImage = imageHeight,},
                 {.texture = texture,},
-                {texture.width, texture.height, 1});
+                {imageWidth, imageHeight, 1});
             rt_end_transfer(pass);
         }
         rt_destroy_buffer(buffer);
@@ -92,7 +100,7 @@ void frame(int width, int height)
         return texture;
     }();
 
-    static auto pass_color = rt_create_texture_color(width, height, nullptr);
+    static auto pass_color = rt_create_texture_color(width, height);
     {
         rt_pass_render_t pass = {.module = module, .colors = {{.texture_view = pass_color.default_view, .clear = true,}},};
         rt_begin_render(pass);
@@ -105,7 +113,7 @@ void frame(int width, int height)
         rt_end_render(pass);
     }
 
-    rt_draw_screen(width, height, {}, pass_color);
+    present(width, height, pass_color);
 
     rt_submit();
 }

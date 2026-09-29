@@ -46,9 +46,9 @@ static VkFilter rt_to_vk_min_filter(rt_filter_t minFilter)
     }
 }
 
-static VkSamplerAddressMode rt_to_vk_address(rt_wrap_t wrap)
+static VkSamplerAddressMode rt_to_vk_address(rt_address_t address)
 {
-    switch (wrap)
+    switch (address)
     {
         case RT_REPEAT: return VK_SAMPLER_ADDRESS_MODE_REPEAT;
         case RT_CLAMP_TO_EDGE: return VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
@@ -556,9 +556,13 @@ struct vk_texture_native_t
     VkFormat format = VK_FORMAT_UNDEFINED;
     VkImageLayout layout = VK_IMAGE_LAYOUT_UNDEFINED;
     VkImageAspectFlags aspect = VK_IMAGE_ASPECT_COLOR_BIT;
-    uint32_t mipLevels = 1;
+    uint32_t levels = 1;
     uint32_t layers = 1;
     VkExtent3D extent = {1, 1, 1};
+    rt_texture_target_t target = RT_TEXTURE_2D;
+    rt_texture_format_t rtFormat = RT_TEXTURE_NONE;
+    rt_texture_usages_t usage = 0;
+    rt_texture_sample_t samples = RT_TEXTURE_SAMPLE_1X;
     VkPipelineStageFlags stage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
     VkAccessFlags access = 0;
 };
@@ -685,7 +689,7 @@ struct vk_native_t
             };
             struct
             {
-                rt_texture_t storage_texture;
+                rt_texture_view_t storage_view;
                 rt_texture_storage_bind_t storage_texture_bind;
             };
             struct
@@ -839,7 +843,7 @@ static void vk_transition_image(vk_texture_native_t& image, VkImageLayout newLay
         barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
         barrier.image = image.handle;
         barrier.subresourceRange.aspectMask = image.aspect;
-        barrier.subresourceRange.levelCount = image.mipLevels;
+        barrier.subresourceRange.levelCount = image.levels;
         barrier.subresourceRange.layerCount = image.layers;
         vkCmdPipelineBarrier(vulkan.cmdBuffer, image.stage, dstStage, 0, 0, nullptr, 0, nullptr, 1, &barrier);
         image.layout = newLayout;
@@ -1058,11 +1062,13 @@ static void vk_flush_descriptors()
         }
         else if (type == VK_DESCRIPTOR_TYPE_STORAGE_IMAGE)
         {
-            auto* tex = vk_texture_native(slot.storage_texture);
-            VkImageView imageView = vk_image_view(slot.storage_texture.default_view);
-            if (!tex || !imageView) continue;
+            auto* view = vk_texture_view_native(slot.storage_view.handle);
+            if (!view || !view->handle) continue;
+            auto texIt = vulkan.textures.find(view->texture);
+            if (texIt == vulkan.textures.end()) continue;
+            auto* tex = &texIt->second;
             vk_transition_image(*tex, VK_IMAGE_LAYOUT_GENERAL);
-            imageInfos[writeCount] = {VK_NULL_HANDLE, imageView, VK_IMAGE_LAYOUT_GENERAL};
+            imageInfos[writeCount] = {VK_NULL_HANDLE, view->handle, VK_IMAGE_LAYOUT_GENERAL};
             writes[writeCount].pImageInfo = &imageInfos[writeCount];
         }
         else continue;
@@ -1186,8 +1192,6 @@ void vk_load_library(VkInstance instance, VkPhysicalDevice physical, VkDevice de
     rt_create_meshlet = vk_create_meshlet;
     rt_destroy_meshlet = vk_destroy_meshlet;
     rt_draw_meshlet = vk_draw_meshlet;
-    rt_create_mesh_screen = vk_create_mesh_screen;
-    rt_draw_screen = vk_draw_screen;
     rt_submit = vk_submit;
 }
 
@@ -1325,8 +1329,6 @@ void vk_unload_library()
     if (rt_create_meshlet == vk_create_meshlet) rt_create_meshlet = nullptr;
     if (rt_destroy_meshlet == vk_destroy_meshlet) rt_destroy_meshlet = nullptr;
     if (rt_draw_meshlet == vk_draw_meshlet) rt_draw_meshlet = nullptr;
-    if (rt_create_mesh_screen == vk_create_mesh_screen) rt_create_mesh_screen = nullptr;
-    if (rt_draw_screen == vk_draw_screen) rt_draw_screen = nullptr;
     if (rt_submit == vk_submit) rt_submit = nullptr;
 }
 
@@ -1514,27 +1516,31 @@ rt_texture_t vk_create_texture(rt_texture_info_t const& info)
     uint32_t handle = vulkan.textureID + 1;
     auto& native = vulkan.textures[handle];
     native.format = rt_to_vk_texture_format(info.format);
+    native.rtFormat = info.format;
+    native.usage = info.usage;
+    native.target = info.target;
     native.aspect = vk_format_aspect(native.format);
     native.extent = {info.width, info.height, info.depth ? info.depth : 1};
     native.layers = 1;
-    native.mipLevels = 1;
+    native.levels = 1;
     if (rt_has_mipmap_filter(info.min_filter))
     {
         uint32_t maxDim = std::max(info.width, info.height);
-        native.mipLevels = 1;
-        while (maxDim >>= 1) native.mipLevels++;
+        native.levels = 1;
+        while (maxDim >>= 1) native.levels++;
     }
     rt_texture_sample_t samples = info.samples == RT_TEXTURE_SAMPLE_4X ? RT_TEXTURE_SAMPLE_4X : RT_TEXTURE_SAMPLE_1X;
     if (info.target == RT_TEXTURE_1D || info.target == RT_TEXTURE_3D)
         samples = RT_TEXTURE_SAMPLE_1X;
+    native.samples = samples;
     if (samples == RT_TEXTURE_SAMPLE_4X)
-        native.mipLevels = 1;
+        native.levels = 1;
 
     VkImageCreateInfo vkInfo = {};
     vkInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
     vkInfo.imageType = (info.target == RT_TEXTURE_3D) ? VK_IMAGE_TYPE_3D : VK_IMAGE_TYPE_2D;
     vkInfo.extent = native.extent;
-    vkInfo.mipLevels = native.mipLevels;
+    vkInfo.mipLevels = native.levels;
     vkInfo.arrayLayers = native.layers;
     vkInfo.format = native.format;
     vkInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
@@ -1612,61 +1618,50 @@ rt_texture_t vk_create_texture(rt_texture_info_t const& info)
         }
     }
 
+    if (native.samples == RT_TEXTURE_SAMPLE_4X && (native.target == RT_TEXTURE_2D || native.target == RT_TEXTURE_2D_MULTISAMPLE))
+        native.target = RT_TEXTURE_2D_MULTISAMPLE;
     vulkan.textureID = handle;
     result.handle = handle;
-    result.width = info.width;
-    result.height = info.height;
-    result.depth = info.depth;
-    result.format = info.format;
-    result.usage = info.usage;
-    result.target = info.target;
-    result.mipmaps = native.mipLevels;
-    result.samples = samples;
-    if (samples == RT_TEXTURE_SAMPLE_4X && (info.target == RT_TEXTURE_2D || info.target == RT_TEXTURE_2D_MULTISAMPLE))
-        result.target = RT_TEXTURE_2D_MULTISAMPLE;
     result.native = &native;
     result.default_view = vk_create_texture_view({
         .texture = result,
-        .target = result.target,
-        .format = result.format,
+        .target = native.target,
+        .format = native.rtFormat,
         .aspect = RT_TEXTURE_ASPECT_ALL,
-        .usage = result.usage,
+        .usage = native.usage,
         .layer_count = native.layers,
-        .level_count = native.mipLevels,
+        .level_count = native.levels,
     });
     return result;
 }
 
-rt_texture_t vk_create_texture_color(uint32_t width, uint32_t height, const void* data)
+rt_texture_t vk_create_texture_color(uint32_t width, uint32_t height)
 {
     return vk_create_texture({
         .width = width, .height = height, .target = RT_TEXTURE_2D,
         .format = RT_TEXTURE_RGBA8UNORM,
         .min_filter = RT_LINEAR, .mag_filter = RT_LINEAR,
-        .wrap_s = RT_CLAMP_TO_EDGE, .wrap_t = RT_CLAMP_TO_EDGE, .wrap_r = RT_CLAMP_TO_EDGE,
-        .data = data
+        .address_u = RT_CLAMP_TO_EDGE, .address_v = RT_CLAMP_TO_EDGE, .address_w = RT_CLAMP_TO_EDGE,
     });
 }
 
-rt_texture_t vk_create_texture_depth(uint32_t width, uint32_t height, const void* data)
+rt_texture_t vk_create_texture_depth(uint32_t width, uint32_t height)
 {
     return vk_create_texture({
         .width = width, .height = height, .target = RT_TEXTURE_2D,
         .format = RT_TEXTURE_DEPTH32FLOAT,
         .min_filter = RT_LINEAR, .mag_filter = RT_LINEAR,
-        .wrap_s = RT_CLAMP_TO_EDGE, .wrap_t = RT_CLAMP_TO_EDGE, .wrap_r = RT_CLAMP_TO_EDGE,
-        .data = data
+        .address_u = RT_CLAMP_TO_EDGE, .address_v = RT_CLAMP_TO_EDGE, .address_w = RT_CLAMP_TO_EDGE,
     });
 }
 
-rt_texture_t vk_create_texture_depth_stencil(uint32_t width, uint32_t height, const void* data)
+rt_texture_t vk_create_texture_depth_stencil(uint32_t width, uint32_t height)
 {
     return vk_create_texture({
         .width = width, .height = height, .target = RT_TEXTURE_2D,
         .format = RT_TEXTURE_DEPTH24PLUS_STENCIL8,
         .min_filter = RT_LINEAR, .mag_filter = RT_LINEAR,
-        .wrap_s = RT_CLAMP_TO_EDGE, .wrap_t = RT_CLAMP_TO_EDGE, .wrap_r = RT_CLAMP_TO_EDGE,
-        .data = data
+        .address_u = RT_CLAMP_TO_EDGE, .address_v = RT_CLAMP_TO_EDGE, .address_w = RT_CLAMP_TO_EDGE,
     });
 }
 
@@ -1717,23 +1712,24 @@ void vk_bind_texture_storage(rt_texture_t& texture, rt_texture_storage_bind_t bi
         abort();
     }
     vulkan.currentBinding[bind.binding].type = RT_BINDING_STORAGE_TEXTURE;
-    vulkan.currentBinding[bind.binding].storage_texture = texture;
+    vulkan.currentBinding[bind.binding].storage_view = texture.default_view;
     vulkan.currentBinding[bind.binding].storage_texture_bind = bind;
 }
 
 rt_texture_view_t vk_create_texture_view(rt_texture_view_info_t const& info)
 {
-    rt_texture_view_t result{
-        0, info.target,
-        info.format != RT_TEXTURE_NONE ? info.format : info.texture.format,
-        info.aspect, info.usage ? info.usage : info.texture.usage,
-        info.base_layer, info.layer_count, info.base_level, info.level_count, nullptr};
     auto* tex = vk_texture_native(info.texture);
+    rt_texture_format_t format = info.format != RT_TEXTURE_NONE ? info.format : (tex ? tex->rtFormat : RT_TEXTURE_NONE);
+    rt_texture_usages_t usage = info.usage ? info.usage : (tex ? tex->usage : 0);
+    rt_texture_view_t result{
+        0, info.target, format,
+        info.aspect, usage,
+        info.base_layer, info.layer_count, info.base_level, info.level_count, nullptr};
     if (!vulkan.device || !tex || !tex->handle) return result;
-    uint32_t levelCount = info.level_count ? info.level_count : tex->mipLevels - info.base_level;
-    if (info.base_level >= tex->mipLevels || levelCount == 0) return result;
-    if (info.base_level + levelCount > tex->mipLevels)
-        levelCount = tex->mipLevels - info.base_level;
+    uint32_t levelCount = info.level_count ? info.level_count : tex->levels - info.base_level;
+    if (info.base_level >= tex->levels || levelCount == 0) return result;
+    if (info.base_level + levelCount > tex->levels)
+        levelCount = tex->levels - info.base_level;
     uint32_t baseLayer = 0;
     uint32_t layerCount = 1;
     if (info.target != RT_TEXTURE_3D)
@@ -1754,7 +1750,7 @@ rt_texture_view_t vk_create_texture_view(rt_texture_view_info_t const& info)
     else if (info.target == RT_TEXTURE_1D) viewType = VK_IMAGE_VIEW_TYPE_1D;
     else if (info.target == RT_TEXTURE_2D_ARRAY || layerCount > 1) viewType = VK_IMAGE_VIEW_TYPE_2D_ARRAY;
 
-    VkFormat format = info.format != RT_TEXTURE_NONE ? rt_to_vk_texture_format(info.format) : tex->format;
+    VkFormat imageFormat = result.format != RT_TEXTURE_NONE ? rt_to_vk_texture_format(result.format) : tex->format;
     VkImageViewUsageCreateInfo usageInfo = {};
     usageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_USAGE_CREATE_INFO;
     usageInfo.usage = rt_to_vk_image_usage(result.usage, result.format);
@@ -1763,7 +1759,7 @@ rt_texture_view_t vk_create_texture_view(rt_texture_view_info_t const& info)
     viewInfo.pNext = info.usage ? &usageInfo : nullptr;
     viewInfo.image = tex->handle;
     viewInfo.viewType = viewType;
-    viewInfo.format = format;
+    viewInfo.format = imageFormat;
     viewInfo.subresourceRange.aspectMask = rt_to_vk_aspect(info.aspect, result.format);
     viewInfo.subresourceRange.baseMipLevel = info.base_level;
     viewInfo.subresourceRange.levelCount = levelCount;
@@ -1818,9 +1814,9 @@ rt_sampler_t vk_create_sampler(rt_sampler_info_t const& info)
     vkInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
     vkInfo.magFilter = rt_to_vk_filter(info.mag_filter);
     vkInfo.minFilter = rt_to_vk_min_filter(info.min_filter);
-    vkInfo.addressModeU = rt_to_vk_address(info.wrap_s);
-    vkInfo.addressModeV = rt_to_vk_address(info.wrap_t);
-    vkInfo.addressModeW = rt_to_vk_address(info.wrap_r);
+    vkInfo.addressModeU = rt_to_vk_address(info.address_u);
+    vkInfo.addressModeV = rt_to_vk_address(info.address_v);
+    vkInfo.addressModeW = rt_to_vk_address(info.address_w);
     vkInfo.mipmapMode = rt_to_vk_mipmap(info.min_filter);
     vkInfo.maxLod = rt_has_mipmap_filter(info.min_filter) ? VK_LOD_CLAMP_NONE : 0.0f;
     if (vkCreateSampler(vulkan.device, &vkInfo, vulkan.allocator, &native.handle) != VK_SUCCESS)
@@ -2857,7 +2853,7 @@ void vk_copy_buffer_texture(rt_texture_copy_t source, rt_buffer_texel_t destinat
     region.bufferOffset = destination.offset;
     region.bufferRowLength = destination.bytesPerRow ? destination.bytesPerRow / vk_format_bytes(src->format) : 0;
     region.bufferImageHeight = destination.rowsPerImage;
-    region.imageSubresource.aspectMask = rt_to_vk_aspect(source.aspect, source.texture.format);
+    region.imageSubresource.aspectMask = rt_to_vk_aspect(source.aspect, src->rtFormat);
     region.imageSubresource.mipLevel = source.mipLevel;
     region.imageSubresource.layerCount = 1;
     region.imageOffset = {(int32_t)source.origin.x, (int32_t)source.origin.y, (int32_t)source.origin.z};
@@ -2883,11 +2879,11 @@ void vk_copy_texture(rt_texture_copy_t source, rt_texture_copy_t destination, rt
     vk_transition_image(*src, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
     vk_transition_image(*dst, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
     VkImageCopy region = {};
-    region.srcSubresource.aspectMask = rt_to_vk_aspect(source.aspect, source.texture.format);
+    region.srcSubresource.aspectMask = rt_to_vk_aspect(source.aspect, src->rtFormat);
     region.srcSubresource.mipLevel = source.mipLevel;
     region.srcSubresource.layerCount = 1;
     region.srcOffset = {(int32_t)source.origin.x, (int32_t)source.origin.y, (int32_t)source.origin.z};
-    region.dstSubresource.aspectMask = rt_to_vk_aspect(destination.aspect, destination.texture.format);
+    region.dstSubresource.aspectMask = rt_to_vk_aspect(destination.aspect, dst->rtFormat);
     region.dstSubresource.mipLevel = destination.mipLevel;
     region.dstSubresource.layerCount = 1;
     region.dstOffset = {(int32_t)destination.origin.x, (int32_t)destination.origin.y, (int32_t)destination.origin.z};
@@ -2922,7 +2918,7 @@ void vk_copy_texture_data(rt_texture_data_t source, rt_texture_copy_t destinatio
     region.bufferOffset = 0;
     region.bufferRowLength = source.bytesPerRow ? source.bytesPerRow / bpp : 0;
     region.bufferImageHeight = source.rowsPerImage;
-    region.imageSubresource.aspectMask = rt_to_vk_aspect(destination.aspect, destination.texture.format);
+    region.imageSubresource.aspectMask = rt_to_vk_aspect(destination.aspect, dst->rtFormat);
     region.imageSubresource.mipLevel = destination.mipLevel;
     region.imageSubresource.layerCount = 1;
     region.imageOffset = {(int32_t)destination.origin.x, (int32_t)destination.origin.y, (int32_t)destination.origin.z};
@@ -2952,7 +2948,7 @@ void vk_copy_texture_buffer(rt_buffer_texel_t source, rt_texture_copy_t destinat
     region.bufferOffset = source.offset;
     region.bufferRowLength = source.bytesPerRow ? source.bytesPerRow / vk_format_bytes(dst->format) : 0;
     region.bufferImageHeight = source.rowsPerImage;
-    region.imageSubresource.aspectMask = rt_to_vk_aspect(destination.aspect, destination.texture.format);
+    region.imageSubresource.aspectMask = rt_to_vk_aspect(destination.aspect, dst->rtFormat);
     region.imageSubresource.mipLevel = destination.mipLevel;
     region.imageSubresource.layerCount = 1;
     region.imageOffset = {(int32_t)destination.origin.x, (int32_t)destination.origin.y, (int32_t)destination.origin.z};
@@ -3119,28 +3115,6 @@ void vk_draw_meshlet(rt_meshlet_t& meshlet)
     uint32_t tasks = native && native->indexCount ? native->indexCount / 3 : 1;
     if (vulkan.fnDrawMeshTasksNV)
         vulkan.fnDrawMeshTasksNV(vulkan.cmdBuffer, std::max(1u, tasks), 0);
-}
-
-rt_mesh_t vk_create_mesh_screen()
-{
-    const float points[]
-    {
-        -1.0f, -1.0f, 0.0f,
-        +3.0f, -1.0f, 0.0f,
-        -1.0f, +3.0f, 0.0f,
-    };
-    const float uvs[]
-    {
-        0.0f, 0.0f,
-        2.0f, 0.0f,
-        0.0f, 2.0f,
-    };
-    return vk_create_mesh(points, nullptr, uvs, 3, nullptr, 0);
-}
-
-void vk_draw_screen(int width, int height, rt_color_t clear, rt_texture_t& texture)
-{
-    // No Implement
 }
 
 void vk_submit()

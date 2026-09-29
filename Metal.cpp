@@ -74,9 +74,9 @@ static MTL::SamplerMipFilter rt_to_mt_mip(rt_filter_t minFilter)
     }
 }
 
-static MTL::SamplerAddressMode rt_to_mt_address(rt_wrap_t wrap)
+static MTL::SamplerAddressMode rt_to_mt_address(rt_address_t address)
 {
-    switch (wrap)
+    switch (address)
     {
         case RT_REPEAT: return MTL::SamplerAddressModeRepeat;
         case RT_CLAMP_TO_EDGE: return MTL::SamplerAddressModeClampToEdge;
@@ -498,18 +498,22 @@ struct mt_texture_native_t
     MTL::Texture* handle = nullptr;
     MTL::PixelFormat format = MTL::PixelFormatInvalid;
     mt_res_state_t state = MTL_STATE_UNKNOWN;
-    uint32_t mipLevels = 1;
+    uint32_t levels = 1;
     uint32_t layers = 1;
     uint32_t width = 1, height = 1, depth = 1;
     rt_texture_target_t target = RT_TEXTURE_2D;
+    rt_texture_format_t rtFormat = RT_TEXTURE_NONE;
+    rt_texture_usages_t usage = 0;
+    rt_texture_sample_t samples = RT_TEXTURE_SAMPLE_1X;
 
     mt_texture_native_t() = default;
     mt_texture_native_t(const mt_texture_native_t&) = delete;
     mt_texture_native_t& operator=(const mt_texture_native_t&) = delete;
     mt_texture_native_t(mt_texture_native_t&& other) noexcept
         : handle(other.handle), format(other.format), state(other.state),
-          mipLevels(other.mipLevels), layers(other.layers),
-          width(other.width), height(other.height), depth(other.depth), target(other.target)
+          levels(other.levels), layers(other.layers),
+          width(other.width), height(other.height), depth(other.depth), target(other.target),
+          rtFormat(other.rtFormat), usage(other.usage), samples(other.samples)
     {
         other.handle = nullptr;
     }
@@ -521,12 +525,15 @@ struct mt_texture_native_t
             handle = other.handle;
             format = other.format;
             state = other.state;
-            mipLevels = other.mipLevels;
+            levels = other.levels;
             layers = other.layers;
             width = other.width;
             height = other.height;
             depth = other.depth;
             target = other.target;
+            rtFormat = other.rtFormat;
+            usage = other.usage;
+            samples = other.samples;
             other.handle = nullptr;
         }
         return *this;
@@ -690,7 +697,7 @@ struct mt_native_t
         rt_buffer_bind_t buffer_bind = {};
         rt_texture_view_t texture_view = {};
         rt_texture_bind_t texture_bind = {};
-        rt_texture_t storage_texture = {};
+        rt_texture_view_t storage_view = {};
         rt_texture_storage_bind_t storage_texture_bind = {};
         rt_sampler_t sampler = {};
         rt_sampler_bind_t sampler_bind = {};
@@ -1008,10 +1015,13 @@ static void mt_flush_descriptors()
         }
         else if (slot.type == RT_BINDING_STORAGE_TEXTURE)
         {
-            auto* tex = mt_texture_native(slot.storage_texture);
-            if (!tex) continue;
-            MTL::Texture* gpuTex = mt_image_view(slot.storage_texture.default_view);
-            if (!gpuTex) gpuTex = tex->handle;
+            auto* view = mt_texture_view_native(slot.storage_view.handle);
+            if (!view) continue;
+            auto texIt = metal.textures.find(view->texture);
+            if (texIt == metal.textures.end()) continue;
+            auto* tex = &texIt->second;
+            MTL::Texture* gpuTex = view->handle ? view->handle : tex->handle;
+            if (!gpuTex) continue;
             mt_transition_image(*tex, MTL_STATE_SHADER_WRITE);
             if (metal.renderEncoder)
                 metal.renderEncoder->setFragmentTexture(gpuTex, slot.storage_texture_bind.binding);
@@ -1104,8 +1114,6 @@ void mt_load_library(MTL::Device* device, MTL::CommandQueue* queue)
     rt_create_meshlet = mt_create_meshlet;
     rt_destroy_meshlet = mt_destroy_meshlet;
     rt_draw_meshlet = mt_draw_meshlet;
-    rt_create_mesh_screen = mt_create_mesh_screen;
-    rt_draw_screen = mt_draw_screen;
     rt_submit = mt_submit;
 }
 
@@ -1204,8 +1212,6 @@ void mt_unload_library()
     if (rt_create_meshlet == mt_create_meshlet) rt_create_meshlet = nullptr;
     if (rt_destroy_meshlet == mt_destroy_meshlet) rt_destroy_meshlet = nullptr;
     if (rt_draw_meshlet == mt_draw_meshlet) rt_draw_meshlet = nullptr;
-    if (rt_create_mesh_screen == mt_create_mesh_screen) rt_create_mesh_screen = nullptr;
-    if (rt_draw_screen == mt_draw_screen) rt_draw_screen = nullptr;
     if (rt_submit == mt_submit) rt_submit = nullptr;
 }
 
@@ -1314,6 +1320,8 @@ rt_texture_t mt_create_texture(rt_texture_info_t const& info)
     uint32_t handle = metal.textureID + 1;
     auto& native = metal.textures[handle];
     native.format = rt_to_mt_texture_format(info.format);
+    native.rtFormat = info.format;
+    native.usage = info.usage;
     native.width = info.width;
     native.height = info.target == RT_TEXTURE_1D ? 1 : info.height;
     native.depth = info.depth ? info.depth : 1;
@@ -1322,21 +1330,22 @@ rt_texture_t mt_create_texture(rt_texture_info_t const& info)
     rt_texture_sample_t samples = info.samples == RT_TEXTURE_SAMPLE_4X ? RT_TEXTURE_SAMPLE_4X : RT_TEXTURE_SAMPLE_1X;
     if (info.target == RT_TEXTURE_1D || info.target == RT_TEXTURE_3D || info.target == RT_TEXTURE_2D_ARRAY)
         samples = RT_TEXTURE_SAMPLE_1X;
+    native.samples = samples;
     bool multisample = samples == RT_TEXTURE_SAMPLE_4X;
-    native.mipLevels = 1;
+    native.levels = 1;
     if (!multisample && info.mipmaps == 0 && rt_has_mipmap_filter(info.min_filter))
     {
         uint32_t maxDim = std::max(native.width, native.height);
-        while (maxDim >>= 1) native.mipLevels++;
+        while (maxDim >>= 1) native.levels++;
     }
     else if (!multisample && info.mipmaps > 1)
-        native.mipLevels = info.mipmaps;
+        native.levels = info.mipmaps;
 
     MTL::TextureDescriptor* desc = MTL::TextureDescriptor::alloc()->init();
     desc->setPixelFormat(native.format);
     desc->setWidth(native.width);
     desc->setHeight(native.height);
-    desc->setMipmapLevelCount(native.mipLevels);
+    desc->setMipmapLevelCount(native.levels);
     MTL::TextureUsage usage = MTL::TextureUsageUnknown;
     if (info.usage & RT_TEXTURE_USAGE_TEXTURE_BINDING) usage |= MTL::TextureUsageShaderRead;
     if (info.usage & RT_TEXTURE_USAGE_STORAGE_BINDING) usage |= MTL::TextureUsageShaderWrite;
@@ -1377,72 +1386,60 @@ rt_texture_t mt_create_texture(rt_texture_info_t const& info)
     else
         mt_transition_image(native, mt_is_depth(native.format) ? MTL_STATE_DEPTH : MTL_STATE_COLOR);
 
+    if (multisample)
+        native.target = RT_TEXTURE_2D_MULTISAMPLE;
     metal.textureID = handle;
     result.handle = handle;
-    result.width = info.width;
-    result.height = native.height;
-    result.depth = info.depth;
-    result.format = info.format;
-    result.usage = info.usage;
-    result.target = info.target;
-    result.mipmaps = native.mipLevels;
-    result.samples = samples;
-    if (multisample)
-        result.target = RT_TEXTURE_2D_MULTISAMPLE;
     result.native = &native;
     result.default_view = mt_create_texture_view({
         .texture = result,
-        .target = result.target,
-        .format = result.format,
+        .target = native.target,
+        .format = native.rtFormat,
         .aspect = RT_TEXTURE_ASPECT_ALL,
-        .usage = result.usage,
+        .usage = native.usage,
         .layer_count = native.layers,
-        .level_count = native.mipLevels,
+        .level_count = native.levels,
     });
     return result;
 }
 
-rt_texture_t mt_create_texture_color(uint32_t width, uint32_t height, const void* data)
+rt_texture_t mt_create_texture_color(uint32_t width, uint32_t height)
 {
     return mt_create_texture({
         .width = width, .height = height, .target = RT_TEXTURE_2D,
         .format = RT_TEXTURE_RGBA8UNORM,
         .min_filter = RT_LINEAR, .mag_filter = RT_LINEAR,
-        .wrap_s = RT_CLAMP_TO_EDGE, .wrap_t = RT_CLAMP_TO_EDGE, .wrap_r = RT_CLAMP_TO_EDGE,
-        .data = data
+        .address_u = RT_CLAMP_TO_EDGE, .address_v = RT_CLAMP_TO_EDGE, .address_w = RT_CLAMP_TO_EDGE,
     });
 }
 
-rt_texture_t mt_create_texture_color_float(uint32_t width, uint32_t height, const void* data)
+rt_texture_t mt_create_texture_color_float(uint32_t width, uint32_t height)
 {
     return mt_create_texture({
         .width = width, .height = height, .target = RT_TEXTURE_2D,
         .format = RT_TEXTURE_RGBA32FLOAT,
         .min_filter = RT_LINEAR, .mag_filter = RT_LINEAR,
-        .wrap_s = RT_CLAMP_TO_EDGE, .wrap_t = RT_CLAMP_TO_EDGE, .wrap_r = RT_CLAMP_TO_EDGE,
-        .data = data
+        .address_u = RT_CLAMP_TO_EDGE, .address_v = RT_CLAMP_TO_EDGE, .address_w = RT_CLAMP_TO_EDGE,
     });
 }
 
-rt_texture_t mt_create_texture_depth(uint32_t width, uint32_t height, const void* data)
+rt_texture_t mt_create_texture_depth(uint32_t width, uint32_t height)
 {
     return mt_create_texture({
         .width = width, .height = height, .target = RT_TEXTURE_2D,
         .format = RT_TEXTURE_DEPTH32FLOAT,
         .min_filter = RT_LINEAR, .mag_filter = RT_LINEAR,
-        .wrap_s = RT_CLAMP_TO_EDGE, .wrap_t = RT_CLAMP_TO_EDGE, .wrap_r = RT_CLAMP_TO_EDGE,
-        .data = data
+        .address_u = RT_CLAMP_TO_EDGE, .address_v = RT_CLAMP_TO_EDGE, .address_w = RT_CLAMP_TO_EDGE,
     });
 }
 
-rt_texture_t mt_create_texture_depth_stencil(uint32_t width, uint32_t height, const void* data)
+rt_texture_t mt_create_texture_depth_stencil(uint32_t width, uint32_t height)
 {
     return mt_create_texture({
         .width = width, .height = height, .target = RT_TEXTURE_2D,
         .format = RT_TEXTURE_DEPTH32FLOAT_STENCIL8,
         .min_filter = RT_LINEAR, .mag_filter = RT_LINEAR,
-        .wrap_s = RT_CLAMP_TO_EDGE, .wrap_t = RT_CLAMP_TO_EDGE, .wrap_r = RT_CLAMP_TO_EDGE,
-        .data = data
+        .address_u = RT_CLAMP_TO_EDGE, .address_v = RT_CLAMP_TO_EDGE, .address_w = RT_CLAMP_TO_EDGE,
     });
 }
 
@@ -1483,23 +1480,24 @@ void mt_bind_texture_storage(rt_texture_t& texture, rt_texture_storage_bind_t bi
         abort();
     }
     metal.currentBinding[bind.binding].type = RT_BINDING_STORAGE_TEXTURE;
-    metal.currentBinding[bind.binding].storage_texture = texture;
+    metal.currentBinding[bind.binding].storage_view = texture.default_view;
     metal.currentBinding[bind.binding].storage_texture_bind = bind;
 }
 
 rt_texture_view_t mt_create_texture_view(rt_texture_view_info_t const& info)
 {
-    rt_texture_view_t result{
-        0, info.target,
-        info.format != RT_TEXTURE_NONE ? info.format : info.texture.format,
-        info.aspect, info.usage ? info.usage : info.texture.usage,
-        info.base_layer, info.layer_count, info.base_level, info.level_count, nullptr};
     auto* tex = mt_texture_native(info.texture);
+    rt_texture_format_t format = info.format != RT_TEXTURE_NONE ? info.format : (tex ? tex->rtFormat : RT_TEXTURE_NONE);
+    rt_texture_usages_t usage = info.usage ? info.usage : (tex ? tex->usage : 0);
+    rt_texture_view_t result{
+        0, info.target, format,
+        info.aspect, usage,
+        info.base_layer, info.layer_count, info.base_level, info.level_count, nullptr};
     if (!tex || !tex->handle) return result;
-    uint32_t levelCount = info.level_count ? info.level_count : tex->mipLevels - info.base_level;
-    if (info.base_level >= tex->mipLevels || levelCount == 0) return result;
-    if (info.base_level + levelCount > tex->mipLevels)
-        levelCount = tex->mipLevels - info.base_level;
+    uint32_t levelCount = info.level_count ? info.level_count : tex->levels - info.base_level;
+    if (info.base_level >= tex->levels || levelCount == 0) return result;
+    if (info.base_level + levelCount > tex->levels)
+        levelCount = tex->levels - info.base_level;
     uint32_t baseLayer = 0;
     uint32_t layerCount = 1;
     if (info.target != RT_TEXTURE_3D)
@@ -1574,9 +1572,9 @@ rt_sampler_t mt_create_sampler(rt_sampler_info_t const& info)
     desc->setMinFilter(rt_to_mt_filter(info.min_filter));
     desc->setMagFilter(rt_to_mt_filter(info.mag_filter));
     desc->setMipFilter(rt_to_mt_mip(info.min_filter));
-    desc->setSAddressMode(rt_to_mt_address(info.wrap_s));
-    desc->setTAddressMode(rt_to_mt_address(info.wrap_t));
-    desc->setRAddressMode(rt_to_mt_address(info.wrap_r));
+    desc->setSAddressMode(rt_to_mt_address(info.address_u));
+    desc->setTAddressMode(rt_to_mt_address(info.address_v));
+    desc->setRAddressMode(rt_to_mt_address(info.address_w));
     native.handle = metal.device->newSamplerState(desc);
     mt_release(desc);
     metal.samplerID = handle;
@@ -2361,18 +2359,6 @@ void mt_draw_meshlet(rt_meshlet_t& meshlet)
     auto* native = (mt_meshlet_native_t*)meshlet.native;
     uint32_t tasks = native && native->indexCount ? native->indexCount / 3 : 1;
     metal.renderEncoder->drawMeshThreadgroups(MTL::Size::Make(std::max(1u, tasks), 1, 1), MTL::Size::Make(1, 1, 1), MTL::Size::Make(1, 1, 1));
-}
-
-rt_mesh_t mt_create_mesh_screen()
-{
-    const float points[] = {-1.0f, -1.0f, 0.0f, +3.0f, -1.0f, 0.0f, -1.0f, +3.0f, 0.0f};
-    const float uvs[] = {0.0f, 0.0f, 2.0f, 0.0f, 0.0f, 2.0f};
-    return mt_create_mesh(points, nullptr, uvs, 3, nullptr, 0);
-}
-
-void mt_draw_screen(int width, int height, rt_color_t clear, rt_texture_t& texture)
-{
-    // No Implement
 }
 
 void mt_submit()

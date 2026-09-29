@@ -234,7 +234,7 @@ enum rt_filter_t : uint32_t
     RT_LINEAR_MIPMAP_LINEAR,
 };
 
-enum rt_wrap_t : uint32_t
+enum rt_address_t : uint32_t
 {
     RT_REPEAT = 0,
     RT_CLAMP_TO_EDGE,
@@ -373,6 +373,8 @@ struct rt_buffer_bind_t
 
 // ====================================================================
 
+struct rt_texture_t;
+
 struct rt_texture_view_t
 {
     uint32_t handle = 0;
@@ -387,15 +389,29 @@ struct rt_texture_view_t
     void* native = nullptr;
 };
 
+struct rt_texture_view_info_t
+{
+    rt_texture_t& texture;
+    rt_texture_target_t target = RT_TEXTURE_2D; // RT_TEXTURE_1D / RT_TEXTURE_2D / RT_TEXTURE_3D / RT_TEXTURE_2D_ARRAY / RT_TEXTURE_2D_MULTISAMPLE
+    rt_texture_format_t format = RT_TEXTURE_RGBA8UNORM;
+    rt_texture_aspect_t aspect = RT_TEXTURE_ASPECT_ALL; // RT_TEXTURE_ASPECT_ALL / RT_TEXTURE_ASPECT_STENCIL / RT_TEXTURE_ASPECT_DEPTH
+    rt_texture_usages_t usage = RT_TEXTURE_USAGE_COPY_SRC | RT_TEXTURE_USAGE_COPY_DST | RT_TEXTURE_USAGE_TEXTURE_BINDING | RT_TEXTURE_USAGE_STORAGE_BINDING | RT_TEXTURE_USAGE_RENDER_ATTACHMENT; // rt_texture_usage_t
+    uint32_t base_layer = 0;
+    uint32_t layer_count = 1;
+    uint32_t base_level = 0;
+    uint32_t level_count = 1;
+};
+
+struct rt_texture_view_bind_t
+{
+    uint32_t binding = 0;
+};
+
+// ====================================================================
+
 struct rt_texture_t
 {
     uint32_t handle = 0;
-    uint32_t width = 0, height = 0, depth = 1;
-    rt_texture_target_t target = RT_TEXTURE_2D;
-    rt_texture_format_t format = RT_TEXTURE_NONE;
-    rt_texture_usages_t usage = 0;
-    uint32_t mipmaps = 0;
-    rt_texture_sample_t samples = RT_TEXTURE_SAMPLE_1X;
     rt_texture_view_t default_view = {};
     void* native = nullptr;
 };
@@ -408,9 +424,9 @@ struct rt_texture_info_t
     rt_texture_usages_t usage = RT_TEXTURE_USAGE_COPY_SRC | RT_TEXTURE_USAGE_COPY_DST | RT_TEXTURE_USAGE_TEXTURE_BINDING | RT_TEXTURE_USAGE_STORAGE_BINDING | RT_TEXTURE_USAGE_RENDER_ATTACHMENT; // rt_texture_usage_t
     rt_filter_t min_filter = RT_LINEAR_MIPMAP_LINEAR;  // RT_NEAREST / RT_LINEAR / RT_NEAREST_MIPMAP_NEAREST / RT_LINEAR_MIPMAP_NEAREST / RT_NEAREST_MIPMAP_LINEAR / RT_LINEAR_MIPMAP_LINEAR
     rt_filter_t mag_filter = RT_LINEAR;                // RT_NEAREST / RT_LINEAR
-    rt_wrap_t wrap_s = RT_REPEAT;                    // RT_REPEAT / RT_MIRRORED_REPEAT / RT_CLAMP_TO_EDGE / RT_CLAMP_TO_BORDER / RT_MIRROR_CLAMP_TO_EDGE
-    rt_wrap_t wrap_t = RT_REPEAT;                    // RT_REPEAT / RT_MIRRORED_REPEAT / RT_CLAMP_TO_EDGE / RT_CLAMP_TO_BORDER / RT_MIRROR_CLAMP_TO_EDGE
-    rt_wrap_t wrap_r = RT_REPEAT;                    // RT_REPEAT / RT_MIRRORED_REPEAT / RT_CLAMP_TO_EDGE / RT_CLAMP_TO_BORDER / RT_MIRROR_CLAMP_TO_EDGE
+    rt_address_t address_u = RT_REPEAT;                    // RT_REPEAT / RT_MIRRORED_REPEAT / RT_CLAMP_TO_EDGE / RT_CLAMP_TO_BORDER / RT_MIRROR_CLAMP_TO_EDGE
+    rt_address_t address_v = RT_REPEAT;                    // RT_REPEAT / RT_MIRRORED_REPEAT / RT_CLAMP_TO_EDGE / RT_CLAMP_TO_BORDER / RT_MIRROR_CLAMP_TO_EDGE
+    rt_address_t address_w = RT_REPEAT;                    // RT_REPEAT / RT_MIRRORED_REPEAT / RT_CLAMP_TO_EDGE / RT_CLAMP_TO_BORDER / RT_MIRROR_CLAMP_TO_EDGE
     uint32_t mipmaps = 0;   // 0:auto generate
     rt_texture_sample_t samples = RT_TEXTURE_SAMPLE_1X; // RT_TEXTURE_SAMPLE_1X / RT_TEXTURE_SAMPLE_4X
     float border[4] = {0.0f, 0.0f, 0.0f, 0.0f};
@@ -435,26 +451,6 @@ struct rt_texture_storage_bind_t
 
 // ====================================================================
 
-struct rt_texture_view_info_t
-{
-    rt_texture_t& texture;
-    rt_texture_target_t target = RT_TEXTURE_2D;
-    rt_texture_format_t format = RT_TEXTURE_NONE;
-    rt_texture_aspect_t aspect = RT_TEXTURE_ASPECT_ALL;
-    rt_texture_usages_t usage = 0;
-    uint32_t base_layer = 0;
-    uint32_t layer_count = 1;
-    uint32_t base_level = 0;
-    uint32_t level_count = 1;
-};
-
-struct rt_texture_view_bind_t
-{
-    uint32_t binding = 0;
-};
-
-// ====================================================================
-
 struct rt_sampler_t
 {
     uint32_t handle = 0;
@@ -465,9 +461,9 @@ struct rt_sampler_info_t
 {
     rt_filter_t min_filter = RT_LINEAR_MIPMAP_LINEAR;  // RT_NEAREST / RT_LINEAR / RT_NEAREST_MIPMAP_NEAREST / RT_LINEAR_MIPMAP_NEAREST / RT_NEAREST_MIPMAP_LINEAR / RT_LINEAR_MIPMAP_LINEAR
     rt_filter_t mag_filter = RT_LINEAR;                // RT_NEAREST / RT_LINEAR
-    rt_wrap_t wrap_s = RT_REPEAT;                    // RT_REPEAT / RT_MIRRORED_REPEAT / RT_CLAMP_TO_EDGE / RT_CLAMP_TO_BORDER / RT_MIRROR_CLAMP_TO_EDGE
-    rt_wrap_t wrap_t = RT_REPEAT;                    // RT_REPEAT / RT_MIRRORED_REPEAT / RT_CLAMP_TO_EDGE / RT_CLAMP_TO_BORDER / RT_MIRROR_CLAMP_TO_EDGE
-    rt_wrap_t wrap_r = RT_REPEAT;                    // RT_REPEAT / RT_MIRRORED_REPEAT / RT_CLAMP_TO_EDGE / RT_CLAMP_TO_BORDER / RT_MIRROR_CLAMP_TO_EDGE
+    rt_address_t address_u = RT_REPEAT;                    // RT_REPEAT / RT_MIRRORED_REPEAT / RT_CLAMP_TO_EDGE / RT_CLAMP_TO_BORDER / RT_MIRROR_CLAMP_TO_EDGE
+    rt_address_t address_v = RT_REPEAT;                    // RT_REPEAT / RT_MIRRORED_REPEAT / RT_CLAMP_TO_EDGE / RT_CLAMP_TO_BORDER / RT_MIRROR_CLAMP_TO_EDGE
+    rt_address_t address_w = RT_REPEAT;                    // RT_REPEAT / RT_MIRRORED_REPEAT / RT_CLAMP_TO_EDGE / RT_CLAMP_TO_BORDER / RT_MIRROR_CLAMP_TO_EDGE
 };
 
 struct rt_sampler_bind_t
@@ -769,10 +765,10 @@ OPENRT_API void* (*rt_map_buffer)(rt_buffer_t& buffer, rt_access_t mode, size_t 
 OPENRT_API void (*rt_unmap_buffer)(rt_buffer_t& buffer);
 
 OPENRT_API rt_texture_t (*rt_create_texture)(rt_texture_info_t const& info);
-OPENRT_API rt_texture_t (*rt_create_texture_color)(uint32_t width, uint32_t height, const void* data);
-OPENRT_API rt_texture_t (*rt_create_texture_color_float)(uint32_t width, uint32_t height, const void* data);
-OPENRT_API rt_texture_t (*rt_create_texture_depth)(uint32_t width, uint32_t height, const void* data);
-OPENRT_API rt_texture_t (*rt_create_texture_depth_stencil)(uint32_t width, uint32_t height, const void* data);
+OPENRT_API rt_texture_t (*rt_create_texture_color)(uint32_t width, uint32_t height);
+OPENRT_API rt_texture_t (*rt_create_texture_color_float)(uint32_t width, uint32_t height);
+OPENRT_API rt_texture_t (*rt_create_texture_depth)(uint32_t width, uint32_t height);
+OPENRT_API rt_texture_t (*rt_create_texture_depth_stencil)(uint32_t width, uint32_t height);
 OPENRT_API void (*rt_destroy_texture)(rt_texture_t& texture);
 OPENRT_API void (*rt_bind_texture)(rt_texture_t& texture, rt_texture_bind_t bind);
 OPENRT_API void (*rt_bind_texture_storage)(rt_texture_t& texture, rt_texture_storage_bind_t bind);
@@ -828,8 +824,5 @@ OPENRT_API void (*rt_draw_mesh_multi)(rt_mesh_t& mesh, uint32_t count);
 OPENRT_API rt_meshlet_t (*rt_create_meshlet)(const float* vertices, const float* normals, const float* uvs, size_t vertex_count, const unsigned int* indices, size_t index_count);
 OPENRT_API void (*rt_destroy_meshlet)(rt_meshlet_t& meshlet);
 OPENRT_API void (*rt_draw_meshlet)(rt_meshlet_t& meshlet);
-
-OPENRT_API rt_mesh_t (*rt_create_mesh_screen)();
-OPENRT_API void (*rt_draw_screen)(int width, int height, rt_color_t clear, rt_texture_t& texture);
 
 OPENRT_API void (*rt_submit)();

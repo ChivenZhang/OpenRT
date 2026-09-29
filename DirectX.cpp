@@ -53,9 +53,9 @@ static D3D12_FILTER rt_to_dx_filter(rt_filter_t minFilter, rt_filter_t magFilter
     }
 }
 
-static D3D12_TEXTURE_ADDRESS_MODE rt_to_dx_address(rt_wrap_t wrap)
+static D3D12_TEXTURE_ADDRESS_MODE rt_to_dx_address(rt_address_t address)
 {
-    switch (wrap)
+    switch (address)
     {
         case RT_REPEAT: return D3D12_TEXTURE_ADDRESS_MODE_WRAP;
         case RT_CLAMP_TO_EDGE: return D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
@@ -506,10 +506,12 @@ struct dx_texture_native_t
     ComPtr<ID3D12Resource> handle;
     D3D12_RESOURCE_STATES state = D3D12_RESOURCE_STATE_COMMON;
     DXGI_FORMAT format = DXGI_FORMAT_UNKNOWN;
-    uint32_t mipLevels = 1;
+    uint32_t levels = 1;
     uint32_t layers = 1;
     uint32_t width = 1, height = 1, depth = 1;
     rt_texture_target_t target = RT_TEXTURE_2D;
+    rt_texture_format_t rtFormat = RT_TEXTURE_NONE;
+    rt_texture_usages_t usage = 0;
     uint32_t samples = 1;
 };
 
@@ -598,7 +600,7 @@ struct dx_native_t
         rt_buffer_bind_t buffer_bind = {};
         rt_texture_view_t texture_view = {};
         rt_texture_bind_t texture_bind = {};
-        rt_texture_t storage_texture = {};
+        rt_texture_view_t storage_view = {};
         rt_texture_storage_bind_t storage_texture_bind = {};
         rt_sampler_t sampler = {};
         rt_sampler_bind_t sampler_bind = {};
@@ -836,8 +838,11 @@ static void dx_flush_descriptors()
         }
         else if (mod->kinds[i] == DX_KIND_UAV)
         {
-            auto* tex = dx_texture_native(slot.storage_texture);
-            if (!tex || !tex->handle) continue;
+            auto* view = dx_texture_view_native(slot.storage_view.handle);
+            if (!view) continue;
+            auto texIt = direct.textures.find(view->texture);
+            if (texIt == direct.textures.end() || !texIt->second.handle) continue;
+            auto* tex = &texIt->second;
             dx_transition_image(*tex, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
             auto gpu = dx_alloc_srv();
             D3D12_UNORDERED_ACCESS_VIEW_DESC uav = {};
@@ -957,8 +962,6 @@ void dx_load_library(ID3D12Device* device, ID3D12CommandQueue* queue)
     rt_create_meshlet = dx_create_meshlet;
     rt_destroy_meshlet = dx_destroy_meshlet;
     rt_draw_meshlet = dx_draw_meshlet;
-    rt_create_mesh_screen = dx_create_mesh_screen;
-    rt_draw_screen = dx_draw_screen;
     rt_submit = dx_submit;
 }
 
@@ -1070,8 +1073,6 @@ void dx_unload_library()
     if (rt_create_meshlet == dx_create_meshlet) rt_create_meshlet = nullptr;
     if (rt_destroy_meshlet == dx_destroy_meshlet) rt_destroy_meshlet = nullptr;
     if (rt_draw_meshlet == dx_draw_meshlet) rt_draw_meshlet = nullptr;
-    if (rt_create_mesh_screen == dx_create_mesh_screen) rt_create_mesh_screen = nullptr;
-    if (rt_draw_screen == dx_draw_screen) rt_draw_screen = nullptr;
     if (rt_submit == dx_submit) rt_submit = nullptr;
 }
 
@@ -1215,6 +1216,8 @@ rt_texture_t dx_create_texture(rt_texture_info_t const& info)
     uint32_t handle = direct.textureID + 1;
     auto& native = direct.textures[handle];
     native.format = rt_to_dx_texture_format(info.format);
+    native.rtFormat = info.format;
+    native.usage = info.usage;
     native.width = info.width;
     native.height = info.target == RT_TEXTURE_1D ? 1 : info.height;
     native.depth = info.depth ? info.depth : 1;
@@ -1223,14 +1226,14 @@ rt_texture_t dx_create_texture(rt_texture_info_t const& info)
     native.samples = rt_to_dx_sample_count(info.samples);
     if (info.target == RT_TEXTURE_1D || info.target == RT_TEXTURE_3D)
         native.samples = 1;
-    native.mipLevels = 1;
+    native.levels = 1;
     if (native.samples == 1 && info.mipmaps == 0 && rt_has_mipmap_filter(info.min_filter))
     {
         uint32_t maxDim = max(native.width, native.height);
-        while (maxDim >>= 1) native.mipLevels++;
+        while (maxDim >>= 1) native.levels++;
     }
     else if (native.samples == 1 && info.mipmaps > 1)
-        native.mipLevels = info.mipmaps;
+        native.levels = info.mipmaps;
 
     D3D12_HEAP_PROPERTIES heap = {};
     heap.Type = D3D12_HEAP_TYPE_DEFAULT;
@@ -1241,7 +1244,7 @@ rt_texture_t dx_create_texture(rt_texture_info_t const& info)
     desc.Width = native.width;
     desc.Height = native.height;
     desc.DepthOrArraySize = (UINT16)((info.target == RT_TEXTURE_3D) ? native.depth : native.layers);
-    desc.MipLevels = (UINT16)native.mipLevels;
+    desc.MipLevels = (UINT16)native.levels;
     desc.Format = dx_typeless(native.format);
     desc.SampleDesc.Count = native.samples;
     desc.Flags = D3D12_RESOURCE_FLAG_NONE;
@@ -1304,72 +1307,60 @@ rt_texture_t dx_create_texture(rt_texture_info_t const& info)
         dx_transition_image(native, dx_is_depth(native.format) ? D3D12_RESOURCE_STATE_DEPTH_WRITE : D3D12_RESOURCE_STATE_RENDER_TARGET);
     }
 
+    if (native.samples == 4 && (native.target == RT_TEXTURE_2D || native.target == RT_TEXTURE_2D_MULTISAMPLE))
+        native.target = RT_TEXTURE_2D_MULTISAMPLE;
     direct.textureID = handle;
     result.handle = handle;
-    result.width = info.width;
-    result.height = native.height;
-    result.depth = info.depth;
-    result.format = info.format;
-    result.usage = info.usage;
-    result.target = info.target;
-    result.mipmaps = native.mipLevels;
-    result.samples = native.samples == 4 ? RT_TEXTURE_SAMPLE_4X : RT_TEXTURE_SAMPLE_1X;
-    if (result.samples == RT_TEXTURE_SAMPLE_4X && (info.target == RT_TEXTURE_2D || info.target == RT_TEXTURE_2D_MULTISAMPLE))
-        result.target = RT_TEXTURE_2D_MULTISAMPLE;
     result.native = &native;
     result.default_view = dx_create_texture_view({
         .texture = result,
-        .target = result.target,
-        .format = result.format,
+        .target = native.target,
+        .format = native.rtFormat,
         .aspect = RT_TEXTURE_ASPECT_ALL,
-        .usage = result.usage,
+        .usage = native.usage,
         .layer_count = native.layers,
-        .level_count = native.mipLevels,
+        .level_count = native.levels,
     });
     return result;
 }
 
-rt_texture_t dx_create_texture_color(uint32_t width, uint32_t height, const void* data)
+rt_texture_t dx_create_texture_color(uint32_t width, uint32_t height)
 {
     return dx_create_texture({
         .width = width, .height = height, .target = RT_TEXTURE_2D,
         .format = RT_TEXTURE_RGBA8UNORM,
         .min_filter = RT_LINEAR, .mag_filter = RT_LINEAR,
-        .wrap_s = RT_CLAMP_TO_EDGE, .wrap_t = RT_CLAMP_TO_EDGE, .wrap_r = RT_CLAMP_TO_EDGE,
-        .data = data
+        .address_u = RT_CLAMP_TO_EDGE, .address_v = RT_CLAMP_TO_EDGE, .address_w = RT_CLAMP_TO_EDGE,
     });
 }
 
-rt_texture_t dx_create_texture_color_float(uint32_t width, uint32_t height, const void* data)
+rt_texture_t dx_create_texture_color_float(uint32_t width, uint32_t height)
 {
     return dx_create_texture({
         .width = width, .height = height, .target = RT_TEXTURE_2D,
         .format = RT_TEXTURE_RGBA32FLOAT,
         .min_filter = RT_LINEAR, .mag_filter = RT_LINEAR,
-        .wrap_s = RT_CLAMP_TO_EDGE, .wrap_t = RT_CLAMP_TO_EDGE, .wrap_r = RT_CLAMP_TO_EDGE,
-        .data = data
+        .address_u = RT_CLAMP_TO_EDGE, .address_v = RT_CLAMP_TO_EDGE, .address_w = RT_CLAMP_TO_EDGE,
     });
 }
 
-rt_texture_t dx_create_texture_depth(uint32_t width, uint32_t height, const void* data)
+rt_texture_t dx_create_texture_depth(uint32_t width, uint32_t height)
 {
     return dx_create_texture({
         .width = width, .height = height, .target = RT_TEXTURE_2D,
         .format = RT_TEXTURE_DEPTH32FLOAT,
         .min_filter = RT_LINEAR, .mag_filter = RT_LINEAR,
-        .wrap_s = RT_CLAMP_TO_EDGE, .wrap_t = RT_CLAMP_TO_EDGE, .wrap_r = RT_CLAMP_TO_EDGE,
-        .data = data
+        .address_u = RT_CLAMP_TO_EDGE, .address_v = RT_CLAMP_TO_EDGE, .address_w = RT_CLAMP_TO_EDGE,
     });
 }
 
-rt_texture_t dx_create_texture_depth_stencil(uint32_t width, uint32_t height, const void* data)
+rt_texture_t dx_create_texture_depth_stencil(uint32_t width, uint32_t height)
 {
     return dx_create_texture({
         .width = width, .height = height, .target = RT_TEXTURE_2D,
         .format = RT_TEXTURE_DEPTH24PLUS_STENCIL8,
         .min_filter = RT_LINEAR, .mag_filter = RT_LINEAR,
-        .wrap_s = RT_CLAMP_TO_EDGE, .wrap_t = RT_CLAMP_TO_EDGE, .wrap_r = RT_CLAMP_TO_EDGE,
-        .data = data
+        .address_u = RT_CLAMP_TO_EDGE, .address_v = RT_CLAMP_TO_EDGE, .address_w = RT_CLAMP_TO_EDGE,
     });
 }
 
@@ -1410,23 +1401,24 @@ void dx_bind_texture_storage(rt_texture_t& texture, rt_texture_storage_bind_t bi
         abort();
     }
     direct.currentBinding[bind.binding].type = RT_BINDING_STORAGE_TEXTURE;
-    direct.currentBinding[bind.binding].storage_texture = texture;
+    direct.currentBinding[bind.binding].storage_view = texture.default_view;
     direct.currentBinding[bind.binding].storage_texture_bind = bind;
 }
 
 rt_texture_view_t dx_create_texture_view(rt_texture_view_info_t const& info)
 {
-    rt_texture_view_t result{
-        0, info.target,
-        info.format != RT_TEXTURE_NONE ? info.format : info.texture.format,
-        info.aspect, info.usage ? info.usage : info.texture.usage,
-        info.base_layer, info.layer_count, info.base_level, info.level_count, nullptr};
     auto* tex = dx_texture_native(info.texture);
+    rt_texture_format_t format = info.format != RT_TEXTURE_NONE ? info.format : (tex ? tex->rtFormat : RT_TEXTURE_NONE);
+    rt_texture_usages_t usage = info.usage ? info.usage : (tex ? tex->usage : 0);
+    rt_texture_view_t result{
+        0, info.target, format,
+        info.aspect, usage,
+        info.base_layer, info.layer_count, info.base_level, info.level_count, nullptr};
     if (!tex || !tex->handle) return result;
-    uint32_t levelCount = info.level_count ? info.level_count : tex->mipLevels - info.base_level;
-    if (info.base_level >= tex->mipLevels || levelCount == 0) return result;
-    if (info.base_level + levelCount > tex->mipLevels)
-        levelCount = tex->mipLevels - info.base_level;
+    uint32_t levelCount = info.level_count ? info.level_count : tex->levels - info.base_level;
+    if (info.base_level >= tex->levels || levelCount == 0) return result;
+    if (info.base_level + levelCount > tex->levels)
+        levelCount = tex->levels - info.base_level;
     uint32_t baseLayer = 0;
     uint32_t layerCount = 1;
     if (info.target != RT_TEXTURE_3D)
@@ -1442,9 +1434,9 @@ rt_texture_view_t dx_create_texture_view(rt_texture_view_info_t const& info)
     result.base_level = info.base_level;
     result.level_count = levelCount;
 
-    DXGI_FORMAT format = info.format != RT_TEXTURE_NONE ? rt_to_dx_texture_format(info.format) : tex->format;
+    DXGI_FORMAT dxFormat = result.format != RT_TEXTURE_NONE ? rt_to_dx_texture_format(result.format) : tex->format;
     UINT plane = 0;
-    DXGI_FORMAT srvFormat = dx_srv_format(format);
+    DXGI_FORMAT srvFormat = dx_srv_format(dxFormat);
     if (info.aspect == RT_TEXTURE_ASPECT_STENCIL)
     {
         if (tex->format == DXGI_FORMAT_D24_UNORM_S8_UINT)
@@ -1453,7 +1445,7 @@ rt_texture_view_t dx_create_texture_view(rt_texture_view_info_t const& info)
             srvFormat = DXGI_FORMAT_X32_TYPELESS_G8X24_UINT;
         plane = 1;
     }
-    else if (dx_is_depth(tex->format) || dx_is_depth(format))
+    else if (dx_is_depth(tex->format) || dx_is_depth(dxFormat))
         srvFormat = dx_srv_format(tex->format);
 
     D3D12_SHADER_RESOURCE_VIEW_DESC srv = {};
@@ -1528,9 +1520,9 @@ rt_sampler_t dx_create_sampler(rt_sampler_info_t const& info)
     uint32_t handle = direct.samplerID + 1;
     auto& native = direct.samplers[handle];
     native.desc.Filter = rt_to_dx_filter(info.min_filter, info.mag_filter);
-    native.desc.AddressU = rt_to_dx_address(info.wrap_s);
-    native.desc.AddressV = rt_to_dx_address(info.wrap_t);
-    native.desc.AddressW = rt_to_dx_address(info.wrap_r);
+    native.desc.AddressU = rt_to_dx_address(info.address_u);
+    native.desc.AddressV = rt_to_dx_address(info.address_v);
+    native.desc.AddressW = rt_to_dx_address(info.address_w);
     native.desc.MaxLOD = rt_has_mipmap_filter(info.min_filter) ? D3D12_FLOAT32_MAX : 0.0f;
     native.desc.MinLOD = 0.0f;
     direct.samplerID = handle;
@@ -2646,18 +2638,6 @@ void dx_draw_meshlet(rt_meshlet_t& meshlet)
     uint32_t tasks = native && native->indexCount ? native->indexCount / 3 : 1;
     if (direct.cmdMesh)
         direct.cmdMesh->DispatchMesh(max(1u, tasks), 1, 1);
-}
-
-rt_mesh_t dx_create_mesh_screen()
-{
-    const float points[] = {-1.0f, -1.0f, 0.0f, +3.0f, -1.0f, 0.0f, -1.0f, +3.0f, 0.0f};
-    const float uvs[] = {0.0f, 0.0f, 2.0f, 0.0f, 0.0f, 2.0f};
-    return dx_create_mesh(points, nullptr, uvs, 3, nullptr, 0);
-}
-
-void dx_draw_screen(int width, int height, rt_color_t clear, rt_texture_t& texture)
-{
-    // No Implement
 }
 
 void dx_submit()

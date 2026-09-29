@@ -196,8 +196,8 @@ void frame(int width, int height)
         .vertex = {rt_vertex_vertex, rt_vertex_normal, rt_vertex_uv,},
         .binding = {{.binding = 0, .type = RT_BINDING_TEXTURE}, {.binding = 1, .type = RT_BINDING_SAMPLER}},
     });
-    static auto pass_color = rt_create_texture_color(width, height, nullptr);
-    static auto pass_depth = rt_create_texture_depth(width, height, nullptr);
+    static auto pass_color = rt_create_texture_color(width, height);
+    static auto pass_depth = rt_create_texture_depth(width, height);
     {
         rt_pass_render_t pass = {.module = module, .colors = {{.texture_view = pass_color.default_view, .clear = true,}}, .depth = {.texture_view = pass_depth.default_view, .clear = true,},};
         rt_begin_render(pass);
@@ -210,7 +210,7 @@ void frame(int width, int height)
 
         static auto texture0 = rt_load_texture_file("../../Earth.png", true);
         rt_bind_texture(texture0, {.binding = 0,});
-        static auto sampler0 = rt_create_sampler({.min_filter = RT_LINEAR, .mag_filter = RT_LINEAR, .wrap_s = RT_REPEAT, .wrap_t = RT_REPEAT,});
+        static auto sampler0 = rt_create_sampler({.min_filter = RT_LINEAR, .mag_filter = RT_LINEAR, .address_u = RT_REPEAT, .address_v = RT_REPEAT,});
         rt_bind_sampler(sampler0, {.binding = 1,});
 
         static auto mesh = rt_create_mesh_sphere(2, 64, 32);

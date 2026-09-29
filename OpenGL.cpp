@@ -332,9 +332,9 @@ static GLenum rt_to_gl_filter(rt_filter_t filter)
     }
 }
 
-static GLenum rt_to_gl_wrap(rt_wrap_t wrap)
+static GLenum rt_to_gl_address(rt_address_t address)
 {
-    switch (wrap)
+    switch (address)
     {
         case RT_REPEAT: return GL_REPEAT;
         case RT_CLAMP_TO_EDGE: return GL_CLAMP_TO_EDGE;
@@ -478,6 +478,12 @@ struct gl_buffer_native_t
 struct gl_texture_native_t
 {
     GLuint handle = 0;
+    uint32_t width = 1, height = 1, depth = 1;
+    rt_texture_target_t target = RT_TEXTURE_2D;
+    rt_texture_format_t format = RT_TEXTURE_NONE;
+    rt_texture_usages_t usage = 0;
+    uint32_t levels = 1;
+    rt_texture_sample_t samples = RT_TEXTURE_SAMPLE_1X;
 };
 
 struct gl_texture_view_native_t
@@ -677,8 +683,6 @@ void gl_load_library()
     rt_create_meshlet = gl_create_meshlet;
     rt_destroy_meshlet = gl_destroy_meshlet;
     rt_draw_meshlet = gl_draw_meshlet;
-    rt_create_mesh_screen = gl_create_mesh_screen;
-    rt_draw_screen = gl_draw_screen;
     rt_submit = gl_submit;
 }
 
@@ -795,8 +799,6 @@ void gl_unload_library()
     if(rt_create_meshlet == gl_create_meshlet) rt_create_meshlet = nullptr;
     if(rt_destroy_meshlet == gl_destroy_meshlet) rt_destroy_meshlet = nullptr;
     if(rt_draw_meshlet == gl_draw_meshlet) rt_draw_meshlet = nullptr;
-    if(rt_create_mesh_screen == gl_create_mesh_screen) rt_create_mesh_screen = nullptr;
-    if(rt_draw_screen == gl_draw_screen) rt_draw_screen = nullptr;
     if(rt_submit == gl_submit) rt_submit = nullptr;
 }
 
@@ -1051,15 +1053,15 @@ rt_texture_t gl_create_texture(rt_texture_info_t const& info)
 
     if (target != RT_TEXTURE_2D_MULTISAMPLE)
     {
-        glTexParameteri(glTarget, GL_TEXTURE_WRAP_S, rt_to_gl_wrap(info.wrap_s));
-        glTexParameteri(glTarget, GL_TEXTURE_WRAP_T, rt_to_gl_wrap(info.wrap_t));
-        glTexParameteri(glTarget, GL_TEXTURE_WRAP_R, rt_to_gl_wrap(info.wrap_r));
+        glTexParameteri(glTarget, GL_TEXTURE_WRAP_S, rt_to_gl_address(info.address_u));
+        glTexParameteri(glTarget, GL_TEXTURE_WRAP_T, rt_to_gl_address(info.address_v));
+        glTexParameteri(glTarget, GL_TEXTURE_WRAP_R, rt_to_gl_address(info.address_w));
         glTexParameteri(glTarget, GL_TEXTURE_MIN_FILTER, rt_to_gl_filter(info.min_filter));
         glTexParameteri(glTarget, GL_TEXTURE_MAG_FILTER, rt_to_gl_filter(info.mag_filter));
         glTexParameteri(glTarget, GL_TEXTURE_BASE_LEVEL, 0);
         glTexParameteri(glTarget, GL_TEXTURE_MAX_LEVEL, (GLint)(mipmaps - 1));
 
-        if (info.wrap_s == RT_CLAMP_TO_BORDER || info.wrap_t == RT_CLAMP_TO_BORDER || info.wrap_r == RT_CLAMP_TO_BORDER)
+        if (info.address_u == RT_CLAMP_TO_BORDER || info.address_v == RT_CLAMP_TO_BORDER || info.address_w == RT_CLAMP_TO_BORDER)
         {
             glTexParameterfv(glTarget, GL_TEXTURE_BORDER_COLOR, info.border);
         }
@@ -1072,99 +1074,68 @@ rt_texture_t gl_create_texture(rt_texture_info_t const& info)
 
     glBindTexture(glTarget, 0);
 
+    native.width = info.width;
+    native.height = (target == RT_TEXTURE_1D) ? 1 : info.height;
+    native.depth = depth;
+    native.target = target;
+    native.format = info.format;
+    native.usage = info.usage;
+    native.levels = mipmaps ? mipmaps : 1;
+    native.samples = samples;
     opengl.textureID = handle;
     result.handle = handle;
-    result.width = info.width;
-    result.height = (target == RT_TEXTURE_1D) ? 1 : info.height;
-    result.depth = depth;
-    result.target = target;
-    result.format = info.format;
-    result.usage = info.usage;
-    result.mipmaps = mipmaps;
-    result.samples = samples;
     result.native = &native;
-    uint32_t layers = (result.target == RT_TEXTURE_2D_ARRAY && result.depth) ? result.depth : 1;
+    uint32_t layers = (target == RT_TEXTURE_2D_ARRAY && depth) ? depth : 1;
     result.default_view = gl_create_texture_view({
         .texture = result,
-        .target = result.target,
-        .format = result.format,
+        .target = native.target,
+        .format = native.format,
         .aspect = RT_TEXTURE_ASPECT_ALL,
-        .usage = result.usage,
+        .usage = native.usage,
         .layer_count = layers,
-        .level_count = result.mipmaps ? result.mipmaps : 1,
+        .level_count = native.levels,
     });
     return result;
 }
 
-rt_texture_t gl_create_texture_color(uint32_t width, uint32_t height, const void* data)
+rt_texture_t gl_create_texture_color(uint32_t width, uint32_t height)
 {
-    rt_texture_info_t info
-    {
-        .width = width,
-        .height = height,
-        .target = RT_TEXTURE_2D,
+    return gl_create_texture({
+        .width = width, .height = height, .target = RT_TEXTURE_2D,
         .format = RT_TEXTURE_RGBA8UNORM,
-        .min_filter = RT_LINEAR,
-        .mag_filter = RT_LINEAR,
-        .wrap_s = RT_CLAMP_TO_BORDER,
-        .wrap_t = RT_CLAMP_TO_BORDER,
-        .border = {0.0f, 0.0f, 0.0f, 0.0f},
-        .data = data,
-    };
-    return gl_create_texture(info);
+        .min_filter = RT_LINEAR, .mag_filter = RT_LINEAR,
+        .address_u = RT_CLAMP_TO_EDGE, .address_v = RT_CLAMP_TO_EDGE, .address_w = RT_CLAMP_TO_EDGE,
+    });
 }
 
-rt_texture_t gl_create_texture_color_float(uint32_t width, uint32_t height, const void* data)
+rt_texture_t gl_create_texture_color_float(uint32_t width, uint32_t height)
 {
-    rt_texture_info_t info
-    {
-        .width = width,
-        .height = height,
-        .target = RT_TEXTURE_2D,
+    return gl_create_texture({
+        .width = width, .height = height, .target = RT_TEXTURE_2D,
         .format = RT_TEXTURE_RGBA32FLOAT,
-        .min_filter = RT_LINEAR,
-        .mag_filter = RT_LINEAR,
-        .wrap_s = RT_CLAMP_TO_BORDER,
-        .wrap_t = RT_CLAMP_TO_BORDER,
-        .border = {0.0f, 0.0f, 0.0f, 0.0f},
-        .data = data,
-    };
-    return gl_create_texture(info);
+        .min_filter = RT_LINEAR, .mag_filter = RT_LINEAR,
+        .address_u = RT_CLAMP_TO_EDGE, .address_v = RT_CLAMP_TO_EDGE, .address_w = RT_CLAMP_TO_EDGE,
+    });
 }
 
-rt_texture_t gl_create_texture_depth(uint32_t width, uint32_t height, const void* data)
+rt_texture_t gl_create_texture_depth(uint32_t width, uint32_t height)
 {
-    rt_texture_info_t info
-    {
-        .width = width,
-        .height = height,
-        .target = RT_TEXTURE_2D,
+    return gl_create_texture({
+        .width = width, .height = height, .target = RT_TEXTURE_2D,
         .format = RT_TEXTURE_DEPTH32FLOAT,
-        .min_filter = RT_NEAREST,
-        .mag_filter = RT_NEAREST,
-        .wrap_s = RT_CLAMP_TO_BORDER,
-        .wrap_t = RT_CLAMP_TO_BORDER,
-        .border = {1.0f, 1.0f, 1.0f, 1.0f},
-        .data = data,
-    };
-    return gl_create_texture(info);
+        .min_filter = RT_LINEAR, .mag_filter = RT_LINEAR,
+        .address_u = RT_CLAMP_TO_EDGE, .address_v = RT_CLAMP_TO_EDGE, .address_w = RT_CLAMP_TO_EDGE,
+    });
 }
 
-rt_texture_t gl_create_texture_depth_stencil(uint32_t width, uint32_t height, const void* data)
+rt_texture_t gl_create_texture_depth_stencil(uint32_t width, uint32_t height)
 {
-    rt_texture_info_t info
-    {
-        .width = width,
-        .height = height,
-        .target = RT_TEXTURE_2D,
-        .format = RT_TEXTURE_DEPTH24PLUS_STENCIL8,
-        .min_filter = RT_NEAREST,
-        .mag_filter = RT_NEAREST,
-        .wrap_s = RT_CLAMP_TO_EDGE,
-        .wrap_t = RT_CLAMP_TO_EDGE,
-        .data = data,
-    };
-    return gl_create_texture(info);
+    return gl_create_texture({
+        .width = width, .height = height, .target = RT_TEXTURE_2D,
+        .format = RT_TEXTURE_DEPTH32FLOAT_STENCIL8,
+        .min_filter = RT_LINEAR, .mag_filter = RT_LINEAR,
+        .address_u = RT_CLAMP_TO_EDGE, .address_v = RT_CLAMP_TO_EDGE, .address_w = RT_CLAMP_TO_EDGE,
+    });
 }
 
 void gl_destroy_texture(rt_texture_t& texture)
@@ -1200,17 +1171,13 @@ void gl_bind_texture(rt_texture_t& texture, rt_texture_bind_t bind)
         abort();
     }
 
-    GLuint name = gl_texture_name(texture);
-    GLenum target = rt_to_gl_texture_target(texture.target);
-    if (texture.default_view.handle)
-    {
-        name = gl_texture_view_name(texture.default_view);
-        target = rt_to_gl_texture_target(texture.default_view.target);
-    }
+    auto name = gl_texture_view_name(texture.default_view);
+    auto target = rt_to_gl_texture_target(texture.default_view.target);
     glActiveTexture(GL_TEXTURE0 + bind.binding);
     glBindTexture(target, name);
 
-    if (rt_texture_has_depth(texture.format) || rt_texture_has_stencil(texture.format))
+    auto* tex = gl_texture_native(texture);
+    if (tex && (rt_texture_has_depth(tex->format) || rt_texture_has_stencil(tex->format)))
     {
         GLenum mode = GL_DEPTH_COMPONENT;
         switch (bind.aspect_mode)
@@ -1232,25 +1199,28 @@ void gl_bind_texture_storage(rt_texture_t& texture, rt_texture_storage_bind_t bi
         abort();
     }
 
+    auto* tex = gl_texture_native(texture);
     glBindImageTexture(bind.binding, gl_texture_name(texture), (GLint)bind.base_level, 1 < bind.layer_count,
-                       (GLint)bind.base_layer, rt_to_gl_access(bind.access), rt_to_gl_texture_format(texture.format));
+                       (GLint)bind.base_layer, rt_to_gl_access(bind.access), rt_to_gl_texture_format(tex ? tex->format : RT_TEXTURE_NONE));
 }
 
 rt_texture_view_t gl_create_texture_view(rt_texture_view_info_t const& info)
 {
+    auto* parentTex = gl_texture_native(info.texture);
+    rt_texture_format_t parentFormat = parentTex ? parentTex->format : RT_TEXTURE_NONE;
+    rt_texture_format_t format = info.format != RT_TEXTURE_NONE ? info.format : parentFormat;
+    rt_texture_usages_t usage = info.usage ? info.usage : (parentTex ? parentTex->usage : 0);
     rt_texture_view_t result{
-        0, info.target,
-        info.format != RT_TEXTURE_NONE ? info.format : info.texture.format,
-        info.aspect, info.usage ? info.usage : info.texture.usage,
+        0, info.target, format,
+        info.aspect, usage,
         info.base_layer, info.layer_count, info.base_level, info.level_count, nullptr};
-    GLuint parent = gl_texture_name(info.texture);
-    if (!parent) return result;
-    uint32_t mipLevels = info.texture.mipmaps ? info.texture.mipmaps : 1;
-    uint32_t layers = info.texture.target == RT_TEXTURE_2D_ARRAY && info.texture.depth ? info.texture.depth : 1;
-    uint32_t levelCount = info.level_count ? info.level_count : mipLevels - info.base_level;
-    if (info.base_level >= mipLevels || levelCount == 0) return result;
-    if (info.base_level + levelCount > mipLevels)
-        levelCount = mipLevels - info.base_level;
+    if (!parentTex || !parentTex->handle) return result;
+    uint32_t levels = parentTex->levels ? parentTex->levels : 1;
+    uint32_t layers = parentTex->target == RT_TEXTURE_2D_ARRAY && parentTex->depth ? parentTex->depth : 1;
+    uint32_t levelCount = info.level_count ? info.level_count : levels - info.base_level;
+    if (info.base_level >= levels || levelCount == 0) return result;
+    if (info.base_level + levelCount > levels)
+        levelCount = levels - info.base_level;
     uint32_t baseLayer = 0;
     uint32_t layerCount = 1;
     if (info.target != RT_TEXTURE_3D)
@@ -1267,15 +1237,15 @@ rt_texture_view_t gl_create_texture_view(rt_texture_view_info_t const& info)
     result.level_count = levelCount;
 
     GLenum internalFormat = rt_to_gl_texture_format(result.format);
-    if (info.aspect == RT_TEXTURE_ASPECT_STENCIL && rt_texture_has_stencil(info.texture.format))
+    if (info.aspect == RT_TEXTURE_ASPECT_STENCIL && rt_texture_has_stencil(parentFormat))
         internalFormat = GL_STENCIL_INDEX8;
-    else if (info.aspect == RT_TEXTURE_ASPECT_DEPTH && rt_texture_has_depth(info.texture.format) && rt_texture_has_stencil(info.texture.format))
-        internalFormat = info.texture.format == RT_TEXTURE_DEPTH32FLOAT_STENCIL8 ? GL_DEPTH_COMPONENT32F : GL_DEPTH_COMPONENT24;
+    else if (info.aspect == RT_TEXTURE_ASPECT_DEPTH && rt_texture_has_depth(parentFormat) && rt_texture_has_stencil(parentFormat))
+        internalFormat = parentFormat == RT_TEXTURE_DEPTH32FLOAT_STENCIL8 ? GL_DEPTH_COMPONENT32F : GL_DEPTH_COMPONENT24;
 
     uint32_t handle = opengl.textureViewID + 1;
     auto& native = opengl.textureViews[handle];
     glGenTextures(1, &native.handle);
-    glTextureView(native.handle, rt_to_gl_texture_target(info.target), parent, internalFormat,
+    glTextureView(native.handle, rt_to_gl_texture_target(info.target), parentTex->handle, internalFormat,
                   (GLuint)info.base_level, (GLuint)levelCount, (GLuint)baseLayer, (GLuint)layerCount);
     if (!native.handle)
     {
@@ -1331,9 +1301,9 @@ rt_sampler_t gl_create_sampler(rt_sampler_info_t const& info)
 
     glSamplerParameteri(native.handle, GL_TEXTURE_MIN_FILTER, rt_to_gl_filter(info.min_filter));
     glSamplerParameteri(native.handle, GL_TEXTURE_MAG_FILTER, rt_to_gl_filter(info.mag_filter));
-    glSamplerParameteri(native.handle, GL_TEXTURE_WRAP_S, rt_to_gl_wrap(info.wrap_s));
-    glSamplerParameteri(native.handle, GL_TEXTURE_WRAP_T, rt_to_gl_wrap(info.wrap_t));
-    glSamplerParameteri(native.handle, GL_TEXTURE_WRAP_R, rt_to_gl_wrap(info.wrap_r));
+    glSamplerParameteri(native.handle, GL_TEXTURE_WRAP_S, rt_to_gl_address(info.address_u));
+    glSamplerParameteri(native.handle, GL_TEXTURE_WRAP_T, rt_to_gl_address(info.address_v));
+    glSamplerParameteri(native.handle, GL_TEXTURE_WRAP_R, rt_to_gl_address(info.address_w));
 
     opengl.samplerID = handle;
     result.handle = handle;
@@ -2326,43 +2296,45 @@ static uint32_t gl_bytes_per_pixel(GLenum format, GLenum type)
 
 static void gl_transfer_format(rt_texture_t const& texture, rt_texture_aspect_t aspect, bool download, GLenum& format, GLenum& type)
 {
-    if (aspect == RT_TEXTURE_ASPECT_DEPTH && !rt_texture_has_depth(texture.format))
+    auto* tex = gl_texture_native(texture);
+    rt_texture_format_t texFormat = tex ? tex->format : RT_TEXTURE_NONE;
+    if (aspect == RT_TEXTURE_ASPECT_DEPTH && !rt_texture_has_depth(texFormat))
     {
         fprintf(stderr, "Texture has no depth aspect\n");
         abort();
     }
-    if (aspect == RT_TEXTURE_ASPECT_STENCIL && !rt_texture_has_stencil(texture.format))
+    if (aspect == RT_TEXTURE_ASPECT_STENCIL && !rt_texture_has_stencil(texFormat))
     {
         fprintf(stderr, "Texture has no stencil aspect\n");
         abort();
     }
-    rt_to_gl_transfer(texture.format, aspect, download, format, type);
+    rt_to_gl_transfer(texFormat, aspect, download, format, type);
 }
 
 // 校验纹理拷贝区域是否越界
 static bool gl_check_texture_region(rt_texture_copy_t const& region, rt_size_t copySize)
 {
-    if (region.texture.handle == 0)
+    auto* tex = gl_texture_native(region.texture);
+    if (!tex || tex->handle == 0)
         return false;
     if (copySize.x == 0 || copySize.y == 0)
         return false;
-    uint32_t width = 0, height = 0;
-    width = std::max(1U, region.texture.width >> region.mipLevel);
-    height = std::max(1U, region.texture.height >> region.mipLevel);
+    uint32_t width = std::max(1U, tex->width >> region.mipLevel);
+    uint32_t height = std::max(1U, tex->height >> region.mipLevel);
 
     if ((uint64_t)region.origin.x + copySize.x > width)
         return false;
     if ((uint64_t)region.origin.y + copySize.y > height)
         return false;
     // 1D / 2D 没有深度维度，z 偏移必须为 0 且最多拷贝一层
-    if ((region.texture.target == RT_TEXTURE_1D || region.texture.target == RT_TEXTURE_2D) &&
+    if ((tex->target == RT_TEXTURE_1D || tex->target == RT_TEXTURE_2D) &&
         (region.origin.z != 0 || copySize.z > 1))
         return false;
-    if (region.texture.target == RT_TEXTURE_1D && (region.origin.y != 0 || copySize.y > 1))
+    if (tex->target == RT_TEXTURE_1D && (region.origin.y != 0 || copySize.y > 1))
         return false;
-    if (region.texture.target == RT_TEXTURE_2D_ARRAY)
+    if (tex->target == RT_TEXTURE_2D_ARRAY)
     {
-        if ((uint64_t)region.origin.z + std::max(1U, copySize.z) > std::max(1U, region.texture.depth))
+        if ((uint64_t)region.origin.z + std::max(1U, copySize.z) > std::max(1U, tex->depth))
             return false;
     }
     return true;
@@ -2532,14 +2504,17 @@ void gl_copy_texture(rt_texture_copy_t source, rt_texture_copy_t destination, rt
     if (!gl_check_texture_region(source, copySize) || !gl_check_texture_region(destination, copySize))
         return;
 
+    auto* srcTex = gl_texture_native(source.texture);
+    auto* dstTex = gl_texture_native(destination.texture);
+    if (!srcTex || !dstTex) return;
     GLsizei depth = (GLsizei)std::max(1U, copySize.z);
-    glCopyImageSubData(gl_texture_name(source.texture), rt_to_gl_texture_target(source.texture.target), (GLint)source.mipLevel,
+    glCopyImageSubData(gl_texture_name(source.texture), rt_to_gl_texture_target(srcTex->target), (GLint)source.mipLevel,
                        (GLint)source.origin.x, (GLint)source.origin.y, (GLint)source.origin.z,
-                       gl_texture_name(destination.texture), rt_to_gl_texture_target(destination.texture.target), (GLint)destination.mipLevel,
+                       gl_texture_name(destination.texture), rt_to_gl_texture_target(dstTex->target), (GLint)destination.mipLevel,
                        (GLint)destination.origin.x, (GLint)destination.origin.y, (GLint)destination.origin.z,
                        (GLsizei)copySize.x, (GLsizei)copySize.y, depth);
 
-    if (destination.texture.mipmaps > 1) glGenerateTextureMipmap(gl_texture_name(destination.texture));
+    if (dstTex->levels > 1) glGenerateTextureMipmap(gl_texture_name(destination.texture));
 }
 
 void gl_copy_texture_data(rt_texture_data_t source, rt_texture_copy_t destination, rt_size_t copySize)
@@ -2567,33 +2542,36 @@ void gl_copy_texture_data(rt_texture_data_t source, rt_texture_copy_t destinatio
         return;
 
     const void* data = source.data + source.offset;
+    auto* dstTex = gl_texture_native(destination.texture);
+    rt_texture_target_t target = dstTex ? dstTex->target : RT_TEXTURE_2D;
+    uint32_t levels = dstTex ? dstTex->levels : 1;
 
     glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
     glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
     glPixelStorei(GL_UNPACK_ROW_LENGTH, (GLint)(source.bytesPerRow / bytesPerPixel));
     glPixelStorei(GL_UNPACK_IMAGE_HEIGHT, (GLint)source.rowsPerImage);
-    if (destination.texture.target == RT_TEXTURE_1D)
+    if (target == RT_TEXTURE_1D)
     {
         glTextureSubImage1D(gl_texture_name(destination.texture), (GLint)destination.mipLevel,
                             (GLint)destination.origin.x, (GLsizei)copySize.x, format, type, data);
 
-        if (destination.texture.mipmaps > 1) glGenerateTextureMipmap(gl_texture_name(destination.texture));
+        if (levels > 1) glGenerateTextureMipmap(gl_texture_name(destination.texture));
     }
-    else if (destination.texture.target == RT_TEXTURE_2D)
+    else if (target == RT_TEXTURE_2D)
     {
         glTextureSubImage2D(gl_texture_name(destination.texture), (GLint)destination.mipLevel,
                             (GLint)destination.origin.x, (GLint)destination.origin.y,
                             (GLsizei)copySize.x, (GLsizei)copySize.y, format, type, data);
 
-        if (destination.texture.mipmaps > 1) glGenerateTextureMipmap(gl_texture_name(destination.texture));
+        if (levels > 1) glGenerateTextureMipmap(gl_texture_name(destination.texture));
     }
-    else if (destination.texture.target == RT_TEXTURE_3D || destination.texture.target == RT_TEXTURE_2D_ARRAY)
+    else if (target == RT_TEXTURE_3D || target == RT_TEXTURE_2D_ARRAY)
     {
         glTextureSubImage3D(gl_texture_name(destination.texture), (GLint)destination.mipLevel,
                             (GLint)destination.origin.x, (GLint)destination.origin.y, (GLint)destination.origin.z,
                             (GLsizei)copySize.x, (GLsizei)copySize.y, (GLsizei)std::max(1U, copySize.z), format, type, data);
 
-        if (destination.texture.mipmaps > 1) glGenerateTextureMipmap(gl_texture_name(destination.texture));
+        if (levels > 1) glGenerateTextureMipmap(gl_texture_name(destination.texture));
     }
     else
     {
@@ -2631,33 +2609,36 @@ void gl_copy_texture_buffer(rt_buffer_texel_t source, rt_texture_copy_t destinat
 
     // PBO 模式下 data 参数被解释为缓冲区内的字节偏移
     const void* data = (const void*)(uintptr_t)source.offset;
+    auto* dstTex = gl_texture_native(destination.texture);
+    rt_texture_target_t target = dstTex ? dstTex->target : RT_TEXTURE_2D;
+    uint32_t levels = dstTex ? dstTex->levels : 1;
 
     glBindBuffer(GL_PIXEL_UNPACK_BUFFER, gl_buffer_name(source.buffer));
     glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
     glPixelStorei(GL_UNPACK_ROW_LENGTH, (GLint)(source.bytesPerRow / bytesPerPixel));
     glPixelStorei(GL_UNPACK_IMAGE_HEIGHT, (GLint)source.rowsPerImage);
-    if (destination.texture.target == RT_TEXTURE_1D)
+    if (target == RT_TEXTURE_1D)
     {
         glTextureSubImage1D(gl_texture_name(destination.texture), (GLint)destination.mipLevel,
                             (GLint)destination.origin.x, (GLsizei)copySize.x, format, type, data);
 
-        if (destination.texture.mipmaps > 1) glGenerateTextureMipmap(gl_texture_name(destination.texture));
+        if (levels > 1) glGenerateTextureMipmap(gl_texture_name(destination.texture));
     }
-    else if (destination.texture.target == RT_TEXTURE_2D)
+    else if (target == RT_TEXTURE_2D)
     {
         glTextureSubImage2D(gl_texture_name(destination.texture), (GLint)destination.mipLevel,
                             (GLint)destination.origin.x, (GLint)destination.origin.y,
                             (GLsizei)copySize.x, (GLsizei)copySize.y, format, type, data);
 
-        if (destination.texture.mipmaps > 1) glGenerateTextureMipmap(gl_texture_name(destination.texture));
+        if (levels > 1) glGenerateTextureMipmap(gl_texture_name(destination.texture));
     }
-    else if (destination.texture.target == RT_TEXTURE_3D || destination.texture.target == RT_TEXTURE_2D_ARRAY)
+    else if (target == RT_TEXTURE_3D || target == RT_TEXTURE_2D_ARRAY)
     {
         glTextureSubImage3D(gl_texture_name(destination.texture), (GLint)destination.mipLevel,
                             (GLint)destination.origin.x, (GLint)destination.origin.y, (GLint)destination.origin.z,
                             (GLsizei)copySize.x, (GLsizei)copySize.y, (GLsizei)std::max(1U, copySize.z), format, type, data);
 
-        if (destination.texture.mipmaps > 1) glGenerateTextureMipmap(gl_texture_name(destination.texture));
+        if (levels > 1) glGenerateTextureMipmap(gl_texture_name(destination.texture));
     }
     else
     {

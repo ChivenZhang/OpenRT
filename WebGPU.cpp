@@ -84,9 +84,9 @@ static WGPUMipmapFilterMode rt_to_wg_mip(rt_filter_t minFilter)
     }
 }
 
-static WGPUAddressMode rt_to_wg_address(rt_wrap_t wrap)
+static WGPUAddressMode rt_to_wg_address(rt_address_t address)
 {
-    switch (wrap)
+    switch (address)
     {
         case RT_REPEAT: return WGPUAddressMode_Repeat;
         case RT_CLAMP_TO_EDGE: return WGPUAddressMode_ClampToEdge;
@@ -451,10 +451,13 @@ struct wg_texture_native_t
     WGPUTexture handle = nullptr;
     WGPUTextureFormat format = WGPUTextureFormat_Undefined;
     wg_res_state_t state = WG_STATE_UNKNOWN;
-    uint32_t mipLevels = 1;
+    uint32_t levels = 1;
     uint32_t layers = 1;
     uint32_t width = 1, height = 1, depth = 1;
     rt_texture_target_t target = RT_TEXTURE_2D;
+    rt_texture_format_t rtFormat = RT_TEXTURE_NONE;
+    rt_texture_usages_t usage = 0;
+    rt_texture_sample_t samples = RT_TEXTURE_SAMPLE_1X;
     ~wg_texture_native_t()
     {
         if (handle) wgpuTextureRelease(handle);
@@ -547,7 +550,7 @@ struct wg_native_t
         rt_buffer_bind_t buffer_bind = {};
         rt_texture_view_t texture_view = {};
         rt_texture_bind_t texture_bind = {};
-        rt_texture_t storage_texture = {};
+        rt_texture_view_t storage_view = {};
         rt_texture_storage_bind_t storage_texture_bind = {};
         rt_sampler_t sampler = {};
         rt_sampler_bind_t sampler_bind = {};
@@ -801,11 +804,13 @@ static void wg_flush_descriptors()
         }
         else if (mod->kinds[i] == WG_KIND_STORAGE_TEXTURE)
         {
-            auto* tex = wg_texture_native(slot.storage_texture);
-            WGPUTextureView gpuView = wg_image_view(slot.storage_texture.default_view);
-            if (!tex || !gpuView) continue;
+            auto* view = wg_texture_view_native(slot.storage_view.handle);
+            if (!view || !view->handle) continue;
+            auto texIt = webgpu.textures.find(view->texture);
+            if (texIt == webgpu.textures.end()) continue;
+            auto* tex = &texIt->second;
             wg_transition_image(*tex, WG_STATE_SHADER_WRITE);
-            entries[count].textureView = gpuView;
+            entries[count].textureView = view->handle;
         }
         else if (mod->kinds[i] == WG_KIND_SAMPLER)
         {
@@ -910,8 +915,6 @@ void wg_load_library(WGPUDevice device, WGPUQueue queue)
     rt_create_meshlet = wg_create_meshlet;
     rt_destroy_meshlet = wg_destroy_meshlet;
     rt_draw_meshlet = wg_draw_meshlet;
-    rt_create_mesh_screen = wg_create_mesh_screen;
-    rt_draw_screen = wg_draw_screen;
     rt_submit = wg_submit;
 }
 
@@ -1026,8 +1029,6 @@ void wg_unload_library()
     if (rt_create_meshlet == wg_create_meshlet) rt_create_meshlet = nullptr;
     if (rt_destroy_meshlet == wg_destroy_meshlet) rt_destroy_meshlet = nullptr;
     if (rt_draw_meshlet == wg_draw_meshlet) rt_draw_meshlet = nullptr;
-    if (rt_create_mesh_screen == wg_create_mesh_screen) rt_create_mesh_screen = nullptr;
-    if (rt_draw_screen == wg_draw_screen) rt_draw_screen = nullptr;
     if (rt_submit == wg_submit) rt_submit = nullptr;
 }
 
@@ -1139,6 +1140,8 @@ rt_texture_t wg_create_texture(rt_texture_info_t const& info)
     uint32_t handle = webgpu.textureID + 1;
     auto& native = webgpu.textures[handle];
     native.format = rt_to_wg_texture_format(info.format);
+    native.rtFormat = info.format;
+    native.usage = info.usage;
     native.width = info.width;
     native.height = info.target == RT_TEXTURE_1D ? 1 : info.height;
     native.depth = info.depth ? info.depth : 1;
@@ -1147,20 +1150,21 @@ rt_texture_t wg_create_texture(rt_texture_info_t const& info)
     rt_texture_sample_t samples = info.samples == RT_TEXTURE_SAMPLE_4X ? RT_TEXTURE_SAMPLE_4X : RT_TEXTURE_SAMPLE_1X;
     if (info.target == RT_TEXTURE_1D || info.target == RT_TEXTURE_3D || info.target == RT_TEXTURE_2D_ARRAY)
         samples = RT_TEXTURE_SAMPLE_1X;
-    native.mipLevels = 1;
+    native.samples = samples;
+    native.levels = 1;
     if (samples == RT_TEXTURE_SAMPLE_1X && info.mipmaps == 0 && rt_has_mipmap_filter(info.min_filter))
     {
         uint32_t maxDim = std::max(native.width, native.height);
-        while (maxDim >>= 1) native.mipLevels++;
+        while (maxDim >>= 1) native.levels++;
     }
     else if (samples == RT_TEXTURE_SAMPLE_1X && info.mipmaps > 1)
-        native.mipLevels = info.mipmaps;
+        native.levels = info.mipmaps;
 
     WGPUTextureDescriptor desc = {};
     desc.size.width = native.width;
     desc.size.height = native.height;
     desc.size.depthOrArrayLayers = (info.target == RT_TEXTURE_3D) ? native.depth : native.layers;
-    desc.mipLevelCount = native.mipLevels;
+    desc.mipLevelCount = native.levels;
     desc.sampleCount = rt_to_wg_sample_count(samples);
     desc.dimension = (info.target == RT_TEXTURE_3D) ? WGPUTextureDimension_3D :
                      (info.target == RT_TEXTURE_1D) ? WGPUTextureDimension_1D :
@@ -1192,72 +1196,60 @@ rt_texture_t wg_create_texture(rt_texture_info_t const& info)
     else
         wg_transition_image(native, wg_is_depth(native.format) ? WG_STATE_DEPTH : WG_STATE_COLOR);
 
+    if (native.samples == RT_TEXTURE_SAMPLE_4X && (native.target == RT_TEXTURE_2D || native.target == RT_TEXTURE_2D_MULTISAMPLE))
+        native.target = RT_TEXTURE_2D_MULTISAMPLE;
     webgpu.textureID = handle;
     result.handle = handle;
-    result.width = info.width;
-    result.height = native.height;
-    result.depth = info.depth;
-    result.format = info.format;
-    result.usage = info.usage;
-    result.target = info.target;
-    result.mipmaps = native.mipLevels;
-    result.samples = samples;
-    if (samples == RT_TEXTURE_SAMPLE_4X && (info.target == RT_TEXTURE_2D || info.target == RT_TEXTURE_2D_MULTISAMPLE))
-        result.target = RT_TEXTURE_2D_MULTISAMPLE;
     result.native = &native;
     result.default_view = wg_create_texture_view({
         .texture = result,
-        .target = result.target,
-        .format = result.format,
+        .target = native.target,
+        .format = native.rtFormat,
         .aspect = RT_TEXTURE_ASPECT_ALL,
-        .usage = result.usage,
+        .usage = native.usage,
         .layer_count = native.layers,
-        .level_count = native.mipLevels,
+        .level_count = native.levels,
     });
     return result;
 }
 
-rt_texture_t wg_create_texture_color(uint32_t width, uint32_t height, const void* data)
+rt_texture_t wg_create_texture_color(uint32_t width, uint32_t height)
 {
     return wg_create_texture({
         .width = width, .height = height, .target = RT_TEXTURE_2D,
         .format = RT_TEXTURE_RGBA8UNORM,
         .min_filter = RT_LINEAR, .mag_filter = RT_LINEAR,
-        .wrap_s = RT_CLAMP_TO_EDGE, .wrap_t = RT_CLAMP_TO_EDGE, .wrap_r = RT_CLAMP_TO_EDGE,
-        .data = data
+        .address_u = RT_CLAMP_TO_EDGE, .address_v = RT_CLAMP_TO_EDGE, .address_w = RT_CLAMP_TO_EDGE,
     });
 }
 
-rt_texture_t wg_create_texture_color_float(uint32_t width, uint32_t height, const void* data)
+rt_texture_t wg_create_texture_color_float(uint32_t width, uint32_t height)
 {
     return wg_create_texture({
         .width = width, .height = height, .target = RT_TEXTURE_2D,
         .format = RT_TEXTURE_RGBA32FLOAT,
         .min_filter = RT_LINEAR, .mag_filter = RT_LINEAR,
-        .wrap_s = RT_CLAMP_TO_EDGE, .wrap_t = RT_CLAMP_TO_EDGE, .wrap_r = RT_CLAMP_TO_EDGE,
-        .data = data
+        .address_u = RT_CLAMP_TO_EDGE, .address_v = RT_CLAMP_TO_EDGE, .address_w = RT_CLAMP_TO_EDGE,
     });
 }
 
-rt_texture_t wg_create_texture_depth(uint32_t width, uint32_t height, const void* data)
+rt_texture_t wg_create_texture_depth(uint32_t width, uint32_t height)
 {
     return wg_create_texture({
         .width = width, .height = height, .target = RT_TEXTURE_2D,
         .format = RT_TEXTURE_DEPTH32FLOAT,
         .min_filter = RT_LINEAR, .mag_filter = RT_LINEAR,
-        .wrap_s = RT_CLAMP_TO_EDGE, .wrap_t = RT_CLAMP_TO_EDGE, .wrap_r = RT_CLAMP_TO_EDGE,
-        .data = data
+        .address_u = RT_CLAMP_TO_EDGE, .address_v = RT_CLAMP_TO_EDGE, .address_w = RT_CLAMP_TO_EDGE,
     });
 }
 
-rt_texture_t wg_create_texture_depth_stencil(uint32_t width, uint32_t height, const void* data)
+rt_texture_t wg_create_texture_depth_stencil(uint32_t width, uint32_t height)
 {
     return wg_create_texture({
         .width = width, .height = height, .target = RT_TEXTURE_2D,
         .format = RT_TEXTURE_DEPTH32FLOAT_STENCIL8,
         .min_filter = RT_LINEAR, .mag_filter = RT_LINEAR,
-        .wrap_s = RT_CLAMP_TO_EDGE, .wrap_t = RT_CLAMP_TO_EDGE, .wrap_r = RT_CLAMP_TO_EDGE,
-        .data = data
+        .address_u = RT_CLAMP_TO_EDGE, .address_v = RT_CLAMP_TO_EDGE, .address_w = RT_CLAMP_TO_EDGE,
     });
 }
 
@@ -1298,23 +1290,24 @@ void wg_bind_texture_storage(rt_texture_t& texture, rt_texture_storage_bind_t bi
         abort();
     }
     webgpu.currentBinding[bind.binding].type = RT_BINDING_STORAGE_TEXTURE;
-    webgpu.currentBinding[bind.binding].storage_texture = texture;
+    webgpu.currentBinding[bind.binding].storage_view = texture.default_view;
     webgpu.currentBinding[bind.binding].storage_texture_bind = bind;
 }
 
 rt_texture_view_t wg_create_texture_view(rt_texture_view_info_t const& info)
 {
-    rt_texture_view_t result{
-        0, info.target,
-        info.format != RT_TEXTURE_NONE ? info.format : info.texture.format,
-        info.aspect, info.usage ? info.usage : info.texture.usage,
-        info.base_layer, info.layer_count, info.base_level, info.level_count, nullptr};
     auto* tex = wg_texture_native(info.texture);
+    rt_texture_format_t format = info.format != RT_TEXTURE_NONE ? info.format : (tex ? tex->rtFormat : RT_TEXTURE_NONE);
+    rt_texture_usages_t usage = info.usage ? info.usage : (tex ? tex->usage : 0);
+    rt_texture_view_t result{
+        0, info.target, format,
+        info.aspect, usage,
+        info.base_layer, info.layer_count, info.base_level, info.level_count, nullptr};
     if (!tex || !tex->handle) return result;
-    uint32_t levelCount = info.level_count ? info.level_count : tex->mipLevels - info.base_level;
-    if (info.base_level >= tex->mipLevels || levelCount == 0) return result;
-    if (info.base_level + levelCount > tex->mipLevels)
-        levelCount = tex->mipLevels - info.base_level;
+    uint32_t levelCount = info.level_count ? info.level_count : tex->levels - info.base_level;
+    if (info.base_level >= tex->levels || levelCount == 0) return result;
+    if (info.base_level + levelCount > tex->levels)
+        levelCount = tex->levels - info.base_level;
     uint32_t baseLayer = 0;
     uint32_t layerCount = 1;
     if (info.target != RT_TEXTURE_3D)
@@ -1384,9 +1377,9 @@ rt_sampler_t wg_create_sampler(rt_sampler_info_t const& info)
     desc.minFilter = rt_to_wg_filter(info.min_filter);
     desc.magFilter = rt_to_wg_filter(info.mag_filter);
     desc.mipmapFilter = rt_to_wg_mip(info.min_filter);
-    desc.addressModeU = rt_to_wg_address(info.wrap_s);
-    desc.addressModeV = rt_to_wg_address(info.wrap_t);
-    desc.addressModeW = rt_to_wg_address(info.wrap_r);
+    desc.addressModeU = rt_to_wg_address(info.address_u);
+    desc.addressModeV = rt_to_wg_address(info.address_v);
+    desc.addressModeW = rt_to_wg_address(info.address_w);
     desc.maxAnisotropy = 1;
     native.handle = wgpuDeviceCreateSampler(webgpu.device, &desc);
     webgpu.samplerID = handle;
@@ -2240,18 +2233,6 @@ void wg_draw_meshlet(rt_meshlet_t& meshlet)
     if (meshlet.index.handle)
         wg_bind_buffer(meshlet.index, {.binding = index_binding, .target = RT_SHADER_STORAGE_BUFFER});
     wg_flush_descriptors();
-}
-
-rt_mesh_t wg_create_mesh_screen()
-{
-    const float points[] = {-1.0f, -1.0f, 0.0f, +3.0f, -1.0f, 0.0f, -1.0f, +3.0f, 0.0f};
-    const float uvs[] = {0.0f, 0.0f, 2.0f, 0.0f, 0.0f, 2.0f};
-    return wg_create_mesh(points, nullptr, uvs, 3, nullptr, 0);
-}
-
-void wg_draw_screen(int width, int height, rt_color_t clear, rt_texture_t& texture)
-{
-    // No Implement
 }
 
 void wg_submit()

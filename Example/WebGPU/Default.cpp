@@ -132,10 +132,10 @@ static void on_error(WGPUErrorType, char const* message, void*)
     fprintf(stderr, "[WebGPU][ERROR] %s\n", message ? message : "");
 }
 
-static void present(rt_texture_t& color)
+static void present(rt_texture_t& color, uint32_t width, uint32_t height)
 {
-    if ((int)color.width < 1 || (int)color.height < 1) return;
-    configure_surface((int)color.width, (int)color.height);
+    if (width < 1 || height < 1) return;
+    configure_surface((int)width, (int)height);
 
     WGPUSurfaceTexture current = {};
     wgpuSurfaceGetCurrentTexture(surface, &current);
@@ -152,7 +152,7 @@ static void present(rt_texture_t& color)
     WGPUImageCopyTexture dst = {};
     dst.texture = current.texture;
     dst.aspect = WGPUTextureAspect_All;
-    WGPUExtent3D size = {color.width, color.height, 1};
+    WGPUExtent3D size = {width, height, 1};
     wgpuCommandEncoderCopyTextureToTexture(encoder, &src, &dst, &size);
 
     WGPUCommandBuffer cmd = wgpuCommandEncoderFinish(encoder, nullptr);
@@ -171,8 +171,10 @@ void frame(int width, int height)
         .colors = {{.format = colorFormat,}},
         .vertex = {rt_vertex_vertex, rt_vertex_normal, rt_vertex_uv,},
     });
+    static uint32_t colorWidth = (uint32_t)width;
+    static uint32_t colorHeight = (uint32_t)height;
     static auto pass_color = rt_create_texture({
-        .width = (uint32_t)width, .height = (uint32_t)height,
+        .width = colorWidth, .height = colorHeight,
         .format = colorFormat,
         .min_filter = RT_LINEAR, .mag_filter = RT_LINEAR,
         .mipmaps = 1,
@@ -188,7 +190,7 @@ void frame(int width, int height)
     }
 
     rt_submit();
-    present(pass_color);
+    present(pass_color, colorWidth, colorHeight);
 }
 
 static void tick()

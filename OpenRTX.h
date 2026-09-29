@@ -12,6 +12,7 @@ rt_image_t rt_load_image_file(const char* filename, bool flip = false);
 void rt_destroy_image(rt_image_t& image);
 rt_texture_t rt_load_texture(rt_image_t image);
 rt_texture_t rt_load_texture_file(const char* filename, bool flip = false);
+rt_mesh_t rt_create_mesh_screen();
 rt_mesh_t rt_create_mesh_cube(float width, float height, float length);
 rt_mesh_t rt_create_mesh_plane(float size, int N = 1);
 rt_mesh_t rt_create_mesh_sphere(float radius, int rings, int slices);
@@ -124,6 +125,23 @@ rt_texture_t rt_load_texture_file(const char* filename, bool flip)
     auto texture = rt_load_texture(image);
     rt_destroy_image(image);
     return texture;
+}
+
+rt_mesh_t rt_create_mesh_screen()
+{
+    const float points[]
+    {
+        -1.0f, -1.0f, 0.0f,
+        +3.0f, -1.0f, 0.0f,
+        -1.0f, +3.0f, 0.0f,
+    };
+    const float uvs[]
+    {
+        0.0f, 0.0f,
+        2.0f, 0.0f,
+        0.0f, 2.0f,
+    };
+    return rt_create_mesh(points, nullptr, uvs, 3, nullptr, 0);
 }
 
 #include <vector>

@@ -23,9 +23,9 @@ void* vk_map_buffer(rt_buffer_t& buffer, rt_access_t mode, size_t offset, size_t
 void vk_unmap_buffer(rt_buffer_t& buffer);
 
 rt_texture_t vk_create_texture(rt_texture_info_t const& info);
-rt_texture_t vk_create_texture_color(uint32_t width, uint32_t height, const void* data);
-rt_texture_t vk_create_texture_depth(uint32_t width, uint32_t height, const void* data);
-rt_texture_t vk_create_texture_depth_stencil(uint32_t width, uint32_t height, const void* data);
+rt_texture_t vk_create_texture_color(uint32_t width, uint32_t height);
+rt_texture_t vk_create_texture_depth(uint32_t width, uint32_t height);
+rt_texture_t vk_create_texture_depth_stencil(uint32_t width, uint32_t height);
 void vk_destroy_texture(rt_texture_t& texture);
 void vk_bind_texture(rt_texture_t& texture, rt_texture_bind_t bind = {});
 void vk_bind_texture_storage(rt_texture_t& texture, rt_texture_storage_bind_t bind = {});
@@ -79,9 +79,6 @@ void vk_draw_mesh(rt_mesh_t& mesh);
 rt_meshlet_t vk_create_meshlet(const float* vertices, const float* normals, const float* uvs, size_t vertex_count, const unsigned int* indices, size_t index_count);
 void vk_destroy_meshlet(rt_meshlet_t& meshlet);
 void vk_draw_meshlet(rt_meshlet_t& meshlet);
-
-rt_mesh_t vk_create_mesh_screen();
-void vk_draw_screen(int width, int height, rt_color_t clear, rt_texture_t& texture);
 
 void vk_submit();
 
