@@ -11,8 +11,8 @@
 #ifdef OPENGL_IMPLEMENTATION
 #include "OpenGL.h"
 #include <iostream>
+#include <map>
 #include <numeric>
-#include <vector>
 
 static GLenum rt_to_gl_buffer_target(rt_buffer_target_t target)
 {
@@ -470,8 +470,63 @@ static GLenum rt_to_gl_primitive(rt_primitive_t primitive)
     }
 }
 
+struct gl_buffer_native_t
+{
+    GLuint handle = 0;
+};
+
+struct gl_texture_native_t
+{
+    GLuint handle = 0;
+};
+
+struct gl_sampler_native_t
+{
+    GLuint handle = 0;
+};
+
+struct gl_module_native_t
+{
+    GLuint program = 0;
+    GLuint vao = 0;
+};
+
+struct gl_mesh_native_t
+{
+    uint32_t vertexCount = 0;
+    uint32_t indexCount = 0;
+};
+
+struct gl_meshlet_native_t
+{
+    uint32_t vertexCount = 0;
+    uint32_t indexCount = 0;
+};
+
+struct gl_pass_compute_native_t { uint32_t dummy = 0; };
+struct gl_pass_render_native_t { GLuint framebuffer = 0; };
+struct gl_pass_transfer_native_t { uint32_t dummy = 0; };
+
 struct OpenGL
 {
+    uint32_t bufferID = 0;
+    uint32_t textureID = 0;
+    uint32_t samplerID = 0;
+    uint32_t moduleID = 0;
+    uint32_t meshID = 0;
+    uint32_t meshletID = 0;
+    uint32_t passID = 0;
+
+    std::map<uint32_t, gl_buffer_native_t> buffers;
+    std::map<uint32_t, gl_texture_native_t> textures;
+    std::map<uint32_t, gl_sampler_native_t> samplers;
+    std::map<uint32_t, gl_module_native_t> modules;
+    std::map<uint32_t, gl_mesh_native_t> meshes;
+    std::map<uint32_t, gl_meshlet_native_t> meshlets;
+    std::map<uint32_t, gl_pass_compute_native_t> computePasses;
+    std::map<uint32_t, gl_pass_render_native_t> renderPasses;
+    std::map<uint32_t, gl_pass_transfer_native_t> transferPasses;
+
     rt_module_type_t currentPassType = RT_MODULE_NONE;
     union
     {
@@ -480,30 +535,52 @@ struct OpenGL
         rt_pass_compute_t* currentComputePass;
         rt_pass_transfer_t* currentTransferPass;
     };
-    std::vector<GLuint> buffers;
-    std::vector<GLuint> textures;
-    std::vector<GLuint> samplers;
-    std::vector<GLuint> programs;
-    std::vector<GLuint> vertexArrays;
-    std::vector<GLuint> framebuffers;
 } static thread_local opengl;
 
-static void gl_track(std::vector<GLuint>& objects, GLuint handle)
+static gl_buffer_native_t* gl_buffer_native(rt_buffer_t const& buffer)
 {
-    if (handle) objects.push_back(handle);
+    if (!buffer.native || buffer.handle == 0) return nullptr;
+    auto it = opengl.buffers.find(buffer.handle);
+    return it == opengl.buffers.end() ? nullptr : &it->second;
 }
 
-static void gl_untrack(std::vector<GLuint>& objects, GLuint handle)
+static gl_texture_native_t* gl_texture_native(rt_texture_t const& texture)
 {
-    if (!handle) return;
-    for (auto it = objects.begin(); it != objects.end(); ++it)
-    {
-        if (*it == handle)
-        {
-            objects.erase(it);
-            return;
-        }
-    }
+    if (!texture.native || texture.handle == 0) return nullptr;
+    auto it = opengl.textures.find(texture.handle);
+    return it == opengl.textures.end() ? nullptr : &it->second;
+}
+
+static gl_sampler_native_t* gl_sampler_native(rt_sampler_t const& sampler)
+{
+    if (!sampler.native || sampler.handle == 0) return nullptr;
+    auto it = opengl.samplers.find(sampler.handle);
+    return it == opengl.samplers.end() ? nullptr : &it->second;
+}
+
+static gl_module_native_t* gl_module_native(uint32_t handle, void* native)
+{
+    if (!native || handle == 0) return nullptr;
+    auto it = opengl.modules.find(handle);
+    return it == opengl.modules.end() ? nullptr : &it->second;
+}
+
+static GLuint gl_buffer_name(rt_buffer_t const& buffer)
+{
+    auto* native = gl_buffer_native(buffer);
+    return native ? native->handle : 0;
+}
+
+static GLuint gl_texture_name(rt_texture_t const& texture)
+{
+    auto* native = gl_texture_native(texture);
+    return native ? native->handle : 0;
+}
+
+static GLuint gl_sampler_name(rt_sampler_t const& sampler)
+{
+    auto* native = gl_sampler_native(sampler);
+    return native ? native->handle : 0;
 }
 
 void gl_load_library()
@@ -596,34 +673,44 @@ void gl_unload_library()
     glBindBuffer(GL_ARRAY_BUFFER, 0);
     glBindTexture(GL_TEXTURE_2D, 0);
 
-    if (!opengl.framebuffers.empty())
+    for (auto& item : opengl.renderPasses)
     {
-        glDeleteFramebuffers((GLsizei)opengl.framebuffers.size(), opengl.framebuffers.data());
-        opengl.framebuffers.clear();
+        if (item.second.framebuffer)
+            glDeleteFramebuffers(1, &item.second.framebuffer);
     }
-    if (!opengl.vertexArrays.empty())
+    opengl.renderPasses.clear();
+    for (auto& item : opengl.modules)
     {
-        glDeleteVertexArrays((GLsizei)opengl.vertexArrays.size(), opengl.vertexArrays.data());
-        opengl.vertexArrays.clear();
+        if (item.second.vao)
+            glDeleteVertexArrays(1, &item.second.vao);
+        if (item.second.program)
+            glDeleteProgram(item.second.program);
     }
-    for (GLuint program : opengl.programs)
-        glDeleteProgram(program);
-    opengl.programs.clear();
-    if (!opengl.samplers.empty())
+    opengl.modules.clear();
+    for (auto& item : opengl.samplers)
     {
-        glDeleteSamplers((GLsizei)opengl.samplers.size(), opengl.samplers.data());
-        opengl.samplers.clear();
+        if (item.second.handle)
+            glDeleteSamplers(1, &item.second.handle);
     }
-    if (!opengl.textures.empty())
+    opengl.samplers.clear();
+    for (auto& item : opengl.textures)
     {
-        glDeleteTextures((GLsizei)opengl.textures.size(), opengl.textures.data());
-        opengl.textures.clear();
+        if (item.second.handle)
+            glDeleteTextures(1, &item.second.handle);
     }
-    if (!opengl.buffers.empty())
+    opengl.textures.clear();
+    for (auto& item : opengl.buffers)
     {
-        glDeleteBuffers((GLsizei)opengl.buffers.size(), opengl.buffers.data());
-        opengl.buffers.clear();
+        if (item.second.handle)
+            glDeleteBuffers(1, &item.second.handle);
     }
+    opengl.buffers.clear();
+    opengl.meshes.clear();
+    opengl.meshlets.clear();
+    opengl.computePasses.clear();
+    opengl.transferPasses.clear();
+    opengl.bufferID = opengl.textureID = opengl.samplerID = opengl.moduleID = 0;
+    opengl.meshID = opengl.meshletID = opengl.passID = 0;
 
     opengl.currentPassType = RT_MODULE_NONE;
     opengl.currentPipeline = nullptr;
@@ -699,9 +786,10 @@ rt_buffer_t gl_create_buffer(rt_buffer_info_t const& info)
     }
 
     rt_buffer_t result = {};
-    glGenBuffers(1, &result.handle);
-    gl_track(opengl.buffers, result.handle);
-    glBindBuffer(GL_ARRAY_BUFFER, result.handle);
+    auto handle = opengl.bufferID + 1;
+    auto& native = opengl.buffers[handle];
+    glGenBuffers(1, &native.handle);
+    glBindBuffer(GL_ARRAY_BUFFER, native.handle);
 
     GLbitfield flags = 0;
     if (info.usage & RT_BUFFER_USAGE_MAP_READ)
@@ -713,16 +801,23 @@ rt_buffer_t gl_create_buffer(rt_buffer_info_t const& info)
     glBufferStorage(GL_ARRAY_BUFFER, (GLsizeiptr)info.size, info.data, flags);
     glBindBuffer(GL_ARRAY_BUFFER, 0);
 
+    opengl.bufferID = handle;
+    result.handle = handle;
     result.size = info.size;
     result.usage = info.usage;
+    result.native = &native;
     return result;
 }
 
 void gl_destroy_buffer(rt_buffer_t& buffer)
 {
-    gl_untrack(opengl.buffers, buffer.handle);
-    glDeleteBuffers(1, &buffer.handle);
-    buffer.handle = 0;
+    if (auto* native = gl_buffer_native(buffer))
+    {
+        if (native->handle)
+            glDeleteBuffers(1, &native->handle);
+        opengl.buffers.erase(buffer.handle);
+    }
+    buffer = {};
 }
 
 void gl_bind_buffer(rt_buffer_t& buffer, rt_buffer_bind_t bind)
@@ -735,10 +830,10 @@ void gl_bind_buffer(rt_buffer_t& buffer, rt_buffer_bind_t bind)
     switch (bind.target)
     {
     case RT_UNIFORM_BUFFER:
-        glBindBufferBase(rt_to_gl_buffer_target(bind.target), bind.binding, buffer.handle);
+        glBindBufferBase(rt_to_gl_buffer_target(bind.target), bind.binding, gl_buffer_name(buffer));
         break;
     case RT_SHADER_STORAGE_BUFFER:
-        glBindBufferBase(rt_to_gl_buffer_target(bind.target), bind.binding, buffer.handle);
+        glBindBufferBase(rt_to_gl_buffer_target(bind.target), bind.binding, gl_buffer_name(buffer));
         break;
     default:
         fprintf(stderr, "Unsupported buffer target");
@@ -776,7 +871,7 @@ void* gl_map_buffer(rt_buffer_t& buffer, rt_access_t mode, size_t offset, size_t
     if (buffer.usage & (RT_BUFFER_USAGE_MAP_READ | RT_BUFFER_USAGE_MAP_WRITE))
         access |= GL_MAP_PERSISTENT_BIT | GL_MAP_COHERENT_BIT;
 
-    glBindBuffer(GL_ARRAY_BUFFER, buffer.handle);
+    glBindBuffer(GL_ARRAY_BUFFER, gl_buffer_name(buffer));
     void* ptr = glMapBufferRange(GL_ARRAY_BUFFER, (GLintptr)offset, (GLsizeiptr)size, access);
     glBindBuffer(GL_ARRAY_BUFFER, 0);
     return ptr;
@@ -784,10 +879,10 @@ void* gl_map_buffer(rt_buffer_t& buffer, rt_access_t mode, size_t offset, size_t
 
 void gl_unmap_buffer(rt_buffer_t& buffer)
 {
-    if (!buffer.handle)
+    if (!gl_buffer_name(buffer))
         return;
 
-    glBindBuffer(GL_ARRAY_BUFFER, buffer.handle);
+    glBindBuffer(GL_ARRAY_BUFFER, gl_buffer_name(buffer));
     glUnmapBuffer(GL_ARRAY_BUFFER);
     glBindBuffer(GL_ARRAY_BUFFER, 0);
 }
@@ -840,9 +935,10 @@ rt_texture_t gl_create_texture(rt_texture_info_t const& info)
     GLenum glType = GL_UNSIGNED_BYTE;
     rt_to_gl_transfer(info.format, RT_TEXTURE_ASPECT_ALL, false, glFormat, glType);
 
-    glGenTextures(1, &result.handle);
-    gl_track(opengl.textures, result.handle);
-    glBindTexture(glTarget, result.handle);
+    auto handle = opengl.textureID + 1;
+    auto& native = opengl.textures[handle];
+    glGenTextures(1, &native.handle);
+    glBindTexture(glTarget, native.handle);
 
     if (target == RT_TEXTURE_1D)
     {
@@ -889,23 +985,23 @@ rt_texture_t gl_create_texture(rt_texture_info_t const& info)
             if (glType == GL_FLOAT)
             {
                 GLfloat clearValue = 1.0f;
-                glClearTexImage(result.handle, 0, glFormat, glType, &clearValue);
+                glClearTexImage(native.handle, 0, glFormat, glType, &clearValue);
             }
             else if (glType == GL_UNSIGNED_SHORT)
             {
                 GLushort clearValue = 0xFFFF;
-                glClearTexImage(result.handle, 0, glFormat, glType, &clearValue);
+                glClearTexImage(native.handle, 0, glFormat, glType, &clearValue);
             }
             else
             {
                 GLuint clearValue = 0xFFFFFFFFu;
-                glClearTexImage(result.handle, 0, glFormat, glType, &clearValue);
+                glClearTexImage(native.handle, 0, glFormat, glType, &clearValue);
             }
         }
         else if (info.format == RT_TEXTURE_DEPTH24PLUS_STENCIL8)
         {
             GLuint clearValue = 0xFFFFFF00u;
-            glClearTexImage(result.handle, 0, glFormat, glType, &clearValue);
+            glClearTexImage(native.handle, 0, glFormat, glType, &clearValue);
         }
         else if (info.format == RT_TEXTURE_DEPTH32FLOAT_STENCIL8)
         {
@@ -914,17 +1010,17 @@ rt_texture_t gl_create_texture(rt_texture_info_t const& info)
                 float depth;
                 uint32_t stencil;
             } clearValue = {1.0f, 0};
-            glClearTexImage(result.handle, 0, glFormat, GL_FLOAT_32_UNSIGNED_INT_24_8_REV, &clearValue);
+            glClearTexImage(native.handle, 0, glFormat, GL_FLOAT_32_UNSIGNED_INT_24_8_REV, &clearValue);
         }
         else if (glType == GL_FLOAT || glType == GL_HALF_FLOAT)
         {
             GLfloat clearValue[4] = {0, 0, 0, 0};
-            glClearTexImage(result.handle, 0, glFormat, glType, clearValue);
+            glClearTexImage(native.handle, 0, glFormat, glType, clearValue);
         }
         else
         {
             GLubyte clearValue[4] = {0, 0, 0, 0};
-            glClearTexImage(result.handle, 0, glFormat, glType, clearValue);
+            glClearTexImage(native.handle, 0, glFormat, glType, clearValue);
         }
     }
 
@@ -951,6 +1047,8 @@ rt_texture_t gl_create_texture(rt_texture_info_t const& info)
 
     glBindTexture(glTarget, 0);
 
+    opengl.textureID = handle;
+    result.handle = handle;
     result.width = info.width;
     result.height = (target == RT_TEXTURE_1D) ? 1 : info.height;
     result.depth = depth;
@@ -959,6 +1057,7 @@ rt_texture_t gl_create_texture(rt_texture_info_t const& info)
     result.usage = info.usage;
     result.mipmaps = mipmaps;
     result.samples = samples;
+    result.native = &native;
     return result;
 }
 
@@ -1035,9 +1134,13 @@ rt_texture_t gl_create_texture_depth_stencil(uint32_t width, uint32_t height, co
 
 void gl_destroy_texture(rt_texture_t& texture)
 {
-    gl_untrack(opengl.textures, texture.handle);
-    glDeleteTextures(1, &texture.handle);
-    texture.handle = 0;
+    if (auto* native = gl_texture_native(texture))
+    {
+        if (native->handle)
+            glDeleteTextures(1, &native->handle);
+        opengl.textures.erase(texture.handle);
+    }
+    texture = {};
 }
 
 void gl_bind_texture(rt_texture_t& texture, rt_texture_bind_t bind)
@@ -1049,7 +1152,7 @@ void gl_bind_texture(rt_texture_t& texture, rt_texture_bind_t bind)
     }
 
     glActiveTexture(GL_TEXTURE0 + bind.binding);
-    glBindTexture(rt_to_gl_texture_target(texture.target), texture.handle);
+    glBindTexture(rt_to_gl_texture_target(texture.target), gl_texture_name(texture));
 
     if (rt_texture_has_depth(texture.format) || rt_texture_has_stencil(texture.format))
     {
@@ -1073,7 +1176,7 @@ void gl_bind_texture_storage(rt_texture_t& texture, rt_texture_storage_bind_t bi
         abort();
     }
 
-    glBindImageTexture(bind.binding, texture.handle, (GLint)bind.base_level, 1 < bind.layer_count,
+    glBindImageTexture(bind.binding, gl_texture_name(texture), (GLint)bind.base_level, 1 < bind.layer_count,
                        (GLint)bind.base_layer, rt_to_gl_access(bind.access), rt_to_gl_texture_format(texture.format));
 }
 
@@ -1082,27 +1185,31 @@ void gl_bind_texture_storage(rt_texture_t& texture, rt_texture_storage_bind_t bi
 rt_sampler_t gl_create_sampler(rt_sampler_info_t const& info)
 {
     rt_sampler_t result = {};
+    auto handle = opengl.samplerID + 1;
+    auto& native = opengl.samplers[handle];
+    glGenSamplers(1, &native.handle);
 
-    glGenSamplers(1, &result.handle);
-    gl_track(opengl.samplers, result.handle);
+    glSamplerParameteri(native.handle, GL_TEXTURE_MIN_FILTER, rt_to_gl_filter(info.min_filter));
+    glSamplerParameteri(native.handle, GL_TEXTURE_MAG_FILTER, rt_to_gl_filter(info.mag_filter));
+    glSamplerParameteri(native.handle, GL_TEXTURE_WRAP_S, rt_to_gl_wrap(info.wrap_s));
+    glSamplerParameteri(native.handle, GL_TEXTURE_WRAP_T, rt_to_gl_wrap(info.wrap_t));
+    glSamplerParameteri(native.handle, GL_TEXTURE_WRAP_R, rt_to_gl_wrap(info.wrap_r));
 
-    // 设置过滤方式
-    glSamplerParameteri(result.handle, GL_TEXTURE_MIN_FILTER, rt_to_gl_filter(info.min_filter));
-    glSamplerParameteri(result.handle, GL_TEXTURE_MAG_FILTER, rt_to_gl_filter(info.mag_filter));
-
-    // 设置环绕方式
-    glSamplerParameteri(result.handle, GL_TEXTURE_WRAP_S, rt_to_gl_wrap(info.wrap_s));
-    glSamplerParameteri(result.handle, GL_TEXTURE_WRAP_T, rt_to_gl_wrap(info.wrap_t));
-    glSamplerParameteri(result.handle, GL_TEXTURE_WRAP_R, rt_to_gl_wrap(info.wrap_r));
-
+    opengl.samplerID = handle;
+    result.handle = handle;
+    result.native = &native;
     return result;
 }
 
 void gl_destroy_sampler(rt_sampler_t& sampler)
 {
-    gl_untrack(opengl.samplers, sampler.handle);
-    glDeleteSamplers(1, &sampler.handle);
-    sampler.handle = 0;
+    if (auto* native = gl_sampler_native(sampler))
+    {
+        if (native->handle)
+            glDeleteSamplers(1, &native->handle);
+        opengl.samplers.erase(sampler.handle);
+    }
+    sampler = {};
 }
 
 void gl_bind_sampler(rt_sampler_t& sampler, rt_sampler_bind_t bind)
@@ -1113,7 +1220,7 @@ void gl_bind_sampler(rt_sampler_t& sampler, rt_sampler_bind_t bind)
         abort();
     }
 
-    glBindSampler(bind.binding, sampler.handle);
+    glBindSampler(bind.binding, gl_sampler_name(sampler));
 }
 
 // ====================================================================
@@ -1143,22 +1250,25 @@ rt_module_compute_t gl_create_module_compute(rt_module_compute_info_t const& inf
         abort();
     }
 
-    result.handle = glCreateProgram();
-    gl_track(opengl.programs, result.handle);
-    glAttachShader(result.handle, cs);
-    glLinkProgram(result.handle);
+    auto handle = opengl.moduleID + 1;
+    auto& native = opengl.modules[handle];
+    native.program = glCreateProgram();
+    glAttachShader(native.program, cs);
+    glLinkProgram(native.program);
 
-    glGetProgramiv(result.handle, GL_LINK_STATUS, &success);
+    glGetProgramiv(native.program, GL_LINK_STATUS, &success);
     if (!success)
     {
         char log[1024];
-        glGetProgramInfoLog(result.handle, sizeof(log), nullptr, log);
-        fprintf(stderr, "Compute program link error:\n%s\n", log);
+        glGetProgramInfoLog(native.program, sizeof(log), nullptr, log);
         abort();
     }
 
     glDeleteShader(cs);
 
+    opengl.moduleID = handle;
+    result.handle = handle;
+    result.native = &native;
     return result;
 }
 
@@ -1205,20 +1315,21 @@ rt_module_render_t gl_create_module_render(rt_module_render_info_t const& info)
     }
 
     // ---- Program ----
-    result.handle = glCreateProgram();
-    gl_track(opengl.programs, result.handle);
+    auto handle = opengl.moduleID + 1;
+    auto& native = opengl.modules[handle];
+    native.program = glCreateProgram();
     if (vs)
-        glAttachShader(result.handle, vs);
+        glAttachShader(native.program, vs);
     if (fs)
-        glAttachShader(result.handle, fs);
-    glLinkProgram(result.handle);
+        glAttachShader(native.program, fs);
+    glLinkProgram(native.program);
 
     GLint success = 0;
-    glGetProgramiv(result.handle, GL_LINK_STATUS, &success);
+    glGetProgramiv(native.program, GL_LINK_STATUS, &success);
     if (!success)
     {
         char log[1024];
-        glGetProgramInfoLog(result.handle, sizeof(log), nullptr, log);
+        glGetProgramInfoLog(native.program, sizeof(log), nullptr, log);
         fprintf(stderr, "Program link error:\n%s\n", log);
         abort();
     }
@@ -1226,10 +1337,8 @@ rt_module_render_t gl_create_module_render(rt_module_render_info_t const& info)
     glDeleteShader(vs);
     glDeleteShader(fs);
 
-    // ---- Vertex Array ----
-    glGenVertexArrays(1, &result.vertex_vao);
-    gl_track(opengl.vertexArrays, result.vertex_vao);
-    glBindVertexArray(result.vertex_vao);
+    glGenVertexArrays(1, &native.vao);
+    glBindVertexArray(native.vao);
     for (uint32_t i = 0; i < std::size(info.vertex); ++i)
     {
         auto& vertex = info.vertex[i];
@@ -1284,6 +1393,9 @@ rt_module_render_t gl_create_module_render(rt_module_render_info_t const& info)
     result.front_face = info.front_face;
     result.fill_mode = info.fill_mode;
     result.primitive = info.primitive;
+    opengl.moduleID = handle;
+    result.handle = handle;
+    result.native = &native;
     return result;
 }
 
@@ -1349,20 +1461,21 @@ rt_module_render_t gl_create_module_meshlet(rt_module_render_info_t const& info)
     }
 
     // ---- Program ----
-    result.handle = glCreateProgram();
-    gl_track(opengl.programs, result.handle);
+    auto handle = opengl.moduleID + 1;
+    auto& native = opengl.modules[handle];
+    native.program = glCreateProgram();
     if (ts)
-        glAttachShader(result.handle, ts);
-    glAttachShader(result.handle, ms);
+        glAttachShader(native.program, ts);
+    glAttachShader(native.program, ms);
     if (fs)
-        glAttachShader(result.handle, fs);
-    glLinkProgram(result.handle);
+        glAttachShader(native.program, fs);
+    glLinkProgram(native.program);
 
-    glGetProgramiv(result.handle, GL_LINK_STATUS, &success);
+    glGetProgramiv(native.program, GL_LINK_STATUS, &success);
     if (!success)
     {
         char log[1024];
-        glGetProgramInfoLog(result.handle, sizeof(log), nullptr, log);
+        glGetProgramInfoLog(native.program, sizeof(log), nullptr, log);
         fprintf(stderr, "Mesh program link error:\n%s\n", log);
         abort();
     }
@@ -1413,27 +1526,36 @@ rt_module_render_t gl_create_module_meshlet(rt_module_render_info_t const& info)
     result.front_face = info.front_face;
     result.fill_mode = info.fill_mode;
     result.primitive = info.primitive;
+    opengl.moduleID = handle;
+    result.handle = handle;
+    result.native = &native;
     return result;
 }
 
 void gl_destroy_module_render(rt_module_render_t& module)
 {
-    if (module.vertex_vao)
+    if (auto* native = gl_module_native(module.handle, module.native))
     {
-        gl_untrack(opengl.vertexArrays, module.vertex_vao);
-        glDeleteVertexArrays(1, &module.vertex_vao);
-        module.vertex_vao = 0;
+        if (native->vao)
+            glDeleteVertexArrays(1, &native->vao);
+        if (native->program)
+            glDeleteProgram(native->program);
+        opengl.modules.erase(module.handle);
     }
-    gl_untrack(opengl.programs, module.handle);
-    glDeleteProgram(module.handle);
     module.handle = 0;
+    module.native = nullptr;
 }
 
 void gl_destroy_module_compute(rt_module_compute_t& module)
 {
-    gl_untrack(opengl.programs, module.handle);
-    glDeleteProgram(module.handle);
+    if (auto* native = gl_module_native(module.handle, module.native))
+    {
+        if (native->program)
+            glDeleteProgram(native->program);
+        opengl.modules.erase(module.handle);
+    }
     module.handle = 0;
+    module.native = nullptr;
 }
 
 void gl_push_constant(uint8_t const* buffer, size_t length)
@@ -1529,15 +1651,20 @@ void gl_begin_compute(rt_pass_compute_t& pass)
         fprintf(stderr, "Pipeline not end\n");
         abort();
     }
-    if (pass.module.handle == 0)
+    if (pass.module.handle == 0 || !gl_module_native(pass.module.handle, pass.module.native))
     {
         fprintf(stderr, "Pipeline module is not created\n");
         abort();
     }
+    auto handle = opengl.passID + 1;
+    auto& native = opengl.computePasses[handle];
+    pass.handle = handle;
+    pass.native = &native;
     opengl.currentComputePass = &pass;
     opengl.currentPassType = RT_MODULE_COMPUTE;
 
-    glUseProgram(pass.module.handle);
+    glUseProgram(gl_module_native(pass.module.handle, pass.module.native)->program);
+    opengl.passID = handle;
 }
 
 void gl_end_compute(rt_pass_compute_t& pass)
@@ -1552,6 +1679,9 @@ void gl_end_compute(rt_pass_compute_t& pass)
         fprintf(stderr, "Pipeline not end\n");
         abort();
     }
+    opengl.computePasses.erase(pass.handle);
+    pass.handle = 0;
+    pass.native = nullptr;
     opengl.currentPassType = RT_MODULE_NONE;
     opengl.currentComputePass = nullptr;
 
@@ -1581,17 +1711,21 @@ void gl_begin_render(rt_pass_render_t& pass)
         fprintf(stderr, "Pipeline not end\n");
         abort();
     }
-    if (pass.module.handle == 0)
+    if (pass.module.handle == 0 || !gl_module_native(pass.module.handle, pass.module.native))
     {
         fprintf(stderr, "Pipeline module is not created\n");
         abort();
     }
+    auto handle = opengl.passID + 1;
+    auto& native = opengl.renderPasses[handle];
+    pass.handle = handle;
+    pass.native = &native;
     opengl.currentPassType = RT_MODULE_RENDER;
     opengl.currentRenderPass = &pass;
 
-    pass.handle = 0;
-    glUseProgram(pass.module.handle);
-    glBindVertexArray(pass.module.vertex_vao);
+    auto* moduleNative = gl_module_native(pass.module.handle, pass.module.native);
+    glUseProgram(moduleNative->program);
+    glBindVertexArray(moduleNative->vao);
 
     glDisable(GL_SCISSOR_TEST);
 
@@ -1603,9 +1737,8 @@ void gl_begin_render(rt_pass_render_t& pass)
     }
     if (offscreen)
     {
-        glGenFramebuffers(1, &pass.handle);
-        gl_track(opengl.framebuffers, pass.handle);
-        glBindFramebuffer(GL_FRAMEBUFFER, pass.handle);
+        glGenFramebuffers(1, &native.framebuffer);
+        glBindFramebuffer(GL_FRAMEBUFFER, native.framebuffer);
 
         // Render State
 
@@ -1616,8 +1749,8 @@ void gl_begin_render(rt_pass_render_t& pass)
         {
             if (pass.colors[i].texture.handle == 0 || pass.colors[i].texture.format == RT_TEXTURE_NONE)
                 continue;
-            glBindTexture(rt_to_gl_texture_target(pass.colors[i].texture.target), pass.colors[i].texture.handle);
-            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + (GLenum)i, rt_to_gl_texture_target(pass.colors[i].texture.target), pass.colors[i].texture.handle, 0);
+            glBindTexture(rt_to_gl_texture_target(pass.colors[i].texture.target), gl_texture_name(pass.colors[i].texture));
+            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + (GLenum)i, rt_to_gl_texture_target(pass.colors[i].texture.target), gl_texture_name(pass.colors[i].texture), 0);
             colorAttachments[i] = GL_COLOR_ATTACHMENT0 + (GLenum)i;
             width = std::max(width, pass.colors[i].texture.width);
             height = std::max(height, pass.colors[i].texture.height);
@@ -1627,18 +1760,18 @@ void gl_begin_render(rt_pass_render_t& pass)
 
         if (pass.depth.texture.handle)
         {
-            glBindTexture(rt_to_gl_texture_target(pass.depth.texture.target), pass.depth.texture.handle);
+            glBindTexture(rt_to_gl_texture_target(pass.depth.texture.target), gl_texture_name(pass.depth.texture));
             if (rt_texture_has_depth(pass.depth.texture.format) && rt_texture_has_stencil(pass.depth.texture.format))
             {
-                glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, rt_to_gl_texture_target(pass.depth.texture.target), pass.depth.texture.handle, 0);
+                glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, rt_to_gl_texture_target(pass.depth.texture.target), gl_texture_name(pass.depth.texture), 0);
             }
             else if (rt_texture_has_depth(pass.depth.texture.format))
             {
-                glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, rt_to_gl_texture_target(pass.depth.texture.target), pass.depth.texture.handle, 0);
+                glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, rt_to_gl_texture_target(pass.depth.texture.target), gl_texture_name(pass.depth.texture), 0);
             }
             else if (rt_texture_has_stencil(pass.depth.texture.format))
             {
-                glFramebufferTexture2D(GL_FRAMEBUFFER, GL_STENCIL_ATTACHMENT, rt_to_gl_texture_target(pass.depth.texture.target), pass.depth.texture.handle, 0);
+                glFramebufferTexture2D(GL_FRAMEBUFFER, GL_STENCIL_ATTACHMENT, rt_to_gl_texture_target(pass.depth.texture.target), gl_texture_name(pass.depth.texture), 0);
             }
             else
             {
@@ -1823,6 +1956,7 @@ void gl_begin_render(rt_pass_render_t& pass)
     }
 
     glPolygonMode(GL_FRONT_AND_BACK, rt_to_gl_fill(pass.module.fill_mode));
+    opengl.passID = handle;
 }
 
 void gl_end_render(rt_pass_render_t& pass)
@@ -1849,10 +1983,15 @@ void gl_end_render(rt_pass_render_t& pass)
     if (offscreen)
     {
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
-        gl_untrack(opengl.framebuffers, pass.handle);
-        glDeleteFramebuffers(1, &pass.handle);
-        pass.handle = 0;
+        if (auto* native = (gl_pass_render_native_t*)pass.native)
+        {
+            if (native->framebuffer)
+                glDeleteFramebuffers(1, &native->framebuffer);
+        }
     }
+    opengl.renderPasses.erase(pass.handle);
+    pass.handle = 0;
+    pass.native = nullptr;
 
     glUseProgram(0);
 }
@@ -2118,8 +2257,13 @@ void gl_begin_transfer(rt_pass_transfer_t& pass)
         fprintf(stderr, "Pipeline not end\n");
         abort();
     }
+    auto handle = opengl.passID + 1;
+    auto& native = opengl.transferPasses[handle];
+    pass.handle = handle;
+    pass.native = &native;
     opengl.currentPassType = RT_MODULE_TRANSFER;
     opengl.currentTransferPass = &pass;
+    opengl.passID = handle;
 }
 
 void gl_end_transfer(rt_pass_transfer_t& pass)
@@ -2129,6 +2273,9 @@ void gl_end_transfer(rt_pass_transfer_t& pass)
         fprintf(stderr, "Pipeline not end\n");
         abort();
     }
+    opengl.transferPasses.erase(pass.handle);
+    pass.handle = 0;
+    pass.native = nullptr;
     opengl.currentPassType = RT_MODULE_NONE;
     opengl.currentTransferPass = nullptr;
 
@@ -2157,7 +2304,7 @@ void gl_copy_buffer(rt_buffer_copy_t source, rt_buffer_copy_t destination, size_
     if (destination.offset + copySize > destination.buffer.size)
         return;
 
-    glCopyNamedBufferSubData(source.buffer.handle, destination.buffer.handle,
+    glCopyNamedBufferSubData(gl_buffer_name(source.buffer), gl_buffer_name(destination.buffer),
                              (GLintptr)source.offset, (GLintptr)destination.offset, (GLsizeiptr)copySize);
 }
 
@@ -2180,7 +2327,7 @@ void gl_copy_buffer_data(rt_buffer_data_t source, rt_buffer_copy_t destination, 
     if (destination.offset + copySize > destination.buffer.size)
         return;
 
-    glNamedBufferSubData(destination.buffer.handle, (GLintptr)destination.offset, (GLsizeiptr)copySize,
+    glNamedBufferSubData(gl_buffer_name(destination.buffer), (GLintptr)destination.offset, (GLsizeiptr)copySize,
                          source.data + source.offset);
 }
 
@@ -2209,11 +2356,11 @@ void gl_copy_buffer_texture(rt_texture_copy_t source, rt_buffer_texel_t destinat
         return;
     uint32_t depth = std::max(1U, copySize.z);
 
-    glBindBuffer(GL_PIXEL_PACK_BUFFER, destination.buffer.handle);
+    glBindBuffer(GL_PIXEL_PACK_BUFFER, gl_buffer_name(destination.buffer));
     glPixelStorei(GL_PACK_ALIGNMENT, 1);
     glPixelStorei(GL_PACK_ROW_LENGTH, (GLint)(destination.bytesPerRow / bytesPerPixel));
     glPixelStorei(GL_PACK_IMAGE_HEIGHT, (GLint)destination.rowsPerImage);
-    glGetTextureSubImage(source.texture.handle, (GLint)source.mipLevel,
+    glGetTextureSubImage(gl_texture_name(source.texture), (GLint)source.mipLevel,
                          (GLint)source.origin.x, (GLint)source.origin.y, (GLint)source.origin.z,
                          (GLsizei)copySize.x, (GLsizei)copySize.y, (GLsizei)depth,
                          format, type, (GLsizei)(destination.buffer.size - destination.offset),
@@ -2242,13 +2389,13 @@ void gl_copy_texture(rt_texture_copy_t source, rt_texture_copy_t destination, rt
         return;
 
     GLsizei depth = (GLsizei)std::max(1U, copySize.z);
-    glCopyImageSubData(source.texture.handle, rt_to_gl_texture_target(source.texture.target), (GLint)source.mipLevel,
+    glCopyImageSubData(gl_texture_name(source.texture), rt_to_gl_texture_target(source.texture.target), (GLint)source.mipLevel,
                        (GLint)source.origin.x, (GLint)source.origin.y, (GLint)source.origin.z,
-                       destination.texture.handle, rt_to_gl_texture_target(destination.texture.target), (GLint)destination.mipLevel,
+                       gl_texture_name(destination.texture), rt_to_gl_texture_target(destination.texture.target), (GLint)destination.mipLevel,
                        (GLint)destination.origin.x, (GLint)destination.origin.y, (GLint)destination.origin.z,
                        (GLsizei)copySize.x, (GLsizei)copySize.y, depth);
 
-    if (destination.texture.mipmaps > 1) glGenerateTextureMipmap(destination.texture.handle);
+    if (destination.texture.mipmaps > 1) glGenerateTextureMipmap(gl_texture_name(destination.texture));
 }
 
 void gl_copy_texture_data(rt_texture_data_t source, rt_texture_copy_t destination, rt_size_t copySize)
@@ -2283,26 +2430,26 @@ void gl_copy_texture_data(rt_texture_data_t source, rt_texture_copy_t destinatio
     glPixelStorei(GL_UNPACK_IMAGE_HEIGHT, (GLint)source.rowsPerImage);
     if (destination.texture.target == RT_TEXTURE_1D)
     {
-        glTextureSubImage1D(destination.texture.handle, (GLint)destination.mipLevel,
+        glTextureSubImage1D(gl_texture_name(destination.texture), (GLint)destination.mipLevel,
                             (GLint)destination.origin.x, (GLsizei)copySize.x, format, type, data);
 
-        if (destination.texture.mipmaps > 1) glGenerateTextureMipmap(destination.texture.handle);
+        if (destination.texture.mipmaps > 1) glGenerateTextureMipmap(gl_texture_name(destination.texture));
     }
     else if (destination.texture.target == RT_TEXTURE_2D)
     {
-        glTextureSubImage2D(destination.texture.handle, (GLint)destination.mipLevel,
+        glTextureSubImage2D(gl_texture_name(destination.texture), (GLint)destination.mipLevel,
                             (GLint)destination.origin.x, (GLint)destination.origin.y,
                             (GLsizei)copySize.x, (GLsizei)copySize.y, format, type, data);
 
-        if (destination.texture.mipmaps > 1) glGenerateTextureMipmap(destination.texture.handle);
+        if (destination.texture.mipmaps > 1) glGenerateTextureMipmap(gl_texture_name(destination.texture));
     }
     else if (destination.texture.target == RT_TEXTURE_3D || destination.texture.target == RT_TEXTURE_2D_ARRAY)
     {
-        glTextureSubImage3D(destination.texture.handle, (GLint)destination.mipLevel,
+        glTextureSubImage3D(gl_texture_name(destination.texture), (GLint)destination.mipLevel,
                             (GLint)destination.origin.x, (GLint)destination.origin.y, (GLint)destination.origin.z,
                             (GLsizei)copySize.x, (GLsizei)copySize.y, (GLsizei)std::max(1U, copySize.z), format, type, data);
 
-        if (destination.texture.mipmaps > 1) glGenerateTextureMipmap(destination.texture.handle);
+        if (destination.texture.mipmaps > 1) glGenerateTextureMipmap(gl_texture_name(destination.texture));
     }
     else
     {
@@ -2341,32 +2488,32 @@ void gl_copy_texture_buffer(rt_buffer_texel_t source, rt_texture_copy_t destinat
     // PBO 模式下 data 参数被解释为缓冲区内的字节偏移
     const void* data = (const void*)(uintptr_t)source.offset;
 
-    glBindBuffer(GL_PIXEL_UNPACK_BUFFER, source.buffer.handle);
+    glBindBuffer(GL_PIXEL_UNPACK_BUFFER, gl_buffer_name(source.buffer));
     glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
     glPixelStorei(GL_UNPACK_ROW_LENGTH, (GLint)(source.bytesPerRow / bytesPerPixel));
     glPixelStorei(GL_UNPACK_IMAGE_HEIGHT, (GLint)source.rowsPerImage);
     if (destination.texture.target == RT_TEXTURE_1D)
     {
-        glTextureSubImage1D(destination.texture.handle, (GLint)destination.mipLevel,
+        glTextureSubImage1D(gl_texture_name(destination.texture), (GLint)destination.mipLevel,
                             (GLint)destination.origin.x, (GLsizei)copySize.x, format, type, data);
 
-        if (destination.texture.mipmaps > 1) glGenerateTextureMipmap(destination.texture.handle);
+        if (destination.texture.mipmaps > 1) glGenerateTextureMipmap(gl_texture_name(destination.texture));
     }
     else if (destination.texture.target == RT_TEXTURE_2D)
     {
-        glTextureSubImage2D(destination.texture.handle, (GLint)destination.mipLevel,
+        glTextureSubImage2D(gl_texture_name(destination.texture), (GLint)destination.mipLevel,
                             (GLint)destination.origin.x, (GLint)destination.origin.y,
                             (GLsizei)copySize.x, (GLsizei)copySize.y, format, type, data);
 
-        if (destination.texture.mipmaps > 1) glGenerateTextureMipmap(destination.texture.handle);
+        if (destination.texture.mipmaps > 1) glGenerateTextureMipmap(gl_texture_name(destination.texture));
     }
     else if (destination.texture.target == RT_TEXTURE_3D || destination.texture.target == RT_TEXTURE_2D_ARRAY)
     {
-        glTextureSubImage3D(destination.texture.handle, (GLint)destination.mipLevel,
+        glTextureSubImage3D(gl_texture_name(destination.texture), (GLint)destination.mipLevel,
                             (GLint)destination.origin.x, (GLint)destination.origin.y, (GLint)destination.origin.z,
                             (GLsizei)copySize.x, (GLsizei)copySize.y, (GLsizei)std::max(1U, copySize.z), format, type, data);
 
-        if (destination.texture.mipmaps > 1) glGenerateTextureMipmap(destination.texture.handle);
+        if (destination.texture.mipmaps > 1) glGenerateTextureMipmap(gl_texture_name(destination.texture));
     }
     else
     {
@@ -2469,6 +2616,13 @@ rt_mesh_t gl_create_mesh(const float* vertices, // vec3
         result.index = gl_create_buffer({.size = index_count * sizeof(uint32_t), .usage = RT_BUFFER_USAGE_INDEX | RT_BUFFER_USAGE_COPY_DST, .data = indices,});
 
     std::iota(result.location, result.location + std::size(result.location), 0);
+    auto handle = opengl.meshID + 1;
+    auto& native = opengl.meshes[handle];
+    native.vertexCount = (uint32_t)vertex_count;
+    native.indexCount = (uint32_t)index_count;
+    opengl.meshID = handle;
+    result.handle = handle;
+    result.native = &native;
     return result;
 }
 
@@ -2477,6 +2631,9 @@ void gl_destroy_mesh(rt_mesh_t& mesh)
     for (auto& vertex : mesh.vertex)
         gl_destroy_buffer(vertex);
     gl_destroy_buffer(mesh.index);
+    opengl.meshes.erase(mesh.handle);
+    mesh.handle = 0;
+    mesh.native = nullptr;
 }
 
 void gl_draw_mesh(rt_mesh_t& mesh)
@@ -2507,7 +2664,7 @@ void gl_draw_mesh(rt_mesh_t& mesh)
         {
             if (mesh.vertex[k].handle == 0 || mesh.location[k] != layout.location)
                 continue;
-            buffer = mesh.vertex[k].handle;
+            buffer = gl_buffer_name(mesh.vertex[k]);
             if (vertex_count == 0 && stride > 0)
                 vertex_count = (GLsizei)(mesh.vertex[k].size / (size_t)stride);
             glBindVertexBuffer(layout.location, buffer, 0, buffer ? stride : 0);
@@ -2517,7 +2674,7 @@ void gl_draw_mesh(rt_mesh_t& mesh)
 
     if (mesh.index.handle)
     {
-        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, mesh.index.handle);
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, gl_buffer_name(mesh.index));
         GLsizei index_stride = rt_index_size(module.index_type);
         auto index_count = (GLsizei)(mesh.index.size / (size_t)index_stride);
         glDrawElements(rt_to_gl_primitive(module.primitive), index_count, rt_to_gl_index_type(module.index_type), (void*)0);
@@ -2557,7 +2714,7 @@ void gl_draw_mesh_multi(rt_mesh_t& mesh, uint32_t count)
         {
             if (mesh.vertex[k].handle == 0 || mesh.location[k] != layout.location)
                 continue;
-            buffer = mesh.vertex[k].handle;
+            buffer = gl_buffer_name(mesh.vertex[k]);
             if (vertex_count == 0 && stride > 0)
                 vertex_count = (GLsizei)(mesh.vertex[k].size / (size_t)stride);
             glBindVertexBuffer(layout.location, buffer, 0, buffer ? stride : 0);
@@ -2567,7 +2724,7 @@ void gl_draw_mesh_multi(rt_mesh_t& mesh, uint32_t count)
 
     if (mesh.index.handle)
     {
-        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, mesh.index.handle);
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, gl_buffer_name(mesh.index));
         GLsizei index_stride = rt_index_size(module.index_type);
         auto index_count = (GLsizei)(mesh.index.size / (size_t)index_stride);
         glDrawElementsInstanced(rt_to_gl_primitive(module.primitive), index_count, rt_to_gl_index_type(module.index_type), (void*)0, (int32_t)count);
@@ -2601,6 +2758,13 @@ rt_meshlet_t gl_create_meshlet(const float* vertices, // vec4
         result.index = gl_create_buffer({.size = index_count * sizeof(uint32_t), .usage = RT_BUFFER_USAGE_STORAGE | RT_BUFFER_USAGE_COPY_DST, .data = indices,});
 
     std::iota(result.location, result.location + std::size(result.location), 0);
+    auto handle = opengl.meshletID + 1;
+    auto& native = opengl.meshlets[handle];
+    native.vertexCount = (uint32_t)vertex_count;
+    native.indexCount = (uint32_t)index_count;
+    opengl.meshletID = handle;
+    result.handle = handle;
+    result.native = &native;
     return result;
 }
 
@@ -2609,6 +2773,9 @@ void gl_destroy_meshlet(rt_meshlet_t& meshlet)
     for (auto& vertex : meshlet.vertex)
         gl_destroy_buffer(vertex);
     gl_destroy_buffer(meshlet.index);
+    opengl.meshlets.erase(meshlet.handle);
+    meshlet.handle = 0;
+    meshlet.native = nullptr;
 }
 
 void gl_draw_meshlet(rt_meshlet_t& meshlet)

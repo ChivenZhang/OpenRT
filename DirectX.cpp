@@ -1776,7 +1776,6 @@ void dx_destroy_module_render(rt_module_render_t& module)
 {
     dx_destroy_module_native(module.handle, module.native);
     module.handle = 0;
-    module.vertex_vao = 0;
 }
 
 void dx_destroy_module_compute(rt_module_compute_t& module)
@@ -1826,8 +1825,9 @@ void dx_begin_compute(rt_pass_compute_t& pass)
         abort();
     }
     dx_clear_bindings();
-    pass.handle = ++direct.passID;
-    auto& native = direct.computePasses[pass.handle];
+    auto handle = direct.passID + 1;
+    auto& native = direct.computePasses[handle];
+    pass.handle = handle;
     pass.native = &native;
     direct.currentPassType = RT_MODULE_COMPUTE;
     direct.currentComputePass = &pass;
@@ -1836,6 +1836,7 @@ void dx_begin_compute(rt_pass_compute_t& pass)
         direct.cmd->SetPipelineState(mod->pipeline.Get());
     if (mod && mod->rootSignature)
         direct.cmd->SetComputeRootSignature(mod->rootSignature.Get());
+    direct.passID = handle;
 }
 
 void dx_end_compute(rt_pass_compute_t& pass)
@@ -1882,8 +1883,9 @@ void dx_begin_render(rt_pass_render_t& pass)
         abort();
     }
     dx_clear_bindings();
-    pass.handle = ++direct.passID;
-    auto& native = direct.renderPasses[pass.handle];
+    auto handle = direct.passID + 1;
+    auto& native = direct.renderPasses[handle];
+    pass.handle = handle;
     pass.native = &native;
     direct.currentPassType = RT_MODULE_RENDER;
     direct.currentRenderPass = &pass;
@@ -1957,6 +1959,7 @@ void dx_begin_render(rt_pass_render_t& pass)
     direct.cmd->OMSetRenderTargets(rtvCount, rtvCount ? rtvs : nullptr, FALSE, hasDepth ? &dsv : nullptr);
     dx_set_viewport(0, 0, (int32_t)width, (int32_t)height);
     dx_set_scissor(0, 0, (int32_t)width, (int32_t)height);
+    direct.passID = handle;
 }
 
 void dx_end_render(rt_pass_render_t& pass)
@@ -2025,11 +2028,13 @@ void dx_begin_transfer(rt_pass_transfer_t& pass)
         fprintf(stderr, "Pipeline not end");
         abort();
     }
-    pass.handle = ++direct.passID;
-    auto& native = direct.transferPasses[pass.handle];
+    auto handle = direct.passID + 1;
+    auto& native = direct.transferPasses[handle];
+    pass.handle = handle;
     pass.native = &native;
     direct.currentPassType = RT_MODULE_TRANSFER;
     direct.currentTransferPass = &pass;
+    direct.passID = handle;
 }
 
 void dx_end_transfer(rt_pass_transfer_t& pass)

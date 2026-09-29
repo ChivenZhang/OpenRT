@@ -1596,7 +1596,6 @@ void mt_destroy_module_render(rt_module_render_t& module)
 {
     mt_destroy_module_native(module.handle, module.native);
     module.handle = 0;
-    module.vertex_vao = 0;
 }
 
 void mt_destroy_module_compute(rt_module_compute_t& module)
@@ -1640,8 +1639,9 @@ void mt_begin_compute(rt_pass_compute_t& pass)
         abort();
     }
     mt_clear_bindings();
-    pass.handle = ++metal.passID;
-    auto& native = metal.computePasses[pass.handle];
+    auto handle = metal.passID + 1;
+    auto& native = metal.computePasses[handle];
+    pass.handle = handle;
     pass.native = &native;
     metal.currentPassType = RT_MODULE_COMPUTE;
     metal.currentComputePass = &pass;
@@ -1651,6 +1651,7 @@ void mt_begin_compute(rt_pass_compute_t& pass)
     auto* mod = (mt_module_native_t*)pass.module.native;
     if (mod && mod->computePipeline)
         metal.computeEncoder->setComputePipelineState(mod->computePipeline);
+    metal.passID = handle;
 }
 
 void mt_end_compute(rt_pass_compute_t& pass)
@@ -1707,8 +1708,9 @@ void mt_begin_render(rt_pass_render_t& pass)
         abort();
     }
     mt_clear_bindings();
-    pass.handle = ++metal.passID;
-    auto& native = metal.renderPasses[pass.handle];
+    auto handle = metal.passID + 1;
+    auto& native = metal.renderPasses[handle];
+    pass.handle = handle;
     pass.native = &native;
     metal.currentPassType = RT_MODULE_RENDER;
     metal.currentRenderPass = &pass;
@@ -1769,6 +1771,7 @@ void mt_begin_render(rt_pass_render_t& pass)
     }
     mt_set_viewport(0, 0, (int32_t)width, (int32_t)height);
     mt_set_scissor(0, 0, (int32_t)width, (int32_t)height);
+    metal.passID = handle;
 }
 
 void mt_end_render(rt_pass_render_t& pass)
@@ -1844,12 +1847,14 @@ void mt_begin_transfer(rt_pass_transfer_t& pass)
         fprintf(stderr, "Pipeline not end");
         abort();
     }
-    pass.handle = ++metal.passID;
-    auto& native = metal.transferPasses[pass.handle];
+    auto handle = metal.passID + 1;
+    auto& native = metal.transferPasses[handle];
+    pass.handle = handle;
     pass.native = &native;
     metal.currentPassType = RT_MODULE_TRANSFER;
     metal.currentTransferPass = &pass;
     mt_ensure_blit();
+    metal.passID = handle;
 }
 
 void mt_end_transfer(rt_pass_transfer_t& pass)

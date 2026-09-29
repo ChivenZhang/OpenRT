@@ -2293,7 +2293,6 @@ void vk_destroy_module_render(rt_module_render_t& module)
 {
     vk_destroy_module_native(module.handle, module.native);
     module.handle = 0;
-    module.vertex_vao = 0;
 }
 
 void vk_destroy_module_compute(rt_module_compute_t& module)
@@ -2345,15 +2344,17 @@ void vk_begin_compute(rt_pass_compute_t& pass)
     }
     for (auto& binding : vulkan.currentBinding)
         binding = {};
-    pass.handle = ++vulkan.passID;
-    auto& native = vulkan.computePasses[pass.handle];
+    auto handle = vulkan.passID + 1;
+    auto& native = vulkan.computePasses[handle];
     native.bindPoint = VK_PIPELINE_BIND_POINT_COMPUTE;
+    pass.handle = handle;
     pass.native = &native;
     vulkan.currentPassType = RT_MODULE_COMPUTE;
     vulkan.currentComputePass = &pass;
     auto* mod = (vk_module_native_t*)pass.module.native;
     if (mod && mod->pipeline)
         vkCmdBindPipeline(vulkan.cmdBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, mod->pipeline);
+    vulkan.passID = handle;
 }
 
 void vk_end_compute(rt_pass_compute_t& pass)
@@ -2415,8 +2416,9 @@ void vk_begin_render(rt_pass_render_t& pass)
     }
     for (auto& binding : vulkan.currentBinding)
         binding = {};
-    pass.handle = ++vulkan.passID;
-    auto& native = vulkan.renderPasses[pass.handle];
+    auto handle = vulkan.passID + 1;
+    auto& native = vulkan.renderPasses[handle];
+    pass.handle = handle;
     pass.native = &native;
     vulkan.currentPassType = RT_MODULE_RENDER;
     vulkan.currentRenderPass = &pass;
@@ -2479,6 +2481,7 @@ void vk_begin_render(rt_pass_render_t& pass)
     native.depthAttachment = depthAttachment;
     vk_set_viewport(0, 0, (int32_t)width, (int32_t)height);
     vk_set_scissor(0, 0, (int32_t)width, (int32_t)height);
+    vulkan.passID = handle;
 }
 
 void vk_end_render(rt_pass_render_t& pass)
@@ -2587,11 +2590,13 @@ void vk_begin_transfer(rt_pass_transfer_t& pass)
         fprintf(stderr, "Vulkan: failed to begin command buffer\n");
         abort();
     }
-    pass.handle = ++vulkan.passID;
-    auto& native = vulkan.transferPasses[pass.handle];
+    auto handle = vulkan.passID + 1;
+    auto& native = vulkan.transferPasses[handle];
+    pass.handle = handle;
     pass.native = &native;
     vulkan.currentPassType = RT_MODULE_TRANSFER;
     vulkan.currentTransferPass = &pass;
+    vulkan.passID = handle;
 }
 
 void vk_end_transfer(rt_pass_transfer_t& pass)

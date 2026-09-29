@@ -526,7 +526,6 @@ struct rt_module_render_info_t
 struct rt_module_render_t
 {
     uint32_t handle = 0;
-    uint32_t vertex_vao = 0;   // VAO
 
     struct
     {

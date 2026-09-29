@@ -1539,7 +1539,6 @@ void wg_destroy_module_render(rt_module_render_t& module)
 {
     wg_destroy_module_native(module.handle, module.native);
     module.handle = 0;
-    module.vertex_vao = 0;
 }
 
 void wg_destroy_module_compute(rt_module_compute_t& module)
@@ -1585,8 +1584,9 @@ void wg_begin_compute(rt_pass_compute_t& pass)
         abort();
     }
     wg_clear_bindings();
-    pass.handle = ++webgpu.passID;
-    auto& native = webgpu.computePasses[pass.handle];
+    auto handle = webgpu.passID + 1;
+    auto& native = webgpu.computePasses[handle];
+    pass.handle = handle;
     pass.native = &native;
     webgpu.currentPassType = RT_MODULE_COMPUTE;
     webgpu.currentComputePass = &pass;
@@ -1596,6 +1596,7 @@ void wg_begin_compute(rt_pass_compute_t& pass)
     auto* mod = (wg_module_native_t*)pass.module.native;
     if (mod && mod->computePipeline)
         wgpuComputePassEncoderSetPipeline(webgpu.computePass, mod->computePipeline);
+    webgpu.passID = handle;
 }
 
 void wg_end_compute(rt_pass_compute_t& pass)
@@ -1649,8 +1650,9 @@ void wg_begin_render(rt_pass_render_t& pass)
         abort();
     }
     wg_clear_bindings();
-    pass.handle = ++webgpu.passID;
-    auto& native = webgpu.renderPasses[pass.handle];
+    auto handle = webgpu.passID + 1;
+    auto& native = webgpu.renderPasses[handle];
+    pass.handle = handle;
     pass.native = &native;
     webgpu.currentPassType = RT_MODULE_RENDER;
     webgpu.currentRenderPass = &pass;
@@ -1720,6 +1722,7 @@ void wg_begin_render(rt_pass_render_t& pass)
         wgpuRenderPassEncoderSetPipeline(webgpu.renderPass, mod->renderPipeline);
     wg_set_viewport(0, 0, (int32_t)width, (int32_t)height);
     wg_set_scissor(0, 0, (int32_t)width, (int32_t)height);
+    webgpu.passID = handle;
 }
 
 void wg_end_render(rt_pass_render_t& pass)
@@ -1793,13 +1796,15 @@ void wg_begin_transfer(rt_pass_transfer_t& pass)
         fprintf(stderr, "Pipeline not end");
         abort();
     }
-    pass.handle = ++webgpu.passID;
-    auto& native = webgpu.transferPasses[pass.handle];
+    auto handle = webgpu.passID + 1;
+    auto& native = webgpu.transferPasses[handle];
+    pass.handle = handle;
     pass.native = &native;
     webgpu.currentPassType = RT_MODULE_TRANSFER;
     webgpu.currentTransferPass = &pass;
     wg_end_pass_encoders();
     wg_ensure_encoder();
+    webgpu.passID = handle;
 }
 
 void wg_end_transfer(rt_pass_transfer_t& pass)
