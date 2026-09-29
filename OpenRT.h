@@ -9,6 +9,7 @@
 * Created by chivenzhang@gmail.com.
 *
 * =================================================*/
+#include <cstddef>
 #include <cstdint>
 
 #ifndef OPENRT_API

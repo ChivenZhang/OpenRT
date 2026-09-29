@@ -18,7 +18,6 @@
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_metal.h>
 #include <cstdio>
-#include <cstring>
 
 static constexpr auto VS = R"(
     #include <metal_stdlib>
@@ -34,17 +33,17 @@ static constexpr auto VS = R"(
     struct VSOut
     {
         float4 position [[position]];
-        float3 vertex;
+        float3 world;
         float3 normal;
         float2 uv;
         float3 color;
     };
 
-    vertex VSOut main(VSIn input [[stage_in]], uint vertexID [[vertex_id]])
+    vertex VSOut vs_main(VSIn input [[stage_in]], uint vertexID [[vertex_id]])
     {
         float3 colors[3] = {float3(1, 0, 0), float3(0, 1, 0), float3(0, 0, 1)};
         VSOut output;
-        output.vertex = input.in_vertex;
+        output.world = input.in_vertex;
         output.normal = input.in_normal;
         output.uv = input.in_uv;
         output.color = colors[vertexID];
@@ -60,13 +59,13 @@ static constexpr auto FS = R"(
     struct PSIn
     {
         float4 position [[position]];
-        float3 vertex;
+        float3 world;
         float3 normal;
         float2 uv;
         float3 color;
     };
 
-    fragment float4 main(PSIn input [[stage_in]])
+    fragment float4 fs_main(PSIn input [[stage_in]])
     {
         return float4(input.color, 1);
     }
@@ -103,15 +102,12 @@ static void present(rt_texture_t& color)
 void frame(int width, int height)
 {
     static auto module = rt_create_module_render({
-        .vshader = {.code = VS, .size = (uint32_t)strlen(VS)},
-        .fshader = {.code = FS, .size = (uint32_t)strlen(FS)},
+        .vshader = {.code = VS, .size = (uint32_t)strlen(VS), .entry = "vs_main"},
+        .fshader = {.code = FS, .size = (uint32_t)strlen(FS), .entry = "fs_main"},
         .colors = {{.format = RT_TEXTURE_BGRA8UNORM,}},
         .vertex = {rt_vertex_vertex, rt_vertex_normal, rt_vertex_uv,},
     });
-    static auto pass_color = rt_create_texture({
-        .width = (uint32_t)width, .height = (uint32_t)height,
-        .format = RT_TEXTURE_BGRA8UNORM,
-    });
+    static auto pass_color = rt_create_texture({ .width = (uint32_t)width, .height = (uint32_t)height, .format = RT_TEXTURE_BGRA8UNORM, });
     {
         rt_pass_render_t pass = {.module = module, .colors = {{.texture_view = pass_color.default_view, .clear = true,}},};
         rt_begin_render(pass);
@@ -149,7 +145,6 @@ int main()
     layer->setDevice(device);
     layer->setPixelFormat(MTL::PixelFormatBGRA8Unorm);
     layer->setFramebufferOnly(false);
-    layer->setDisplaySyncEnabled(true);
 
     mt_load_library(device, queue);
 

@@ -14,17 +14,17 @@ else()
     link_directories(${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/lib)
 endif()
 
-if(EMSCRIPTEN)
+# add_definitions(-DOPENRT_STATIC)
+
+if(APPLE)
+add_definitions(-DMETAL_IMPLEMENTATION)
+elseif(WIN32)
+add_definitions(-DDIRECTX_IMPLEMENTATION)
+elseif(EMSCRIPTEN)
 add_definitions(-DWEBGPU_IMPLEMENTATION)
 else()
-add_definitions(
-#        -DOPENRT_STATIC
-        -DOPENGL_IMPLEMENTATION
-        -DVULKAN_IMPLEMENTATION
-        -DDIRECTX_IMPLEMENTATION
-#        -DMETAL_IMPLEMENTATION
-#        -DWEBGPU_IMPLEMENTATION
-)
+add_definitions(-DOPENGL_IMPLEMENTATION)
+add_definitions(-DVULKAN_IMPLEMENTATION)
 endif()
 
 add_library(OpenRT STATIC
@@ -49,7 +49,7 @@ if(WIN32)
 target_link_libraries(OpenRT PRIVATE d3d12 dxgi)
 endif()
 if(APPLE)
-target_include_directories(OpenRT PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/metal-cpp ${CMAKE_CURRENT_SOURCE_DIR}/metal-cpp-extensions)
+target_include_directories(OpenRT PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/metal-cpp)
 target_link_libraries(OpenRT PRIVATE "-framework Metal" "-framework MetalKit" "-framework AppKit" "-framework Foundation" "-framework QuartzCore")
 endif()
 endif()

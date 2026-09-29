@@ -42,18 +42,18 @@ static constexpr auto VS = R"(
     struct VSOut
     {
         float4 position [[position]];
-        float3 vertex;
+        float3 world;
         float3 normal;
         float2 uv;
     };
 
-    vertex VSOut main(VSIn input [[stage_in]], constant Push& push [[buffer(16)]])
+    vertex VSOut vs_main(VSIn input [[stage_in]], constant Push& push [[buffer(16)]])
     {
         VSOut output;
-        output.vertex = (push.meshMat * float4(input.in_vertex, 1.0)).xyz;
+        output.world = (push.meshMat * float4(input.in_vertex, 1.0)).xyz;
         output.normal = (push.meshMat * float4(input.in_normal, 0.0)).xyz;
         output.uv = input.in_uv;
-        output.position = push.projView * float4(output.vertex, 1.0);
+        output.position = push.projView * float4(output.world, 1.0);
         return output;
     }
 )";
@@ -65,7 +65,7 @@ static constexpr auto FS = R"(
     struct PSIn
     {
         float4 position [[position]];
-        float3 vertex;
+        float3 world;
         float3 normal;
         float2 uv;
     };
@@ -79,11 +79,11 @@ static constexpr auto FS = R"(
     constant float SHININESS = 32.0;
     constant float3 CAMERA_POSITION = float3(0.0, 0.0, 10.0);
 
-    fragment float4 main(PSIn input [[stage_in]], texture2d<float> texture0 [[texture(0)]], sampler sampler0 [[sampler(1)]])
+    fragment float4 fs_main(PSIn input [[stage_in]], texture2d<float> texture0 [[texture(0)]], sampler sampler0 [[sampler(1)]])
     {
         float3 N = normalize(input.normal);
-        float3 L = normalize(LIGHT_POSITION - input.vertex);
-        float3 V = normalize(CAMERA_POSITION - input.vertex);
+        float3 L = normalize(LIGHT_POSITION - input.world);
+        float3 V = normalize(CAMERA_POSITION - input.world);
         float3 H = normalize(L + V);
         float3 ambient = AMBIENT_COLOR;
         float diff = max(dot(N, L), 0.0);
@@ -126,8 +126,8 @@ static void present(rt_texture_t& color)
 void frame(int width, int height)
 {
     static auto module = rt_create_module_render({
-        .vshader = {.code = VS, .size = (uint32_t)strlen(VS)},
-        .fshader = {.code = FS, .size = (uint32_t)strlen(FS)},
+        .vshader = {.code = VS, .size = (uint32_t)strlen(VS), .entry = "vs_main"},
+        .fshader = {.code = FS, .size = (uint32_t)strlen(FS), .entry = "fs_main"},
         .colors = {{.format = RT_TEXTURE_BGRA8UNORM,}},
         .depth = {.write = true, .func = RT_LEQUAL,},
         .vertex = {rt_vertex_vertex, rt_vertex_normal, rt_vertex_uv,},
@@ -187,7 +187,6 @@ int main()
     layer->setDevice(device);
     layer->setPixelFormat(MTL::PixelFormatBGRA8Unorm);
     layer->setFramebufferOnly(false);
-    layer->setDisplaySyncEnabled(true);
 
     mt_load_library(device, queue);
 

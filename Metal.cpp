@@ -17,7 +17,6 @@
 #include <dispatch/dispatch.h>
 #include <algorithm>
 #include <cstdio>
-#include <cstring>
 #include <map>
 #include <numeric>
 #include <utility>
@@ -796,34 +795,62 @@ static mt_module_native_t* mt_current_module_native()
     return nullptr;
 }
 
-static MTL::Function* mt_function_from_binary(MTL::Library* library, const char* entry)
+static void mt_log_error(const char* what, NS::Error* error)
+{
+    const char* message = "unknown";
+    if (error)
+    {
+        NS::String* desc = error->localizedDescription();
+        if (desc && desc->utf8String() && desc->utf8String()[0])
+            message = desc->utf8String();
+    }
+    fprintf(stderr, "[Metal][ERROR] %s:\n%s\n", what, message);
+}
+
+static MTL::Function* mt_function_from_binary(MTL::Library* library, const char* entry, const char* stage)
 {
     if (!library) return nullptr;
     const char* name = (entry && entry[0]) ? entry : "main";
     NS::String* fnName = NS::String::alloc()->init(name, NS::UTF8StringEncoding);
     MTL::Function* fn = library->newFunction(fnName);
     mt_release(fnName);
+    if (!fn)
+        fprintf(stderr, "[Metal][ERROR] %s function '%s' not found\n", stage, name);
     return fn;
 }
 
-static MTL::Library* mt_create_library(const char* data, uint32_t length)
+static MTL::Library* mt_create_library(const char* data, uint32_t length, const char* stage)
 {
-    if (!data || !length || !metal.device) return nullptr;
+    if (!data || !length || !metal.device)
+    {
+        fprintf(stderr, "[Metal][ERROR] %s: source is empty\n", stage);
+        return nullptr;
+    }
     NS::Error* error = nullptr;
     bool text = data[0] != 0 && (unsigned char)data[0] < 0x80;
     for (uint32_t i = 0; i < std::min(length, 8u) && text; ++i)
         if ((unsigned char)data[i] < 9 && data[i] != '\n' && data[i] != '\r' && data[i] != '\t')
             text = false;
+    MTL::Library* library = nullptr;
     if (text)
     {
-        NS::String* source = NS::String::alloc()->init(const_cast<char*>(data), length, NS::UTF8StringEncoding, false);
-        MTL::Library* library = metal.device->newLibrary(source, nullptr, &error);
+        NS::String* source = NS::String::alloc()->init((void*)data, length, NS::UTF8StringEncoding, false);
+        if (!source)
+        {
+            fprintf(stderr, "[Metal][ERROR] %s: source is empty\n", stage);
+            return nullptr;
+        }
+        library = metal.device->newLibrary(source, nullptr, &error);
         mt_release(source);
-        return library;
     }
-    dispatch_data_t blob = dispatch_data_create(data, length, nullptr, DISPATCH_DATA_DESTRUCTOR_DEFAULT);
-    MTL::Library* library = metal.device->newLibrary(blob, &error);
-    if (blob) dispatch_release(blob);
+    else
+    {
+        dispatch_data_t blob = dispatch_data_create(data, length, nullptr, DISPATCH_DATA_DESTRUCTOR_DEFAULT);
+        library = metal.device->newLibrary(blob, &error);
+        if (blob) dispatch_release(blob);
+    }
+    if (!library)
+        mt_log_error(stage, error);
     return library;
 }
 
@@ -1583,8 +1610,8 @@ rt_module_compute_t mt_create_module_compute(rt_module_compute_info_t const& inf
     if (!info.cshader.code || !info.cshader.size || !metal.device) return result;
     uint32_t handle = metal.moduleID + 1;
     auto& native = metal.modules[handle];
-    native.clib = mt_create_library(info.cshader.code, info.cshader.size);
-    native.cfn = mt_function_from_binary(native.clib, info.cshader.entry);
+    native.clib = mt_create_library(info.cshader.code, info.cshader.size, "compute shader compile failed");
+    native.cfn = mt_function_from_binary(native.clib, info.cshader.entry, "compute shader");
     if (!native.cfn)
     {
         metal.modules.erase(handle);
@@ -1594,6 +1621,7 @@ rt_module_compute_t mt_create_module_compute(rt_module_compute_info_t const& inf
     native.computePipeline = metal.device->newComputePipelineState(native.cfn, &error);
     if (!native.computePipeline)
     {
+        mt_log_error("compute pipeline creation failed", error);
         result.native = &native;
         mt_destroy_module_native(handle, result.native);
         return {};
@@ -1612,13 +1640,19 @@ rt_module_render_t mt_create_module_render(rt_module_render_info_t const& info)
     auto& native = metal.modules[handle];
     if (info.vshader.code)
     {
-        native.vlib = mt_create_library(info.vshader.code, info.vshader.size);
-        native.vfn = mt_function_from_binary(native.vlib, info.vshader.entry);
+        native.vlib = mt_create_library(info.vshader.code, info.vshader.size, "vertex shader compile failed");
+        native.vfn = mt_function_from_binary(native.vlib, info.vshader.entry, "vertex shader");
     }
     if (info.fshader.code)
     {
-        native.flib = mt_create_library(info.fshader.code, info.fshader.size);
-        native.ffn = mt_function_from_binary(native.flib, info.fshader.entry);
+        native.flib = mt_create_library(info.fshader.code, info.fshader.size, "fragment shader compile failed");
+        native.ffn = mt_function_from_binary(native.flib, info.fshader.entry, "fragment shader");
+    }
+    if ((info.vshader.code && !native.vfn) || (info.fshader.code && !native.ffn))
+    {
+        result.native = &native;
+        mt_destroy_module_native(handle, result.native);
+        return {};
     }
     const bool depthEnabled = (info.depth.func != RT_ALWAYS || info.depth.write);
     const bool stencilEnabled =
@@ -1649,6 +1683,8 @@ rt_module_render_t mt_create_module_render(rt_module_render_info_t const& info)
     else if (depthEnabled) desc->setDepthAttachmentPixelFormat(MTL::PixelFormatDepth32Float);
     native.renderPipeline = metal.device->newRenderPipelineState(desc, &error);
     mt_release(desc);
+    if (!native.renderPipeline)
+        mt_log_error("render pipeline creation failed", error);
     if (!native.renderPipeline || !mt_create_depth_stencil(native, info, stencilEnabled))
     {
         result.native = &native;
@@ -1670,15 +1706,15 @@ rt_module_render_t mt_create_module_meshlet(rt_module_render_info_t const& info)
     auto& native = metal.modules[handle];
     if (info.tshader.code)
     {
-        native.tlib = mt_create_library(info.tshader.code, info.tshader.size);
-        native.tfn = mt_function_from_binary(native.tlib, info.tshader.entry);
+        native.tlib = mt_create_library(info.tshader.code, info.tshader.size, "object shader compile failed");
+        native.tfn = mt_function_from_binary(native.tlib, info.tshader.entry, "object shader");
     }
-    native.mlib = mt_create_library(info.mshader.code, info.mshader.size);
-    native.mfn = mt_function_from_binary(native.mlib, info.mshader.entry);
+    native.mlib = mt_create_library(info.mshader.code, info.mshader.size, "mesh shader compile failed");
+    native.mfn = mt_function_from_binary(native.mlib, info.mshader.entry, "mesh shader");
     if (info.fshader.code)
     {
-        native.flib = mt_create_library(info.fshader.code, info.fshader.size);
-        native.ffn = mt_function_from_binary(native.flib, info.fshader.entry);
+        native.flib = mt_create_library(info.fshader.code, info.fshader.size, "fragment shader compile failed");
+        native.ffn = mt_function_from_binary(native.flib, info.fshader.entry, "fragment shader");
     }
     const bool depthEnabled = (info.depth.func != RT_ALWAYS || info.depth.write);
     const bool stencilEnabled =
@@ -1702,6 +1738,8 @@ rt_module_render_t mt_create_module_meshlet(rt_module_render_info_t const& info)
     else if (depthEnabled) desc->setDepthAttachmentPixelFormat(MTL::PixelFormatDepth32Float);
     native.renderPipeline = metal.device->newRenderPipelineState(desc, MTL::PipelineOptionNone, nullptr, &error);
     mt_release(desc);
+    if (!native.renderPipeline)
+        mt_log_error("mesh pipeline creation failed", error);
     if (!native.renderPipeline || !mt_create_depth_stencil(native, info, stencilEnabled))
     {
         result.native = &native;

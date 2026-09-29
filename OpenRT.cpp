@@ -19,7 +19,7 @@
 #include "DirectX.h"
 #endif
 #ifdef METAL_IMPLEMENTATION
-#include "MetalX.h"
+#include "Metal.h"
 #endif
 #ifdef WEBGPU_IMPLEMENTATION
 #include "WebGPU.h"

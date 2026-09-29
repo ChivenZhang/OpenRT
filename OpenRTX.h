@@ -26,7 +26,7 @@ rt_meshlet_t rt_create_meshlet_capsule(float radius, float height, int rings, in
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb_image.h>
 
-static rt_image_t rt_load_image_file(const char* filename, bool flip)
+rt_image_t rt_load_image_file(const char* filename, bool flip)
 {
     // stb 默认以左上角为原点，flip 为 true 时翻转为 OpenGL 的左下角原点
     stbi_set_flip_vertically_on_load(flip ? 1 : 0);
@@ -88,13 +88,13 @@ static rt_image_t rt_load_image_file(const char* filename, bool flip)
     return image;
 }
 
-static void rt_destroy_image(rt_image_t& image)
+void rt_destroy_image(rt_image_t& image)
 {
     if (image.data) stbi_image_free(image.data);
     image.data = nullptr;
 }
 
-static rt_texture_t rt_load_texture(rt_image_t image)
+rt_texture_t rt_load_texture(rt_image_t image)
 {
     auto data = image.data;
     auto width = image.width;
@@ -118,7 +118,7 @@ static rt_texture_t rt_load_texture(rt_image_t image)
     return texture;
 }
 
-static rt_texture_t rt_load_texture_file(const char* filename, bool flip)
+rt_texture_t rt_load_texture_file(const char* filename, bool flip)
 {
     auto image = rt_load_image_file(filename, flip);
     auto texture = rt_load_texture(image);
@@ -127,7 +127,7 @@ static rt_texture_t rt_load_texture_file(const char* filename, bool flip)
 }
 
 #include <vector>
-static rt_mesh_t rt_create_mesh_plane(float size, int N)
+rt_mesh_t rt_create_mesh_plane(float size, int N)
 {
     int vertsX = N + 1;
     int vertsY = N + 1;
@@ -194,7 +194,7 @@ static rt_mesh_t rt_create_mesh_plane(float size, int N)
     );
 }
 
-static rt_mesh_t rt_create_mesh_cube(float width, float height, float length)
+rt_mesh_t rt_create_mesh_cube(float width, float height, float length)
 {
     static const float v[24 * 3] = {
         // 前
@@ -268,7 +268,7 @@ static rt_mesh_t rt_create_mesh_cube(float width, float height, float length)
     );
 }
 
-static rt_mesh_t rt_create_mesh_footprint(
+rt_mesh_t rt_create_mesh_footprint(
     float length,    // 鞋印长度（Z方向）
     float width,     // 鞋印宽度（X方向）
     float thickness, // 厚度（Y方向）
@@ -463,7 +463,7 @@ static rt_mesh_t rt_create_mesh_footprint(
     );
 }
 
-static rt_mesh_t rt_create_mesh_sphere(float radius, int rings, int slices)
+rt_mesh_t rt_create_mesh_sphere(float radius, int rings, int slices)
 {
     int vertex_count = (rings + 1) * (slices + 1);
     int index_count = rings * slices * 6;
@@ -526,7 +526,7 @@ static rt_mesh_t rt_create_mesh_sphere(float radius, int rings, int slices)
     );
 }
 
-static rt_mesh_t rt_create_mesh_capsule(float radius, float height, int rings, int slices)
+rt_mesh_t rt_create_mesh_capsule(float radius, float height, int rings, int slices)
 {
     // 半球纬度只用到 90°，所以 rings 参数复用
     // 上半球：从顶(0)到底(rings)
@@ -645,7 +645,7 @@ static rt_mesh_t rt_create_mesh_capsule(float radius, float height, int rings, i
 
 // ====================================================================
 
-static rt_mesh_t rt_create_mesh_triangle(float size)
+rt_mesh_t rt_create_mesh_triangle(float size)
 {
     // 正三角形：3个顶点
     size_t vertex_count = 3;
@@ -701,7 +701,7 @@ static rt_mesh_t rt_create_mesh_triangle(float size)
     );
 }
 
-static rt_mesh_t rt_create_mesh_quad(float width, float height)
+rt_mesh_t rt_create_mesh_quad(float width, float height)
 {
     const size_t vertex_count = 4;
     const size_t index_count  = 6;
@@ -757,7 +757,7 @@ static rt_mesh_t rt_create_mesh_quad(float width, float height)
     );
 }
 
-static rt_mesh_t rt_create_mesh_circle(float radius, int segments)
+rt_mesh_t rt_create_mesh_circle(float radius, int segments)
 {
     size_t vertex_count = segments + 1; // 中心点 + 边缘点
     size_t index_count  = segments * 3;
@@ -811,7 +811,7 @@ static rt_mesh_t rt_create_mesh_circle(float radius, int segments)
     );
 }
 
-static rt_mesh_t rt_create_mesh_ring(
+rt_mesh_t rt_create_mesh_ring(
     float inner_radius,
     float outer_radius,
     int segments)
@@ -883,7 +883,7 @@ static rt_mesh_t rt_create_mesh_ring(
 
 // ====================================================================
 
-static rt_meshlet_t rt_create_meshlet_plane(float size, int N)
+rt_meshlet_t rt_create_meshlet_plane(float size, int N)
 {
     int vertsX = N + 1;
     int vertsY = N + 1;
@@ -950,7 +950,7 @@ static rt_meshlet_t rt_create_meshlet_plane(float size, int N)
     );
 }
 
-static rt_meshlet_t rt_create_meshlet_sphere(float radius, int rings, int slices)
+rt_meshlet_t rt_create_meshlet_sphere(float radius, int rings, int slices)
 {
     int vertex_count = (rings + 1) * (slices + 1);
     int index_count = rings * slices * 6;
@@ -1013,7 +1013,7 @@ static rt_meshlet_t rt_create_meshlet_sphere(float radius, int rings, int slices
     );
 }
 
-static rt_meshlet_t rt_create_meshlet_capsule(float radius, float height, int rings, int slices)
+rt_meshlet_t rt_create_meshlet_capsule(float radius, float height, int rings, int slices)
 {
     // 半球纬度只用到 90°，所以 rings 参数复用
     // 上半球：从顶(0)到底(rings)
