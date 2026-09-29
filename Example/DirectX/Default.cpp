@@ -19,7 +19,6 @@
 #include <dxgi1_6.h>
 #include <wrl/client.h>
 #include <cstdio>
-#include <cstring>
 #include <vector>
 
 using Microsoft::WRL::ComPtr;

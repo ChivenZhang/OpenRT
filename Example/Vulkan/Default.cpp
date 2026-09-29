@@ -14,7 +14,6 @@
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_vulkan.h>
 #include <cstdio>
-#include <cstring>
 #include <vector>
 
 [[maybe_unused]] static constexpr auto VS = R"(
