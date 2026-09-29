@@ -860,7 +860,7 @@ static void mt_fill_render_state(rt_module_render_t& result, rt_module_render_in
     for (size_t i = 0; i < std::size(info.binding); ++i)
         result.binding[i] = info.binding[i];
     result.cull_mode = info.cull_mode;
-    result.front_face = info.front_face;
+    result.wind_mode = info.wind_mode;
     result.fill_mode = info.fill_mode;
     result.primitive = info.primitive;
 }
@@ -917,7 +917,7 @@ static bool mt_create_depth_stencil(mt_module_native_t& native, rt_module_render
     mt_release(ds);
     native.primitive = rt_to_mt_primitive(info.primitive);
     native.cull = rt_to_mt_cull(info.cull_mode);
-    native.winding = (info.front_face == RT_CW) ? MTL::WindingClockwise : MTL::WindingCounterClockwise;
+    native.winding = (info.wind_mode == RT_CW) ? MTL::WindingClockwise : MTL::WindingCounterClockwise;
     for (uint32_t i = 0; i < RT_MAX_BINDING_HANDLE_NUM; ++i)
         native.bindings[i] = info.binding[i];
     return native.depthStencil != nullptr;

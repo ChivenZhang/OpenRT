@@ -1709,7 +1709,7 @@ rt_module_render_t dx_create_module_render(rt_module_render_info_t const& info)
     pso.PrimitiveTopologyType = rt_to_dx_topology_type(info.primitive);
     pso.RasterizerState.FillMode = rt_to_dx_fill(info.fill_mode);
     pso.RasterizerState.CullMode = rt_to_dx_cull(info.cull_mode);
-    pso.RasterizerState.FrontCounterClockwise = (info.front_face != RT_CW);
+    pso.RasterizerState.FrontCounterClockwise = (info.wind_mode != RT_CW);
     pso.RasterizerState.DepthBias = (INT)info.depth.bias;
     pso.RasterizerState.DepthBiasClamp = info.depth.biasClamp;
     pso.RasterizerState.SlopeScaledDepthBias = info.depth.biasSlope;
@@ -1801,7 +1801,7 @@ rt_module_render_t dx_create_module_render(rt_module_render_info_t const& info)
     for (size_t i = 0; i < std::size(info.binding); ++i)
         result.binding[i] = info.binding[i];
     result.cull_mode = info.cull_mode;
-    result.front_face = info.front_face;
+    result.wind_mode = info.wind_mode;
     result.fill_mode = info.fill_mode;
     result.primitive = info.primitive;
     return result;
@@ -1903,7 +1903,7 @@ rt_module_render_t dx_create_module_meshlet(rt_module_render_info_t const& info)
     pso.PrimitiveTopologyType = rt_to_dx_topology_type(info.primitive);
     pso.RasterizerState.FillMode = rt_to_dx_fill(info.fill_mode);
     pso.RasterizerState.CullMode = rt_to_dx_cull(info.cull_mode);
-    pso.RasterizerState.FrontCounterClockwise = (info.front_face != RT_CW);
+    pso.RasterizerState.FrontCounterClockwise = (info.wind_mode != RT_CW);
     pso.RasterizerState.DepthBias = (INT)info.depth.bias;
     pso.RasterizerState.DepthBiasClamp = info.depth.biasClamp;
     pso.RasterizerState.SlopeScaledDepthBias = info.depth.biasSlope;
@@ -1995,7 +1995,7 @@ rt_module_render_t dx_create_module_meshlet(rt_module_render_info_t const& info)
     for (size_t i = 0; i < std::size(info.binding); ++i)
         result.binding[i] = info.binding[i];
     result.cull_mode = info.cull_mode;
-    result.front_face = info.front_face;
+    result.wind_mode = info.wind_mode;
     result.fill_mode = info.fill_mode;
     result.primitive = info.primitive;
     return result;

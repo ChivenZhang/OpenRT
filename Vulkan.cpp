@@ -322,7 +322,7 @@ static VkCullModeFlags rt_to_vk_cull(rt_cull_mode_t mode)
     }
 }
 
-static VkFrontFace rt_to_vk_front_face(rt_front_face_t face)
+static VkFrontFace rt_to_vk_wind_mode(rt_wind_mode_t face)
 {
     switch (face)
     {
@@ -2047,7 +2047,7 @@ rt_module_render_t vk_create_module_render(rt_module_render_info_t const& info)
     rasterizer.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
     rasterizer.polygonMode = rt_to_vk_fill(info.fill_mode);
     rasterizer.cullMode = rt_to_vk_cull(info.cull_mode);
-    rasterizer.frontFace = rt_to_vk_front_face(info.front_face);
+    rasterizer.frontFace = rt_to_vk_wind_mode(info.wind_mode);
     rasterizer.depthBiasEnable = (info.depth.bias != 0.0f || info.depth.biasSlope != 0.0f) ? VK_TRUE : VK_FALSE;
     rasterizer.depthBiasConstantFactor = info.depth.bias;
     rasterizer.depthBiasClamp = info.depth.biasClamp;
@@ -2185,7 +2185,7 @@ rt_module_render_t vk_create_module_render(rt_module_render_info_t const& info)
     for (size_t i = 0; i < std::size(info.binding); ++i)
         result.binding[i] = info.binding[i];
     result.cull_mode = info.cull_mode;
-    result.front_face = info.front_face;
+    result.wind_mode = info.wind_mode;
     result.fill_mode = info.fill_mode;
     result.primitive = info.primitive;
     return result;
@@ -2311,7 +2311,7 @@ rt_module_render_t vk_create_module_meshlet(rt_module_render_info_t const& info)
     rasterizer.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
     rasterizer.polygonMode = rt_to_vk_fill(info.fill_mode);
     rasterizer.cullMode = rt_to_vk_cull(info.cull_mode);
-    rasterizer.frontFace = rt_to_vk_front_face(info.front_face);
+    rasterizer.frontFace = rt_to_vk_wind_mode(info.wind_mode);
     rasterizer.depthBiasEnable = (info.depth.bias != 0.0f || info.depth.biasSlope != 0.0f) ? VK_TRUE : VK_FALSE;
     rasterizer.depthBiasConstantFactor = info.depth.bias;
     rasterizer.depthBiasClamp = info.depth.biasClamp;
@@ -2449,7 +2449,7 @@ rt_module_render_t vk_create_module_meshlet(rt_module_render_info_t const& info)
     for (size_t i = 0; i < std::size(info.binding); ++i)
         result.binding[i] = info.binding[i];
     result.cull_mode = info.cull_mode;
-    result.front_face = info.front_face;
+    result.wind_mode = info.wind_mode;
     result.fill_mode = info.fill_mode;
     result.primitive = info.primitive;
     return result;

@@ -1530,7 +1530,7 @@ rt_module_render_t wg_create_module_render(rt_module_render_info_t const& info)
     desc.vertex.bufferCount = attrCount;
     desc.vertex.buffers = layouts;
     desc.primitive.topology = rt_to_wg_primitive(info.primitive);
-    desc.primitive.frontFace = (info.front_face == RT_CW) ? WGPUFrontFace_CW : WGPUFrontFace_CCW;
+    desc.primitive.frontFace = (info.wind_mode == RT_CW) ? WGPUFrontFace_CW : WGPUFrontFace_CCW;
     desc.primitive.cullMode = rt_to_wg_cull(info.cull_mode);
     desc.multisample.count = 1;
     desc.multisample.mask = 0xFFFFFFFF;
@@ -1578,7 +1578,7 @@ rt_module_render_t wg_create_module_render(rt_module_render_info_t const& info)
     for (size_t i = 0; i < std::size(info.binding); ++i)
         result.binding[i] = info.binding[i];
     result.cull_mode = info.cull_mode;
-    result.front_face = info.front_face;
+    result.wind_mode = info.wind_mode;
     result.fill_mode = info.fill_mode;
     result.primitive = info.primitive;
     return result;
@@ -1633,7 +1633,7 @@ rt_module_render_t wg_create_module_meshlet(rt_module_render_info_t const& info)
     for (size_t i = 0; i < std::size(info.binding); ++i)
         result.binding[i] = info.binding[i];
     result.cull_mode = info.cull_mode;
-    result.front_face = info.front_face;
+    result.wind_mode = info.wind_mode;
     result.fill_mode = info.fill_mode;
     result.primitive = info.primitive;
     return result;

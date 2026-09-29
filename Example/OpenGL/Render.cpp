@@ -82,8 +82,7 @@ void frame(int width, int height)
     )";
 
     static auto module = rt_create_module_render({
-        .vshader = {VS},
-        .fshader = {FS},
+        .vshader = {VS}, .fshader = {FS},
         .colors = {{.format = RT_TEXTURE_RGBA8UNORM,}},
         .depth = {.write = true, .func = RT_LEQUAL,},
         .vertex = {rt_vertex_vertex, rt_vertex_normal, rt_vertex_uv,},

@@ -140,7 +140,7 @@ void frame(int width, int height)
         .fshader = {.code = (const char*)kFS, .size = sizeof(kFS)},
         .colors = {{.format = RT_TEXTURE_RGBA8UNORM,}},
         .vertex = {rt_vertex_vertex, rt_vertex_normal, rt_vertex_uv,},
-        .cull_mode = RT_CULL_NONE,
+        .wind_mode = RT_CW,
     });
     static auto pass_color = rt_create_texture_color(width, height, nullptr);
     {

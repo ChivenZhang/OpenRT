@@ -436,7 +436,7 @@ static GLenum rt_to_gl_cull(rt_cull_mode_t mode)
     }
 }
 
-static GLenum rt_to_gl_front_face(rt_front_face_t face)
+static GLenum rt_to_gl_wind_mode(rt_wind_mode_t face)
 {
     switch (face)
     {
@@ -1530,7 +1530,7 @@ rt_module_render_t gl_create_module_render(rt_module_render_info_t const& info)
         result.binding[i].type = info.binding[i].type;
     }
     result.cull_mode = info.cull_mode;
-    result.front_face = info.front_face;
+    result.wind_mode = info.wind_mode;
     result.fill_mode = info.fill_mode;
     result.primitive = info.primitive;
     opengl.moduleID = handle;
@@ -1663,7 +1663,7 @@ rt_module_render_t gl_create_module_meshlet(rt_module_render_info_t const& info)
         result.binding[i].type = info.binding[i].type;
     }
     result.cull_mode = info.cull_mode;
-    result.front_face = info.front_face;
+    result.wind_mode = info.wind_mode;
     result.fill_mode = info.fill_mode;
     result.primitive = info.primitive;
     opengl.moduleID = handle;
@@ -2087,7 +2087,7 @@ void gl_begin_render(rt_pass_render_t& pass)
 
     // Primitive State
 
-    glFrontFace(rt_to_gl_front_face(pass.module.front_face));
+    glFrontFace(rt_to_gl_wind_mode(pass.module.wind_mode));
     if (pass.module.cull_mode)
     {
         glCullFace(rt_to_gl_cull(pass.module.cull_mode));

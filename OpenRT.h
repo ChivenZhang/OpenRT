@@ -318,7 +318,7 @@ enum rt_cull_mode_t : uint32_t
     RT_CULL_FRONT_AND_BACK,
 };
 
-enum rt_front_face_t : uint32_t
+enum rt_wind_mode_t : uint32_t
 {
     RT_CW = 0,
     RT_CCW,
@@ -553,7 +553,7 @@ struct rt_module_render_info_t
     rt_binding_t binding[RT_MAX_BINDING_HANDLE_NUM];
 
     rt_cull_mode_t cull_mode = RT_CULL_BACK; // RT_CULL_NONE / RT_CULL_FRONT / RT_CULL_BACK / RT_CULL_FRONT_AND_BACK
-    rt_front_face_t front_face = RT_CCW; // RT_CW / RT_CCW
+    rt_wind_mode_t wind_mode = RT_CCW; // RT_CW / RT_CCW
     rt_fill_mode_t fill_mode = RT_FILL; // RT_POINT / RT_LINE / RT_FILL
     rt_primitive_t primitive = RT_TRIANGLES; // RT_POINTS / RT_LINES / RT_LINE_STRIP / RT_TRIANGLES / RT_TRIANGLE_STRIP
 };
@@ -598,7 +598,7 @@ struct rt_module_render_t
     rt_binding_t binding[RT_MAX_BINDING_HANDLE_NUM];
 
     rt_cull_mode_t cull_mode = RT_CULL_BACK;
-    rt_front_face_t front_face = RT_CCW;
+    rt_wind_mode_t wind_mode = RT_CCW;
     rt_fill_mode_t fill_mode = RT_FILL;
     rt_primitive_t primitive = RT_TRIANGLES;
 

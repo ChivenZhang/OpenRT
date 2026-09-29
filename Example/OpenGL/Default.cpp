@@ -8,11 +8,11 @@
 * Created by chivenzhang@gmail.com.
 *
 * =================================================*/
+#define OPENRTX_IMPLEMENTATION
+#include "../../OpenRTX.h"
 #include <SDL3/SDL.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
-#define OPENRTX_IMPLEMENTATION
-#include "../../OpenRTX.h"
 
 void frame(int width, int height)
 {
@@ -51,7 +51,11 @@ void frame(int width, int height)
         }
     )";
 
-    static auto module = rt_create_module_render({.vshader = {VS}, .fshader = {FS}, .colors = {{.format = RT_TEXTURE_RGBA8UNORM,}}, .vertex = {rt_vertex_vertex, rt_vertex_normal, rt_vertex_uv,}, });
+    static auto module = rt_create_module_render({
+        .vshader = {VS}, .fshader = {FS},
+        .colors = {{.format = RT_TEXTURE_RGBA8UNORM,}},
+        .vertex = {rt_vertex_vertex, rt_vertex_normal, rt_vertex_uv,},
+    });
     static auto pass_color = rt_create_texture_color(width, height, nullptr);
     {
         rt_pass_render_t pass = {.module = module, .colors = {{.texture_view = pass_color.default_view, .clear = true,}},};
