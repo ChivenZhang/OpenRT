@@ -352,8 +352,18 @@ enum rt_module_type_t : uint32_t
 
 // ====================================================================
 
+enum rt_backend_t : uint32_t
+{
+    RT_OPENGL = 0,
+    RT_VULKAN,
+    RT_DIRECTX,
+    RT_METAL,
+    RT_WEBGPU,
+};
+
 struct rt_load_info_t
 {
+    rt_backend_t backend = RT_OPENGL;   // RT_OPENGL / RT_VULKAN / RT_DIRECTX / RT_METAL / RT_WEBGPU
     union
     {
         struct
@@ -411,8 +421,6 @@ struct rt_buffer_bind_t
 
 // ====================================================================
 
-struct rt_texture_t;
-
 struct rt_texture_view_t
 {
     uint32_t handle = 0;
@@ -429,7 +437,6 @@ struct rt_texture_view_t
 
 struct rt_texture_view_info_t
 {
-    rt_texture_t& texture;
     rt_texture_target_t target = RT_TEXTURE_2D; // RT_TEXTURE_1D / RT_TEXTURE_2D / RT_TEXTURE_3D / RT_TEXTURE_2D_ARRAY / RT_TEXTURE_2D_MULTISAMPLE
     rt_texture_format_t format = RT_TEXTURE_RGBA8UNORM;
     rt_texture_aspect_t aspect = RT_TEXTURE_ASPECT_ALL; // RT_TEXTURE_ASPECT_ALL / RT_TEXTURE_ASPECT_STENCIL / RT_TEXTURE_ASPECT_DEPTH
@@ -450,6 +457,12 @@ struct rt_texture_view_bind_t
 struct rt_texture_t
 {
     uint32_t handle = 0;
+    uint32_t width = 0, height = 0, depth = 1;
+    rt_texture_target_t target = RT_TEXTURE_2D;
+    rt_texture_format_t format = RT_TEXTURE_NONE;
+    rt_texture_sample_t samples = RT_TEXTURE_SAMPLE_1X;
+    rt_texture_usages_t usage = 0;
+    uint32_t mipmaps = 0;
     rt_texture_view_t default_view = {};
     void* native = nullptr;
 };
@@ -793,7 +806,7 @@ struct rt_texture_data_t
 
 // ====================================================================
 
-OPENRT_API void rt_load_library(const char* backend = nullptr, rt_load_info_t const& info = {});
+OPENRT_API void rt_load_library(rt_load_info_t const& info = {});
 OPENRT_API void (*rt_unload_library)();
 
 OPENRT_API rt_buffer_t (*rt_create_buffer)(rt_buffer_info_t const& info);
@@ -807,7 +820,7 @@ OPENRT_API void (*rt_destroy_texture)(rt_texture_t& texture);
 OPENRT_API void (*rt_bind_texture)(rt_texture_t& texture, rt_texture_bind_t bind);
 OPENRT_API void (*rt_bind_texture_storage)(rt_texture_t& texture, rt_texture_storage_bind_t bind);
 
-OPENRT_API rt_texture_view_t (*rt_create_texture_view)(rt_texture_view_info_t const& info);
+OPENRT_API rt_texture_view_t (*rt_create_texture_view)(rt_texture_t& texture, rt_texture_view_info_t const& info);
 OPENRT_API void (*rt_destroy_texture_view)(rt_texture_view_t& view);
 OPENRT_API void (*rt_bind_texture_view)(rt_texture_view_t& view, rt_texture_view_bind_t bind);
 

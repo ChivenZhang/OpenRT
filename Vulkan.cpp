@@ -1641,9 +1641,16 @@ rt_texture_t vk_create_texture(rt_texture_info_t const& info)
         native.target = RT_TEXTURE_2D_MULTISAMPLE;
     vulkan.textureID = handle;
     result.handle = handle;
+    result.width = native.extent.width;
+    result.height = native.extent.height;
+    result.depth = native.extent.depth;
+    result.target = native.target;
+    result.format = native.rtFormat;
+    result.samples = native.samples;
+    result.usage = native.usage;
+    result.mipmaps = native.levels;
     result.native = &native;
-    result.default_view = vk_create_texture_view({
-        .texture = result,
+    result.default_view = vk_create_texture_view(result, {
         .target = native.target,
         .format = native.rtFormat,
         .aspect = RT_TEXTURE_ASPECT_ALL,
@@ -1705,9 +1712,9 @@ void vk_bind_texture_storage(rt_texture_t& texture, rt_texture_storage_bind_t bi
     vulkan.currentBinding[bind.binding].storage_texture_bind = bind;
 }
 
-rt_texture_view_t vk_create_texture_view(rt_texture_view_info_t const& info)
+rt_texture_view_t vk_create_texture_view(rt_texture_t& texture, rt_texture_view_info_t const& info)
 {
-    auto* tex = vk_texture_native(info.texture);
+    auto* tex = vk_texture_native(texture);
     rt_texture_format_t format = info.format != RT_TEXTURE_NONE ? info.format : (tex ? tex->rtFormat : RT_TEXTURE_NONE);
     rt_texture_usages_t usage = info.usage ? info.usage : (tex ? tex->usage : 0);
     rt_texture_view_t result{
@@ -1760,7 +1767,7 @@ rt_texture_view_t vk_create_texture_view(rt_texture_view_info_t const& info)
     uint32_t handle = vulkan.textureViewID + 1;
     auto& native = vulkan.textureViews[handle];
     native.handle = imageView;
-    native.texture = info.texture.handle;
+    native.texture = texture.handle;
     vulkan.textureViewID = handle;
     result.handle = handle;
     result.native = &native;

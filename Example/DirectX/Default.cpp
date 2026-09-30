@@ -254,7 +254,7 @@ int main()
     device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&presentFence));
     presentEvent = CreateEventW(nullptr, FALSE, FALSE, nullptr);
 
-    rt_load_library("directx", {.directx = {.device = device.Get(), .queue = queue.Get()}});
+    rt_load_library({.backend = RT_DIRECTX, .directx = {.device = device.Get(), .queue = queue.Get()}});
 
     bool running = true;
     while (running)

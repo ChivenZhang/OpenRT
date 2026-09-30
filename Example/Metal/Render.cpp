@@ -186,7 +186,7 @@ int main()
     layer->setPixelFormat(MTL::PixelFormatBGRA8Unorm);
     layer->setFramebufferOnly(false);
 
-    rt_load_library("metal", {.metal = {.device = device, .queue = queue}});
+    rt_load_library({.backend = RT_METAL, .metal = {.device = device, .queue = queue}});
 
     bool running = true;
     while (running)

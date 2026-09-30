@@ -11,7 +11,6 @@
 #include "OpenRT.h"
 #include <cstdio>
 #include <cstdlib>
-#include <cstring>
 #ifdef OPENGL_IMPLEMENTATION
 #include "OpenGL.h"
 #endif
@@ -29,10 +28,11 @@
 #endif
 #include <string>
 
-void rt_load_library(const char* backend, rt_load_info_t const& info)
+void rt_load_library(rt_load_info_t const& info)
 {
-    if (backend == nullptr || strcmp(backend, "opengl") == 0)
+    switch (info.backend)
     {
+    case RT_OPENGL:
 #ifdef OPENGL_IMPLEMENTATION
         gl_load_library();
 #else
@@ -40,9 +40,7 @@ void rt_load_library(const char* backend, rt_load_info_t const& info)
         abort();
 #endif
         return;
-    }
-    if (strcmp(backend, "vulkan") == 0)
-    {
+    case RT_VULKAN:
 #ifdef VULKAN_IMPLEMENTATION
         vk_load_library(
             static_cast<VkInstance>(info.vulkan.instance),
@@ -56,9 +54,7 @@ void rt_load_library(const char* backend, rt_load_info_t const& info)
         abort();
 #endif
         return;
-    }
-    if (strcmp(backend, "directx") == 0)
-    {
+    case RT_DIRECTX:
 #ifdef DIRECTX_IMPLEMENTATION
         dx_load_library(static_cast<ID3D12Device*>(info.directx.device), static_cast<ID3D12CommandQueue*>(info.directx.queue));
 #else
@@ -66,9 +62,7 @@ void rt_load_library(const char* backend, rt_load_info_t const& info)
         abort();
 #endif
         return;
-    }
-    if (strcmp(backend, "metal") == 0)
-    {
+    case RT_METAL:
 #ifdef METAL_IMPLEMENTATION
         mt_load_library(static_cast<MTL::Device*>(info.metal.device), static_cast<MTL::CommandQueue*>(info.metal.queue));
 #else
@@ -76,9 +70,7 @@ void rt_load_library(const char* backend, rt_load_info_t const& info)
         abort();
 #endif
         return;
-    }
-    if (strcmp(backend, "webgpu") == 0)
-    {
+    case RT_WEBGPU:
 #ifdef WEBGPU_IMPLEMENTATION
         wg_load_library(static_cast<WGPUDevice>(info.webgpu.device), static_cast<WGPUQueue>(info.webgpu.queue));
 #else
@@ -87,7 +79,7 @@ void rt_load_library(const char* backend, rt_load_info_t const& info)
 #endif
         return;
     }
-    fprintf(stderr, "OpenRT: unknown backend %s\n", backend);
+    fprintf(stderr, "OpenRT: unknown backend %u\n", (uint32_t)info.backend);
     abort();
 }
 
@@ -104,7 +96,7 @@ void (*rt_destroy_texture)(rt_texture_t& texture) = nullptr;
 void (*rt_bind_texture)(rt_texture_t& texture, rt_texture_bind_t bind) = nullptr;
 void (*rt_bind_texture_storage)(rt_texture_t& texture, rt_texture_storage_bind_t bind) = nullptr;
 
-rt_texture_view_t (*rt_create_texture_view)(rt_texture_view_info_t const& info) = nullptr;
+rt_texture_view_t (*rt_create_texture_view)(rt_texture_t& texture, rt_texture_view_info_t const& info) = nullptr;
 void (*rt_destroy_texture_view)(rt_texture_view_t& view) = nullptr;
 void (*rt_bind_texture_view)(rt_texture_view_t& view, rt_texture_view_bind_t bind) = nullptr;
 

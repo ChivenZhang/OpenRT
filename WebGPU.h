@@ -27,7 +27,7 @@ rt_texture_t wg_create_texture(rt_texture_info_t const& info);
 void wg_destroy_texture(rt_texture_t& texture);
 void wg_bind_texture(rt_texture_t& texture, rt_texture_bind_t bind = {});
 void wg_bind_texture_storage(rt_texture_t& texture, rt_texture_storage_bind_t bind = {});
-rt_texture_view_t wg_create_texture_view(rt_texture_view_info_t const& info);
+rt_texture_view_t wg_create_texture_view(rt_texture_t& texture, rt_texture_view_info_t const& info);
 void wg_destroy_texture_view(rt_texture_view_t& view);
 void wg_bind_texture_view(rt_texture_view_t& view, rt_texture_view_bind_t bind = {});
 

@@ -340,7 +340,7 @@ int main()
     VkFenceCreateInfo fenceInfo = {.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO, .flags = VK_FENCE_CREATE_SIGNALED_BIT};
     vkCreateFence(device, &fenceInfo, nullptr, &fence);
 
-    rt_load_library("vulkan", {.vulkan = {.instance = instance, .physical = physical, .device = device, .queue = queue, .cmdbuf = cmdBuffer, .family = family}});
+    rt_load_library({.backend = RT_VULKAN, .vulkan = {.instance = instance, .physical = physical, .device = device, .queue = queue, .cmdbuf = cmdBuffer, .family = family}});
 
     bool running = true;
     while (running)

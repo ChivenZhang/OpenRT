@@ -1308,9 +1308,16 @@ rt_texture_t dx_create_texture(rt_texture_info_t const& info)
         native.target = RT_TEXTURE_2D_MULTISAMPLE;
     direct.textureID = handle;
     result.handle = handle;
+    result.width = native.width;
+    result.height = native.height;
+    result.depth = native.depth;
+    result.target = native.target;
+    result.format = native.rtFormat;
+    result.samples = native.samples > 1 ? RT_TEXTURE_SAMPLE_4X : RT_TEXTURE_SAMPLE_1X;
+    result.usage = native.usage;
+    result.mipmaps = native.levels;
     result.native = &native;
-    result.default_view = dx_create_texture_view({
-        .texture = result,
+    result.default_view = dx_create_texture_view(result, {
         .target = native.target,
         .format = native.rtFormat,
         .aspect = RT_TEXTURE_ASPECT_ALL,
@@ -1362,9 +1369,9 @@ void dx_bind_texture_storage(rt_texture_t& texture, rt_texture_storage_bind_t bi
     direct.currentBinding[bind.binding].storage_texture_bind = bind;
 }
 
-rt_texture_view_t dx_create_texture_view(rt_texture_view_info_t const& info)
+rt_texture_view_t dx_create_texture_view(rt_texture_t& texture, rt_texture_view_info_t const& info)
 {
-    auto* tex = dx_texture_native(info.texture);
+    auto* tex = dx_texture_native(texture);
     rt_texture_format_t format = info.format != RT_TEXTURE_NONE ? info.format : (tex ? tex->rtFormat : RT_TEXTURE_NONE);
     rt_texture_usages_t usage = info.usage ? info.usage : (tex ? tex->usage : 0);
     rt_texture_view_t result{
@@ -1443,7 +1450,7 @@ rt_texture_view_t dx_create_texture_view(rt_texture_view_info_t const& info)
 
     uint32_t handle = direct.textureViewID + 1;
     auto& native = direct.textureViews[handle];
-    native.texture = info.texture.handle;
+    native.texture = texture.handle;
     native.srv = srv;
     direct.textureViewID = handle;
     result.handle = handle;

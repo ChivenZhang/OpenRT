@@ -227,7 +227,7 @@ static void on_device(WGPURequestDeviceStatus status, WGPUDevice dev, WGPUString
     if (wgpuSurfaceGetCapabilities(surface, adapter, &caps) == WGPUStatus_Success && caps.formatCount)
         choose_format(caps.formats[0]);
     wgpuSurfaceCapabilitiesFreeMembers(caps);
-    rt_load_library("webgpu", {.webgpu = {.device = device, .queue = queue}});
+    rt_load_library({.backend = RT_WEBGPU, .webgpu = {.device = device, .queue = queue}});
     gpuReady = true;
     if (adapter)
     {
