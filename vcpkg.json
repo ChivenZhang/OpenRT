@@ -4,10 +4,12 @@
   "builtin-baseline" : "256acc64012b23a13041d8705805e1f23b43a024",
   "dependencies" : [{
     "name" : "glew",
-    "version>=" : "2.3.1"
+    "version>=" : "2.3.1",
+    "platform": "!emscripten"
   }, {
     "name" : "vulkan",
-    "version>=" : "2023-12-17"
+    "version>=" : "2023-12-17",
+    "platform": "!emscripten"
   }, {
     "name" : "stb",
     "version>=" : "2024-07-29#1"

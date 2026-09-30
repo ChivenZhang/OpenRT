@@ -9,50 +9,67 @@
 *
 * =================================================*/
 #define OPENRTX_IMPLEMENTATION
-#define WEBGPU_IMPLEMENTATION
 #include "../../OpenRTX.h"
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_properties.h>
 #include <emscripten.h>
 #include <webgpu/webgpu.h>
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
 #include <cstdio>
+#include <cstring>
 
 static constexpr auto VS = R"(
+    struct Push {
+        projView: mat4x4f,
+        meshMat: mat4x4f,
+    }
+    @group(0) @binding(16) var<uniform> push: Push;
+
     struct VSOut {
         @builtin(position) position: vec4f,
-        @location(0) vertex: vec3f,
+        @location(0) world: vec3f,
         @location(1) normal: vec3f,
         @location(2) uv: vec2f,
-        @location(3) color: vec3f,
     };
 
     @vertex
-    fn main(
-        @location(0) in_vertex: vec3f,
-        @location(1) in_normal: vec3f,
-        @location(2) in_uv: vec2f,
-        @builtin(vertex_index) vertexID: u32
-    ) -> VSOut {
-        var colors = array<vec3f, 3>(vec3f(1, 0, 0), vec3f(0, 1, 0), vec3f(0, 0, 1));
+    fn vs_main(@location(0) in_vertex: vec3f, @location(1) in_normal: vec3f, @location(2) in_uv: vec2f) -> VSOut {
         var output: VSOut;
-        output.vertex = in_vertex;
-        output.normal = in_normal;
+        output.world = (push.meshMat * vec4f(in_vertex, 1.0)).xyz;
+        output.normal = (push.meshMat * vec4f(in_normal, 0.0)).xyz;
         output.uv = in_uv;
-        output.color = colors[vertexID];
-        output.position = vec4f(in_vertex, 1.0);
+        output.position = push.projView * vec4f(output.world, 1.0);
         return output;
     }
 )";
 
 static constexpr auto FS = R"(
+    @group(0) @binding(0) var texture0: texture_2d<f32>;
+    @group(0) @binding(1) var sampler0: sampler;
+
     @fragment
-    fn main(
-        @location(0) vertex: vec3f,
-        @location(1) normal: vec3f,
-        @location(2) uv: vec2f,
-        @location(3) color: vec3f
-    ) -> @location(0) vec4f {
-        return vec4f(color, 1);
+    fn fs_main(@location(0) world: vec3f, @location(1) normal: vec3f, @location(2) uv: vec2f) -> @location(0) vec4f {
+        let light_position = vec3f(5.0, 5.0, 5.0);
+        let light_color = vec3f(1.0, 0.98, 0.94);
+        let light_intensity = 1.5;
+        let ambient_color = vec3f(0.1, 0.1, 0.1);
+        let diffuse_color = vec3f(1.0, 1.0, 1.0);
+        let specular_color = vec3f(0.5, 0.5, 0.5);
+        let shininess = 32.0;
+        let camera_position = vec3f(0.0, 0.0, 10.0);
+
+        let N = normalize(normal);
+        let L = normalize(light_position - world);
+        let V = normalize(camera_position - world);
+        let H = normalize(L + V);
+        let ambient = ambient_color;
+        let diff = max(dot(N, L), 0.0);
+        let diffuse = diff * diffuse_color * textureSample(texture0, sampler0, uv).rgb;
+        let spec = pow(max(dot(N, H), 0.0), shininess);
+        let specular = spec * specular_color;
+        let result = ambient + light_intensity * light_color * (diffuse + specular);
+        return vec4f(result, 1.0);
     }
 )";
 
@@ -168,10 +185,16 @@ static void present(rt_texture_t& color, uint32_t width, uint32_t height)
 void frame(int width, int height)
 {
     static auto module = rt_create_module_render({
-        .vshader = {.code = VS, .size = (uint32_t)strlen(VS)},
-        .fshader = {.code = FS, .size = (uint32_t)strlen(FS)},
+        .vshader = {.code = VS, .size = (uint32_t)strlen(VS), .entry = "vs_main"},
+        .fshader = {.code = FS, .size = (uint32_t)strlen(FS), .entry = "fs_main"},
         .colors = {{.format = colorFormat,}},
+        .depth = {.write = true, .func = RT_LEQUAL,},
         .vertex = {rt_vertex_vertex, rt_vertex_normal, rt_vertex_uv,},
+        .binding = {
+            {.binding = 0, .type = RT_BINDING_TEXTURE},
+            {.binding = 1, .type = RT_BINDING_SAMPLER},
+        },
+        .wind_mode = RT_CCW,
     });
     static auto pass_color = rt_create_texture({
         .width = (uint32_t)width, .height = (uint32_t)height,
@@ -179,11 +202,27 @@ void frame(int width, int height)
         .min_filter = RT_LINEAR, .mag_filter = RT_LINEAR,
         .mipmaps = 1,
     });
+    static auto pass_depth = rt_create_texture_depth(width, height);
     {
-        rt_pass_render_t pass = {.module = module, .colors = {{.texture_view = pass_color.default_view, .clear = true,}},};
+        rt_pass_render_t pass = {
+            .module = module,
+            .colors = {{.texture_view = pass_color.default_view, .clear = true,}},
+            .depth = {.texture_view = pass_depth.default_view, .clear = true,},
+        };
         rt_begin_render(pass);
 
-        static auto mesh = rt_create_mesh_triangle(1);
+        static auto texture0 = rt_load_texture_file("Earth.png", true);
+        static auto sampler0 = rt_create_sampler({.min_filter = RT_LINEAR, .mag_filter = RT_LINEAR, .address_u = RT_REPEAT, .address_v = RT_REPEAT,});
+        rt_bind_texture(texture0, {.binding = 0,});
+        rt_bind_sampler(sampler0, {.binding = 1,});
+
+        auto projMat = glm::perspectiveRH_ZO(glm::radians(60.0f), (float)width / (float)height, 0.1f, 100.0f);
+        auto viewMat = glm::lookAt(glm::vec3(0, 2, 5), glm::vec3(0, 0, 0), glm::vec3(0, 1, 0));
+        auto meshMat = glm::rotate(glm::rotate(glm::mat4(1), glm::radians(-23.5f), glm::vec3(0, 0, 1)), (float)SDL_GetTicks() / 2000.0f, glm::vec3(0, 1, 0));
+        glm::mat4 push[2] = {projMat * viewMat, meshMat};
+        rt_push_constant((const uint8_t*)push, sizeof(push));
+
+        static auto mesh = rt_create_mesh_sphere(2, 64, 32);
         rt_draw_mesh(mesh);
 
         rt_end_render(pass);
@@ -209,7 +248,7 @@ static void tick()
     }
     if (!gpuReady) return;
 
-    int pw = 600, ph = 600;
+    int pw = 1000, ph = 600;
     SDL_GetWindowSizeInPixels(window, &pw, &ph);
     frame(pw, ph);
 }
@@ -254,9 +293,9 @@ static void on_adapter(WGPURequestAdapterStatus status, WGPUAdapter ad, WGPUStri
 
 int main()
 {
-    int w = 600, h = 600;
+    int w = 1000, h = 600;
     SDL_Init(SDL_INIT_VIDEO);
-    window = SDL_CreateWindow("WebGPU-Default", w, h, 0);
+    window = SDL_CreateWindow("WebGPU-Render", w, h, 0);
     if (!window)
     {
         fprintf(stderr, "[WebGPU][ERROR] SDL_CreateWindow failed: %s\n", SDL_GetError());

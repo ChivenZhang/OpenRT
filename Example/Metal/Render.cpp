@@ -130,10 +130,8 @@ void frame(int width, int height)
         .depth = {.write = true, .func = RT_LEQUAL,},
         .vertex = {rt_vertex_vertex, rt_vertex_normal, rt_vertex_uv,},
     });
-    static uint32_t colorWidth = (uint32_t)width;
-    static uint32_t colorHeight = (uint32_t)height;
     static auto pass_color = rt_create_texture({
-        .width = colorWidth, .height = colorHeight,
+        .width = (uint32_t)width, .height = (uint32_t)height,
         .format = RT_TEXTURE_BGRA8UNORM,
         .min_filter = RT_LINEAR, .mag_filter = RT_LINEAR,
         .mipmaps = 1,
@@ -161,7 +159,7 @@ void frame(int width, int height)
     }
 
     rt_submit();
-    present(pass_color, colorWidth, colorHeight);
+    present(pass_color, width, height);
 }
 
 int main()

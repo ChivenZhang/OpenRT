@@ -12,6 +12,7 @@
 #ifdef WEBGPU_IMPLEMENTATION
 #include "OpenRT.h"
 #include <webgpu/webgpu.h>
+#define WGPUVertexFormat_Undefined ((WGPUVertexFormat)0)
 
 void wg_load_library(WGPUDevice device, WGPUQueue queue);
 void wg_unload_library();

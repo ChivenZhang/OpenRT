@@ -106,9 +106,7 @@ void frame(int width, int height)
         .colors = {{.format = RT_TEXTURE_BGRA8UNORM,}},
         .vertex = {rt_vertex_vertex, rt_vertex_normal, rt_vertex_uv,},
     });
-    static uint32_t colorWidth = (uint32_t)width;
-    static uint32_t colorHeight = (uint32_t)height;
-    static auto pass_color = rt_create_texture({ .width = colorWidth, .height = colorHeight, .format = RT_TEXTURE_BGRA8UNORM, });
+    static auto pass_color = rt_create_texture({ .width = (uint32_t)width, .height = (uint32_t)height, .format = RT_TEXTURE_BGRA8UNORM, });
     {
         rt_pass_render_t pass = {.module = module, .colors = {{.texture_view = pass_color.default_view, .clear = true,}},};
         rt_begin_render(pass);
@@ -120,7 +118,7 @@ void frame(int width, int height)
     }
 
     rt_submit();
-    present(pass_color, colorWidth, colorHeight);
+    present(pass_color, width, height);
 }
 
 int main()

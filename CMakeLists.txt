@@ -40,7 +40,7 @@ target_compile_definitions(OpenRT PUBLIC OPENRT_EXPORTS)
 find_package(Stb REQUIRED)
 target_include_directories(OpenRT PRIVATE ${Stb_INCLUDE_DIR})
 if(EMSCRIPTEN)
-target_compile_options(OpenRT PRIVATE "SHELL:-sUSE_WEBGPU=1")
+target_compile_options(OpenRT PRIVATE "SHELL:--use-port=emdawnwebgpu")
 else()
 find_package(GLEW CONFIG REQUIRED)
 target_link_libraries(OpenRT PRIVATE GLEW::GLEW)
@@ -161,12 +161,28 @@ add_executable(WebGPU-Default Example/WebGPU/Default.cpp)
 add_dependencies(WebGPU-Default OpenRT)
 target_compile_definitions(WebGPU-Default PRIVATE WEBGPU_IMPLEMENTATION)
 target_include_directories(WebGPU-Default PRIVATE ${Stb_INCLUDE_DIR})
-target_compile_options(WebGPU-Default PRIVATE "SHELL:-sUSE_SDL=3" "SHELL:-sUSE_WEBGPU=1")
+target_compile_options(WebGPU-Default PRIVATE "SHELL:-sUSE_SDL=3" "SHELL:--use-port=emdawnwebgpu")
 target_link_libraries(WebGPU-Default PRIVATE OpenRT)
 target_link_options(WebGPU-Default PRIVATE
     "SHELL:-sUSE_SDL=3"
-    "SHELL:-sUSE_WEBGPU=1"
+    "SHELL:--use-port=emdawnwebgpu"
     "SHELL:-sALLOW_MEMORY_GROWTH=1"
 )
 set_target_properties(WebGPU-Default PROPERTIES SUFFIX ".html")
+
+add_executable(WebGPU-Render Example/WebGPU/Render.cpp)
+add_dependencies(WebGPU-Render OpenRT)
+target_compile_definitions(WebGPU-Render PRIVATE WEBGPU_IMPLEMENTATION)
+target_include_directories(WebGPU-Render PRIVATE ${Stb_INCLUDE_DIR})
+target_compile_options(WebGPU-Render PRIVATE "SHELL:-sUSE_SDL=3" "SHELL:--use-port=emdawnwebgpu")
+target_link_libraries(WebGPU-Render PRIVATE OpenRT)
+find_package(glm CONFIG REQUIRED)
+target_link_libraries(WebGPU-Render PRIVATE glm::glm)
+target_link_options(WebGPU-Render PRIVATE
+    "SHELL:-sUSE_SDL=3"
+    "SHELL:--use-port=emdawnwebgpu"
+    "SHELL:-sALLOW_MEMORY_GROWTH=1"
+    "SHELL:--preload-file ${CMAKE_SOURCE_DIR}/Earth.png@Earth.png"
+)
+set_target_properties(WebGPU-Render PROPERTIES SUFFIX ".html")
 endif()

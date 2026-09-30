@@ -566,13 +566,22 @@ struct wg_native_t
     };
 } static webgpu;
 
+static WGPUStringView wg_string(char const* text)
+{
+    WGPUStringView view = {};
+    view.data = text;
+    view.length = WGPU_STRLEN;
+    return view;
+}
+
 static WGPUShaderModule wg_create_shader(const char* data, uint32_t length)
 {
     if (!data || !length || !webgpu.device) return nullptr;
     std::string source(data, length);
-    WGPUShaderModuleWGSLDescriptor wgsl = {};
-    wgsl.chain.sType = WGPUSType_ShaderModuleWGSLDescriptor;
-    wgsl.code = source.c_str();
+    WGPUShaderSourceWGSL wgsl = {};
+    wgsl.chain.sType = WGPUSType_ShaderSourceWGSL;
+    wgsl.code.data = source.c_str();
+    wgsl.code.length = source.size();
     WGPUShaderModuleDescriptor desc = {};
     desc.nextInChain = &wgsl.chain;
     return wgpuDeviceCreateShaderModule(webgpu.device, &desc);
@@ -593,8 +602,50 @@ static WGPUBufferUsage wg_buffer_usage(rt_buffer_usages_t usage)
     return flags;
 }
 
-static WGPUTextureUsage wg_texture_usage(rt_texture_usages_t usage)
+static bool wg_storage_format(WGPUTextureFormat format)
 {
+    switch (format)
+    {
+        case WGPUTextureFormat_R8Unorm:
+        case WGPUTextureFormat_R8Snorm:
+        case WGPUTextureFormat_R8Uint:
+        case WGPUTextureFormat_R8Sint:
+        case WGPUTextureFormat_R16Uint:
+        case WGPUTextureFormat_R16Sint:
+        case WGPUTextureFormat_R16Float:
+        case WGPUTextureFormat_RG8Unorm:
+        case WGPUTextureFormat_RG8Snorm:
+        case WGPUTextureFormat_RG8Uint:
+        case WGPUTextureFormat_RG8Sint:
+        case WGPUTextureFormat_R32Uint:
+        case WGPUTextureFormat_R32Sint:
+        case WGPUTextureFormat_R32Float:
+        case WGPUTextureFormat_RG16Uint:
+        case WGPUTextureFormat_RG16Sint:
+        case WGPUTextureFormat_RG16Float:
+        case WGPUTextureFormat_RGBA8Unorm:
+        case WGPUTextureFormat_RGBA8Snorm:
+        case WGPUTextureFormat_RGBA8Uint:
+        case WGPUTextureFormat_RGBA8Sint:
+        case WGPUTextureFormat_RGBA16Uint:
+        case WGPUTextureFormat_RGBA16Sint:
+        case WGPUTextureFormat_RGBA16Float:
+        case WGPUTextureFormat_RG32Uint:
+        case WGPUTextureFormat_RG32Sint:
+        case WGPUTextureFormat_RG32Float:
+        case WGPUTextureFormat_RGBA32Uint:
+        case WGPUTextureFormat_RGBA32Sint:
+        case WGPUTextureFormat_RGBA32Float:
+            return true;
+        default:
+            return false;
+    }
+}
+
+static WGPUTextureUsage wg_texture_usage(rt_texture_usages_t usage, WGPUTextureFormat format, rt_texture_sample_t samples)
+{
+    if (samples != RT_TEXTURE_SAMPLE_1X || !wg_storage_format(format))
+        usage &= ~RT_TEXTURE_USAGE_STORAGE_BINDING;
     WGPUTextureUsage flags = WGPUTextureUsage_None;
     if (usage & RT_TEXTURE_USAGE_COPY_SRC) flags = (WGPUTextureUsage)(flags | WGPUTextureUsage_CopySrc);
     if (usage & RT_TEXTURE_USAGE_COPY_DST) flags = (WGPUTextureUsage)(flags | WGPUTextureUsage_CopyDst);
@@ -1165,7 +1216,7 @@ rt_texture_t wg_create_texture(rt_texture_info_t const& info)
                      (info.target == RT_TEXTURE_1D) ? WGPUTextureDimension_1D :
                      WGPUTextureDimension_2D;
     desc.format = native.format;
-    desc.usage = wg_texture_usage(info.usage);
+    desc.usage = wg_texture_usage(info.usage, native.format, samples);
     if (info.data && samples == RT_TEXTURE_SAMPLE_1X)
         desc.usage = (WGPUTextureUsage)(desc.usage | WGPUTextureUsage_CopyDst);
     native.handle = wgpuDeviceCreateTexture(webgpu.device, &desc);
@@ -1179,9 +1230,9 @@ rt_texture_t wg_create_texture(rt_texture_info_t const& info)
     {
         size_t bpp = wg_format_bytes(native.format);
         size_t bytes = (size_t)native.width * native.height * ((info.target == RT_TEXTURE_3D) ? native.depth : 1) * bpp;
-        WGPUImageCopyTexture dst = {};
+        WGPUTexelCopyTextureInfo dst = {};
         dst.texture = native.handle;
-        WGPUTextureDataLayout layout = {};
+        WGPUTexelCopyBufferLayout layout = {};
         layout.bytesPerRow = (uint32_t)(native.width * bpp);
         layout.rowsPerImage = native.height;
         WGPUExtent3D size = {native.width, native.height, (info.target == RT_TEXTURE_3D) ? native.depth : 1};
@@ -1384,7 +1435,7 @@ rt_module_compute_t wg_create_module_compute(rt_module_compute_info_t const& inf
     WGPUComputePipelineDescriptor desc = {};
     desc.layout = native.pipelineLayout;
     desc.compute.module = native.cshader;
-    desc.compute.entryPoint = (info.cshader.entry && info.cshader.entry[0]) ? info.cshader.entry : "main";
+    desc.compute.entryPoint = wg_string((info.cshader.entry && info.cshader.entry[0]) ? info.cshader.entry : "main");
     native.computePipeline = wgpuDeviceCreateComputePipeline(webgpu.device, &desc);
     if (!native.computePipeline)
     {
@@ -1454,7 +1505,7 @@ rt_module_render_t wg_create_module_render(rt_module_render_info_t const& info)
     }
     WGPUFragmentState fragment = {};
     fragment.module = native.fshader;
-    fragment.entryPoint = (info.fshader.entry && info.fshader.entry[0]) ? info.fshader.entry : "main";
+    fragment.entryPoint = wg_string((info.fshader.entry && info.fshader.entry[0]) ? info.fshader.entry : "main");
     fragment.targetCount = colorCount;
     fragment.targets = colorCount ? targets : nullptr;
     const bool depthEnabled = (info.depth.func != RT_ALWAYS || info.depth.write);
@@ -1465,7 +1516,7 @@ rt_module_render_t wg_create_module_render(rt_module_render_info_t const& info)
          info.stencil.front.zfail != RT_STENCIL_KEEP || info.stencil.front.zpass != RT_STENCIL_KEEP);
     WGPUDepthStencilState depth = {};
     depth.format = stencilEnabled ? WGPUTextureFormat_Depth32FloatStencil8 : WGPUTextureFormat_Depth32Float;
-    depth.depthWriteEnabled = info.depth.write;
+    depth.depthWriteEnabled = info.depth.write ? WGPUOptionalBool_True : WGPUOptionalBool_False;
     depth.depthCompare = rt_to_wg_compare(info.depth.func);
     depth.stencilFront.compare = rt_to_wg_compare(info.stencil.front.func);
     depth.stencilBack.compare = rt_to_wg_compare(info.stencil.back.func);
@@ -1474,7 +1525,7 @@ rt_module_render_t wg_create_module_render(rt_module_render_info_t const& info)
     WGPURenderPipelineDescriptor desc = {};
     desc.layout = native.pipelineLayout;
     desc.vertex.module = native.vshader;
-    desc.vertex.entryPoint = (info.vshader.entry && info.vshader.entry[0]) ? info.vshader.entry : "main";
+    desc.vertex.entryPoint = wg_string((info.vshader.entry && info.vshader.entry[0]) ? info.vshader.entry : "main");
     desc.vertex.bufferCount = attrCount;
     desc.vertex.buffers = layouts;
     desc.primitive.topology = rt_to_wg_primitive(info.primitive);
@@ -1722,6 +1773,7 @@ void wg_begin_render(rt_pass_render_t& pass)
         auto* tex = &texIt->second;
         wg_transition_image(*tex, WG_STATE_COLOR);
         colors[i].view = view->handle;
+        colors[i].depthSlice = tex->target == RT_TEXTURE_3D ? pass.colors[i].texture_view.base_layer : WGPU_DEPTH_SLICE_UNDEFINED;
         colors[i].loadOp = pass.colors[i].clear ? WGPULoadOp_Clear : WGPULoadOp_Load;
         colors[i].storeOp = WGPUStoreOp_Store;
         colors[i].clearValue = {pass.colors[i].value.r, pass.colors[i].value.g, pass.colors[i].value.b, pass.colors[i].value.a};
@@ -1734,6 +1786,7 @@ void wg_begin_render(rt_pass_render_t& pass)
     {
         if (colors[i].view)
             continue;
+        colors[i].depthSlice = WGPU_DEPTH_SLICE_UNDEFINED;
         colors[i].loadOp = WGPULoadOp_Load;
         colors[i].storeOp = WGPUStoreOp_Store;
     }
@@ -1935,11 +1988,11 @@ void wg_copy_buffer_texture(rt_texture_copy_t source, rt_buffer_texel_t destinat
     wg_transition_image(*src, WG_STATE_COPY_SRC);
     wg_transition_buffer(*dst, WG_STATE_COPY_DST);
     uint32_t bpp = wg_format_bytes(src->format);
-    WGPUImageCopyTexture srcCopy = {};
+    WGPUTexelCopyTextureInfo srcCopy = {};
     srcCopy.texture = src->handle;
     srcCopy.mipLevel = source.mipLevel;
     srcCopy.origin = {source.origin.x, source.origin.y, source.origin.z};
-    WGPUImageCopyBuffer dstCopy = {};
+    WGPUTexelCopyBufferInfo dstCopy = {};
     dstCopy.buffer = dst->handle;
     dstCopy.layout.offset = destination.offset;
     dstCopy.layout.bytesPerRow = destination.bytesPerRow ? destination.bytesPerRow : copySize.x * bpp;
@@ -1965,11 +2018,11 @@ void wg_copy_texture(rt_texture_copy_t source, rt_texture_copy_t destination, rt
     if (!src || !dst || copySize.x == 0 || copySize.y == 0) return;
     wg_transition_image(*src, WG_STATE_COPY_SRC);
     wg_transition_image(*dst, WG_STATE_COPY_DST);
-    WGPUImageCopyTexture srcCopy = {};
+    WGPUTexelCopyTextureInfo srcCopy = {};
     srcCopy.texture = src->handle;
     srcCopy.mipLevel = source.mipLevel;
     srcCopy.origin = {source.origin.x, source.origin.y, source.origin.z};
-    WGPUImageCopyTexture dstCopy = {};
+    WGPUTexelCopyTextureInfo dstCopy = {};
     dstCopy.texture = dst->handle;
     dstCopy.mipLevel = destination.mipLevel;
     dstCopy.origin = {destination.origin.x, destination.origin.y, destination.origin.z};
@@ -1993,11 +2046,11 @@ void wg_copy_texture_data(rt_texture_data_t source, rt_texture_copy_t destinatio
     if (!source.data || !dst || copySize.x == 0 || copySize.y == 0) return;
     uint32_t bpp = wg_format_bytes(dst->format);
     size_t bytes = source.size ? source.size : (size_t)std::max(copySize.x * bpp, 1u) * copySize.y * std::max(1u, copySize.z);
-    WGPUImageCopyTexture dstCopy = {};
+    WGPUTexelCopyTextureInfo dstCopy = {};
     dstCopy.texture = dst->handle;
     dstCopy.mipLevel = destination.mipLevel;
     dstCopy.origin = {destination.origin.x, destination.origin.y, destination.origin.z};
-    WGPUTextureDataLayout layout = {};
+    WGPUTexelCopyBufferLayout layout = {};
     layout.offset = 0;
     layout.bytesPerRow = source.bytesPerRow ? source.bytesPerRow : copySize.x * bpp;
     layout.rowsPerImage = source.rowsPerImage ? source.rowsPerImage : copySize.y;
@@ -2024,12 +2077,12 @@ void wg_copy_texture_buffer(rt_buffer_texel_t source, rt_texture_copy_t destinat
     wg_transition_image(*dst, WG_STATE_COPY_DST);
     wg_transition_buffer(*src, WG_STATE_COPY_SRC);
     uint32_t bpp = wg_format_bytes(dst->format);
-    WGPUImageCopyBuffer srcCopy = {};
+    WGPUTexelCopyBufferInfo srcCopy = {};
     srcCopy.buffer = src->handle;
     srcCopy.layout.offset = source.offset;
     srcCopy.layout.bytesPerRow = source.bytesPerRow ? source.bytesPerRow : copySize.x * bpp;
     srcCopy.layout.rowsPerImage = source.rowsPerImage ? source.rowsPerImage : copySize.y;
-    WGPUImageCopyTexture dstCopy = {};
+    WGPUTexelCopyTextureInfo dstCopy = {};
     dstCopy.texture = dst->handle;
     dstCopy.mipLevel = destination.mipLevel;
     dstCopy.origin = {destination.origin.x, destination.origin.y, destination.origin.z};
