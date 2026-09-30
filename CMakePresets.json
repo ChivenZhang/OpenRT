@@ -3,7 +3,7 @@
   "configurePresets": [
     {
       "name": "x64-Debug",
-      "generator": "Visual Studio 18 2026",
+      "generator": "Ninja",
       "binaryDir": "${sourceDir}/Output/${presetName}",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
@@ -12,7 +12,7 @@
     },
     {
       "name": "x64-Release",
-      "generator": "Visual Studio 18 2026",
+      "generator": "Ninja",
       "binaryDir": "${sourceDir}/Output/${presetName}",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "RelWithDebInfo",
