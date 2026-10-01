@@ -18,6 +18,7 @@ endif()
 
 if(APPLE)
 add_definitions(-DMETAL_IMPLEMENTATION)
+add_definitions(-DVULKAN_IMPLEMENTATION)
 elseif(WIN32)
 add_definitions(-DOPENGL_IMPLEMENTATION)
 add_definitions(-DVULKAN_IMPLEMENTATION)
@@ -26,6 +27,7 @@ elseif(EMSCRIPTEN)
 add_definitions(-DWEBGPU_IMPLEMENTATION)
 else()
 add_definitions(-DOPENGL_IMPLEMENTATION)
+add_definitions(-DVULKAN_IMPLEMENTATION)
 endif()
 
 add_library(OpenRT STATIC

@@ -106,6 +106,9 @@ int main()
     const char* const* sdlExts = SDL_Vulkan_GetInstanceExtensions(&extCount);
     std::vector instanceExts(sdlExts, sdlExts + extCount);
     instanceExts.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+#ifdef __APPLE__
+    instanceExts.push_back(VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME);
+#endif
 
     uint32_t layerCount = 0;
     vkEnumerateInstanceLayerProperties(&layerCount, nullptr);
@@ -126,7 +129,11 @@ int main()
     };
     VkApplicationInfo appInfo = {.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO, .pApplicationName = "Vulkan", .apiVersion = VK_API_VERSION_1_4};
     VkInstanceCreateInfo instanceInfo = {
-        .sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO, .pNext = hasValidation ? &dbgInfo : nullptr, .pApplicationInfo = &appInfo,
+        .sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO, .pNext = hasValidation ? &dbgInfo : nullptr,
+#ifdef __APPLE__
+        .flags = VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR,
+#endif
+        .pApplicationInfo = &appInfo,
         .enabledLayerCount = hasValidation ? 1u : 0u, .ppEnabledLayerNames = hasValidation ? &validationLayer : nullptr,
         .enabledExtensionCount = (uint32_t)instanceExts.size(), .ppEnabledExtensionNames = instanceExts.data(),
     };
@@ -198,7 +205,12 @@ int main()
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2,
         .pNext = &features14,
     };
-    const char* deviceExts[] = {VK_KHR_SWAPCHAIN_EXTENSION_NAME, VK_KHR_SWAPCHAIN_MUTABLE_FORMAT_EXTENSION_NAME,};
+    const char* deviceExts[] = {
+        VK_KHR_SWAPCHAIN_EXTENSION_NAME, VK_KHR_SWAPCHAIN_MUTABLE_FORMAT_EXTENSION_NAME,
+#ifdef __APPLE__
+        "VK_KHR_portability_subset",
+#endif
+    };
     VkDeviceCreateInfo deviceInfo = {
         .sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
         .pNext = &features2,
