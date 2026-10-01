@@ -44,7 +44,6 @@ void frame(int width, int height)
         .fshader = {.code = (const char*)FS, .size = sizeof(FS), .entry = FS_ENTRY},
         .colors = {{.format = RT_TEXTURE_RGBA8UNORM,}},
         .vertex = {rt_vertex_vertex, rt_vertex_normal, rt_vertex_uv,},
-        .wind_mode = RT_CW,
     });
     static auto pass_color = rt_create_texture_color(width, height);
     {
@@ -206,7 +205,7 @@ int main()
         .pNext = &features14,
     };
     const char* deviceExts[] = {
-        VK_KHR_SWAPCHAIN_EXTENSION_NAME, VK_KHR_SWAPCHAIN_MUTABLE_FORMAT_EXTENSION_NAME,
+        VK_KHR_SWAPCHAIN_EXTENSION_NAME, VK_KHR_SWAPCHAIN_MUTABLE_FORMAT_EXTENSION_NAME, VK_KHR_MAINTENANCE1_EXTENSION_NAME,
 #ifdef __APPLE__
         "VK_KHR_portability_subset",
 #endif

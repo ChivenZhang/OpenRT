@@ -2683,10 +2683,17 @@ void vk_set_viewport(int32_t x, int32_t y, int32_t width, int32_t height)
         abort();
     }
     VkViewport viewport = {};
+#ifdef VULKAN_FLIPPING_VIEWPORT
+    viewport.x = (float)x;
+    viewport.y = (float)y + height;
+    viewport.width = (float)width;
+    viewport.height = -(float)height;
+#else
     viewport.x = (float)x;
     viewport.y = (float)y;
     viewport.width = (float)width;
     viewport.height = (float)height;
+#endif
     viewport.minDepth = 0.0f;
     viewport.maxDepth = 1.0f;
     vkCmdSetViewport(vulkan.cmdBuffer, 0, 1, &viewport);

@@ -15,6 +15,7 @@ else()
 endif()
 
 # add_definitions(-DOPENRT_STATIC)
+add_definitions(-DVULKAN_FLIPPING_VIEWPORT)
 
 if(APPLE)
 add_definitions(-DMETAL_IMPLEMENTATION)
