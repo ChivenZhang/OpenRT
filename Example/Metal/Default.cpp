@@ -11,64 +11,13 @@
 #define CA_PRIVATE_IMPLEMENTATION
 #define OPENRTX_IMPLEMENTATION
 #include "../../OpenRTX.h"
+#include "../Slang/Metal-Default.h"
 #include <Foundation/Foundation.hpp>
 #include <Metal/Metal.hpp>
 #include <QuartzCore/CAMetalLayer.hpp>
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_metal.h>
 #include <cstdio>
-
-static constexpr auto VS = R"(
-    #include <metal_stdlib>
-    using namespace metal;
-
-    struct VSIn
-    {
-        float3 in_vertex [[attribute(0)]];
-        float3 in_normal [[attribute(1)]];
-        float2 in_uv [[attribute(2)]];
-    };
-
-    struct VSOut
-    {
-        float4 position [[position]];
-        float3 world;
-        float3 normal;
-        float2 uv;
-        float3 color;
-    };
-
-    vertex VSOut vs_main(VSIn input [[stage_in]], uint vertexID [[vertex_id]])
-    {
-        float3 colors[3] = {float3(1, 0, 0), float3(0, 1, 0), float3(0, 0, 1)};
-        VSOut output;
-        output.world = input.in_vertex;
-        output.normal = input.in_normal;
-        output.uv = input.in_uv;
-        output.color = colors[vertexID];
-        output.position = float4(input.in_vertex, 1.0);
-        return output;
-    }
-)";
-
-static constexpr auto FS = R"(
-    #include <metal_stdlib>
-    using namespace metal;
-
-    struct PSIn
-    {
-        float4 position [[position]];
-        float3 world;
-        float3 normal;
-        float2 uv;
-        float3 color;
-    };
-
-    fragment float4 fs_main(PSIn input [[stage_in]])
-    {
-        return float4(input.color, 1);
-    }
-)";
 
 static MTL::Device* device = nullptr;
 static MTL::CommandQueue* queue = nullptr;
@@ -101,8 +50,8 @@ static void present(rt_texture_t& color, uint32_t width, uint32_t height)
 void frame(int width, int height)
 {
     static auto module = rt_create_module_render({
-        .vshader = {.code = VS, .size = (uint32_t)strlen(VS), .entry = "vs_main"},
-        .fshader = {.code = FS, .size = (uint32_t)strlen(FS), .entry = "fs_main"},
+        .vshader = {.code = (const char*)VS, .size = sizeof(VS), .entry = VS_ENTRY},
+        .fshader = {.code = (const char*)FS, .size = sizeof(FS), .entry = FS_ENTRY},
         .colors = {{.format = RT_TEXTURE_BGRA8UNORM,}},
         .vertex = {rt_vertex_vertex, rt_vertex_normal, rt_vertex_uv,},
     });

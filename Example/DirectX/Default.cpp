@@ -12,6 +12,7 @@
 #define NOMINMAX
 #define OPENRTX_IMPLEMENTATION
 #include "../../OpenRTX.h"
+#include "../Slang/DirectX-Default.h"
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_properties.h>
 #include <d3d12.h>
@@ -22,54 +23,6 @@
 #include <vector>
 
 using Microsoft::WRL::ComPtr;
-
-static constexpr auto VS = R"(
-    struct VSIn
-    {
-        float3 in_vertex : TEXCOORD0;
-        float3 in_normal : TEXCOORD1;
-        float2 in_uv : TEXCOORD2;
-        uint vertexID : SV_VertexID;
-    };
-
-    struct VSOut
-    {
-        float4 position : SV_Position;
-        float3 vertex : TEXCOORD0;
-        float3 normal : TEXCOORD1;
-        float2 uv : TEXCOORD2;
-        float3 color : TEXCOORD3;
-    };
-
-    VSOut main(VSIn input)
-    {
-        float3 colors[3] = {float3(1, 0, 0), float3(0, 1, 0), float3(0, 0, 1)};
-        VSOut output;
-        output.vertex = input.in_vertex;
-        output.normal = input.in_normal;
-        output.uv = input.in_uv;
-        output.color = colors[input.vertexID];
-        output.position = float4(input.in_vertex, 1.0);
-        return output;
-    }
-)";
-
-static constexpr auto FS = R"(
-    struct PSIn
-    {
-        float4 position : SV_Position;
-        float3 vertex : TEXCOORD0;
-        float3 normal : TEXCOORD1;
-        float2 uv : TEXCOORD2;
-        float3 color : TEXCOORD3;
-    };
-
-    float4 main(PSIn input) : SV_Target0
-    {
-        return float4(input.color, 1);
-    }
-)";
-
 static ComPtr<ID3D12Device> device;
 static ComPtr<ID3D12CommandQueue> queue;
 static ComPtr<IDXGISwapChain3> swapchain;
@@ -80,19 +33,6 @@ static ComPtr<ID3D12GraphicsCommandList> presentCmd;
 static ComPtr<ID3D12Fence> presentFence;
 static HANDLE presentEvent = nullptr;
 static UINT64 presentValue = 0;
-
-static std::vector<uint8_t> compile_shader(const char* source, const char* target)
-{
-    ComPtr<ID3DBlob> code, error;
-    HRESULT hr = D3DCompile(source, strlen(source), nullptr, nullptr, nullptr, "main", target, 0, 0, code.GetAddressOf(), error.GetAddressOf());
-    if (FAILED(hr))
-    {
-        fprintf(stderr, "[DirectX][ERROR] shader compile failed:\n%s\n", error ? (const char*)error->GetBufferPointer() : "");
-        abort();
-    }
-    auto* bytes = (const uint8_t*)code->GetBufferPointer();
-    return {bytes, bytes + code->GetBufferSize()};
-}
 
 static void wait_present()
 {
@@ -160,11 +100,9 @@ static void present(rt_texture_t& color)
 void frame(int width, int height)
 {
     wait_present();
-    static auto vs = compile_shader(VS, "vs_5_0");
-    static auto fs = compile_shader(FS, "ps_5_0");
     static auto module = rt_create_module_render({
-        .vshader = {.code = (const char*)vs.data(), .size = (uint32_t)vs.size()},
-        .fshader = {.code = (const char*)fs.data(), .size = (uint32_t)fs.size()},
+        .vshader = {.code = (const char*)VS, .size = sizeof(VS), .entry = VS_ENTRY},
+        .fshader = {.code = (const char*)FS, .size = sizeof(FS), .entry = FS_ENTRY},
         .colors = {{.format = RT_TEXTURE_RGBA8UNORM,}},
         .vertex = {rt_vertex_vertex, rt_vertex_normal, rt_vertex_uv,},
     });

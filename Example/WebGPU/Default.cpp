@@ -9,52 +9,14 @@
 *
 * =================================================*/
 #define OPENRTX_IMPLEMENTATION
-#define WEBGPU_IMPLEMENTATION
 #include "../../OpenRTX.h"
+#include "../Slang/WebGPU-Default.h"
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_properties.h>
 #include <emscripten.h>
 #include <webgpu/webgpu.h>
 #include <cstdio>
-
-static constexpr auto VS = R"(
-    struct VSOut {
-        @builtin(position) position: vec4f,
-        @location(0) vertex: vec3f,
-        @location(1) normal: vec3f,
-        @location(2) uv: vec2f,
-        @location(3) color: vec3f,
-    };
-
-    @vertex
-    fn main(
-        @location(0) in_vertex: vec3f,
-        @location(1) in_normal: vec3f,
-        @location(2) in_uv: vec2f,
-        @builtin(vertex_index) vertexID: u32
-    ) -> VSOut {
-        var colors = array<vec3f, 3>(vec3f(1, 0, 0), vec3f(0, 1, 0), vec3f(0, 0, 1));
-        var output: VSOut;
-        output.vertex = in_vertex;
-        output.normal = in_normal;
-        output.uv = in_uv;
-        output.color = colors[vertexID];
-        output.position = vec4f(in_vertex, 1.0);
-        return output;
-    }
-)";
-
-static constexpr auto FS = R"(
-    @fragment
-    fn main(
-        @location(0) vertex: vec3f,
-        @location(1) normal: vec3f,
-        @location(2) uv: vec2f,
-        @location(3) color: vec3f
-    ) -> @location(0) vec4f {
-        return vec4f(color, 1);
-    }
-)";
+#include <cstring>
 
 static SDL_Window* window = nullptr;
 static WGPUInstance instance = nullptr;
@@ -168,8 +130,8 @@ static void present(rt_texture_t& color, uint32_t width, uint32_t height)
 void frame(int width, int height)
 {
     static auto module = rt_create_module_render({
-        .vshader = {.code = VS, .size = (uint32_t)strlen(VS)},
-        .fshader = {.code = FS, .size = (uint32_t)strlen(FS)},
+        .vshader = {.code = VS, .size = (uint32_t)strlen(VS), .entry = VS_ENTRY},
+        .fshader = {.code = FS, .size = (uint32_t)strlen(FS), .entry = FS_ENTRY},
         .colors = {{.format = colorFormat,}},
         .vertex = {rt_vertex_vertex, rt_vertex_normal, rt_vertex_uv,},
     });

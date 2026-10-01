@@ -11,6 +11,7 @@
 #define OPENRTX_IMPLEMENTATION
 #include "../../OpenRTX.h"
 #include "../../OpenGL.h"
+#include "../Slang/OpenGL-Default.h"
 #include <SDL3/SDL.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
@@ -22,41 +23,6 @@ static void present(int width, int height, rt_texture_t& color)
 
 void frame(int width, int height)
 {
-    constexpr auto VS = R"(
-        #version 460
-        layout(location = 0) in vec3 in_vertex;
-        layout(location = 1) in vec3 in_normal;
-        layout(location = 2) in vec2 in_uv;
-        out vec3 vertex;
-        out vec3 normal;
-        out vec2 uv;
-        out vec3 color;
-
-        void main()
-        {
-            vec3 colors[3] = vec3[3](vec3(1,0,0), vec3(0,1,0), vec3(0,0,1));
-
-            vertex = in_vertex;
-            normal = in_normal;
-            uv = in_uv;
-            color = colors[gl_VertexID];
-            gl_Position = vec4(in_vertex, 1.0);
-        }
-    )";
-    constexpr auto FS = R"(
-        #version 460
-        in vec3 vertex;
-        in vec3 normal;
-        in vec2 uv;
-        in vec3 color;
-        out vec4 final;
-
-        void main()
-        {
-            final = vec4(color, 1);
-        }
-    )";
-
     static auto module = rt_create_module_render({
         .vshader = {VS}, .fshader = {FS},
         .colors = {{.format = RT_TEXTURE_RGBA8UNORM,}},
