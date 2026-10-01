@@ -830,32 +830,18 @@ static MTL::Library* mt_create_library(const char* data, uint32_t length, const 
 {
     if (!data || !length || !metal.device)
     {
-        fprintf(stderr, "[Metal][ERROR] %s: source is empty\n", stage);
+        fprintf(stderr, "[Metal][ERROR] %s: metallib is empty\n", stage);
+        return nullptr;
+    }
+    if (length < 4 || data[0] != 'M' || data[1] != 'T' || data[2] != 'L' || data[3] != 'B')
+    {
+        fprintf(stderr, "[Metal][ERROR] %s: expected a metallib (MTLB) binary\n", stage);
         return nullptr;
     }
     NS::Error* error = nullptr;
-    bool text = data[0] != 0 && (unsigned char)data[0] < 0x80;
-    for (uint32_t i = 0; i < std::min(length, 8u) && text; ++i)
-        if ((unsigned char)data[i] < 9 && data[i] != '\n' && data[i] != '\r' && data[i] != '\t')
-            text = false;
-    MTL::Library* library = nullptr;
-    if (text)
-    {
-        NS::String* source = NS::String::alloc()->init((void*)data, length, NS::UTF8StringEncoding, false);
-        if (!source)
-        {
-            fprintf(stderr, "[Metal][ERROR] %s: source is empty\n", stage);
-            return nullptr;
-        }
-        library = metal.device->newLibrary(source, nullptr, &error);
-        mt_release(source);
-    }
-    else
-    {
-        dispatch_data_t blob = dispatch_data_create(data, length, nullptr, DISPATCH_DATA_DESTRUCTOR_DEFAULT);
-        library = metal.device->newLibrary(blob, &error);
-        if (blob) dispatch_release(blob);
-    }
+    dispatch_data_t blob = dispatch_data_create(data, length, nullptr, DISPATCH_DATA_DESTRUCTOR_DEFAULT);
+    MTL::Library* library = metal.device->newLibrary(blob, &error);
+    if (blob) dispatch_release(blob);
     if (!library)
         mt_log_error(stage, error);
     return library;
@@ -1567,7 +1553,7 @@ rt_module_compute_t mt_create_module_compute(rt_module_compute_info_t const& inf
     if (!info.cshader.code || !info.cshader.size || !metal.device) return result;
     uint32_t handle = metal.moduleID + 1;
     auto& native = metal.modules[handle];
-    native.clib = mt_create_library(info.cshader.code, info.cshader.size, "compute shader compile failed");
+    native.clib = mt_create_library(info.cshader.code, info.cshader.size, "compute shader");
     native.cfn = mt_function_from_binary(native.clib, info.cshader.entry, "compute shader");
     if (!native.cfn)
     {
@@ -1597,12 +1583,12 @@ rt_module_render_t mt_create_module_render(rt_module_render_info_t const& info)
     auto& native = metal.modules[handle];
     if (info.vshader.code)
     {
-        native.vlib = mt_create_library(info.vshader.code, info.vshader.size, "vertex shader compile failed");
+        native.vlib = mt_create_library(info.vshader.code, info.vshader.size, "vertex shader");
         native.vfn = mt_function_from_binary(native.vlib, info.vshader.entry, "vertex shader");
     }
     if (info.fshader.code)
     {
-        native.flib = mt_create_library(info.fshader.code, info.fshader.size, "fragment shader compile failed");
+        native.flib = mt_create_library(info.fshader.code, info.fshader.size, "fragment shader");
         native.ffn = mt_function_from_binary(native.flib, info.fshader.entry, "fragment shader");
     }
     if ((info.vshader.code && !native.vfn) || (info.fshader.code && !native.ffn))
@@ -1663,14 +1649,14 @@ rt_module_render_t mt_create_module_meshlet(rt_module_render_info_t const& info)
     auto& native = metal.modules[handle];
     if (info.tshader.code)
     {
-        native.tlib = mt_create_library(info.tshader.code, info.tshader.size, "object shader compile failed");
+        native.tlib = mt_create_library(info.tshader.code, info.tshader.size, "object shader");
         native.tfn = mt_function_from_binary(native.tlib, info.tshader.entry, "object shader");
     }
-    native.mlib = mt_create_library(info.mshader.code, info.mshader.size, "mesh shader compile failed");
+    native.mlib = mt_create_library(info.mshader.code, info.mshader.size, "mesh shader");
     native.mfn = mt_function_from_binary(native.mlib, info.mshader.entry, "mesh shader");
     if (info.fshader.code)
     {
-        native.flib = mt_create_library(info.fshader.code, info.fshader.size, "fragment shader compile failed");
+        native.flib = mt_create_library(info.fshader.code, info.fshader.size, "fragment shader");
         native.ffn = mt_function_from_binary(native.flib, info.fshader.entry, "fragment shader");
     }
     const bool depthEnabled = (info.depth.func != RT_ALWAYS || info.depth.write);

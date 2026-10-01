@@ -19,9 +19,6 @@
 #include <windows.h>
 #include <wrl/client.h>
 
-#pragma comment(lib, "d3d12.lib")
-#pragma comment(lib, "dxgi.lib")
-
 using Microsoft::WRL::ComPtr;
 
 static D3D12_FILTER rt_to_dx_filter(rt_filter_t minFilter, rt_filter_t magFilter)
