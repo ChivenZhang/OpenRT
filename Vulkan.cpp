@@ -672,6 +672,7 @@ struct vk_native_t
     std::vector<vk_staging_t> pendingStaging;
 
     PFN_vkCmdDrawMeshTasksNV fnDrawMeshTasksNV = nullptr;
+    PFN_vkCmdDrawMeshTasksIndirectEXT fnDrawMeshTasksIndirectEXT = nullptr;
 
     struct
     {
@@ -1160,6 +1161,7 @@ void vk_load_library(VkInstance instance, VkPhysicalDevice physical, VkDevice de
     vkCreatePipelineCache(vulkan.device, &cacheInfo, vulkan.allocator, &vulkan.pipelineCache);
 
     vulkan.fnDrawMeshTasksNV = (PFN_vkCmdDrawMeshTasksNV)vkGetDeviceProcAddr(vulkan.device, "vkCmdDrawMeshTasksNV");
+    vulkan.fnDrawMeshTasksIndirectEXT = (PFN_vkCmdDrawMeshTasksIndirectEXT)vkGetDeviceProcAddr(vulkan.device, "vkCmdDrawMeshTasksIndirectEXT");
 
     rt_unload_library = vk_unload_library;
     rt_create_buffer = vk_create_buffer;
@@ -1191,6 +1193,7 @@ void vk_load_library(VkInstance instance, VkPhysicalDevice physical, VkDevice de
     rt_set_viewport = vk_set_viewport;
     rt_set_scissor = vk_set_scissor;
     rt_draw_mesh_task = vk_draw_mesh_task;
+    rt_draw_mesh_task_indirect = vk_draw_mesh_task_indirect;
     rt_push_constant = vk_push_constant;
     rt_push_const_int = vk_push_const_int;
     rt_push_const_uint = vk_push_const_uint;
@@ -1330,6 +1333,7 @@ void vk_unload_library()
     if (rt_set_viewport == vk_set_viewport) rt_set_viewport = nullptr;
     if (rt_set_scissor == vk_set_scissor) rt_set_scissor = nullptr;
     if (rt_draw_mesh_task == vk_draw_mesh_task) rt_draw_mesh_task = nullptr;
+    if (rt_draw_mesh_task_indirect == vk_draw_mesh_task_indirect) rt_draw_mesh_task_indirect = nullptr;
     if (rt_push_constant == vk_push_constant) rt_push_constant = nullptr;
     if (rt_push_const_int == vk_push_const_int) rt_push_const_int = nullptr;
     if (rt_push_const_uint == vk_push_const_uint) rt_push_const_uint = nullptr;
@@ -2820,6 +2824,28 @@ void vk_draw_mesh_task(uint32_t groupX, uint32_t groupY, uint32_t groupZ)
         vulkan.fnDrawMeshTasksNV(vulkan.cmdBuffer, std::max(1u, groupX) * std::max(1u, groupY) * std::max(1u, groupZ), 0);
 }
 
+void vk_draw_mesh_task_indirect(rt_buffer_t& indirect, size_t offset, uint32_t draw_count, uint32_t draw_stride)
+{
+    if (vulkan.currentPipeline == nullptr)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    if (vulkan.currentPassType != RT_MODULE_RENDER)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    auto* native = vk_buffer_native(indirect);
+    if (!native)
+        return;
+    vk_flush_descriptors();
+    vk_transition_buffer(*native, VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT, VK_ACCESS_INDIRECT_COMMAND_READ_BIT);
+    vk_begin_rendering();
+    if (vulkan.fnDrawMeshTasksIndirectEXT)
+        vulkan.fnDrawMeshTasksIndirectEXT(vulkan.cmdBuffer, native->handle, (VkDeviceSize)offset, draw_count, draw_stride);
+}
+
 void vk_begin_transfer(rt_pass_transfer_t& pass)
 {
     if (vulkan.currentPipeline)
@@ -3140,7 +3166,7 @@ void vk_draw_mesh(rt_mesh_t& mesh)
         vkCmdDraw(vulkan.cmdBuffer, vertex_count, 1, 0, 0);
 }
 
-void vk_draw_array(rt_buffer_t vbo[], uint32_t vbo_num, uint32_t draw_num, uint32_t instance_num)
+void vk_draw_array(rt_buffer_t vbo[], uint32_t vbo_num, uint32_t vertex_num, uint32_t instance_num, uint32_t vertex_start, uint32_t instance_start)
 {
     if (vulkan.currentPipeline == nullptr)
     {
@@ -3154,10 +3180,10 @@ void vk_draw_array(rt_buffer_t vbo[], uint32_t vbo_num, uint32_t draw_num, uint3
     }
     vk_flush_descriptors();
     vk_bind_draw_vbos(vbo, vbo_num);
-    vkCmdDraw(vulkan.cmdBuffer, draw_num, instance_num, 0, 0);
+    vkCmdDraw(vulkan.cmdBuffer, vertex_num, instance_num, vertex_start, instance_start);
 }
 
-void vk_draw_index(rt_buffer_t vbo[], uint32_t vbo_num, rt_buffer_t& ibo, uint32_t draw_num, uint32_t instance_num)
+void vk_draw_index(rt_buffer_t vbo[], uint32_t vbo_num, rt_buffer_t& ebo, uint32_t vertex_num, uint32_t instance_num, uint32_t vertex_start, uint32_t instance_start)
 {
     if (vulkan.currentPipeline == nullptr)
     {
@@ -3169,7 +3195,7 @@ void vk_draw_index(rt_buffer_t vbo[], uint32_t vbo_num, rt_buffer_t& ibo, uint32
         fprintf(stderr, "Pipeline not begin");
         abort();
     }
-    auto* indexNative = vk_buffer_native(ibo);
+    auto* indexNative = vk_buffer_native(ebo);
     if (!indexNative)
         return;
     vk_flush_descriptors();
@@ -3177,7 +3203,7 @@ void vk_draw_index(rt_buffer_t vbo[], uint32_t vbo_num, rt_buffer_t& ibo, uint32
     vk_bind_draw_vbos(vbo, vbo_num);
     rt_module_render_t const& module = vulkan.currentRenderPass->module;
     vkCmdBindIndexBuffer(vulkan.cmdBuffer, indexNative->handle, 0, rt_to_vk_index_type(module.index_type));
-    vkCmdDrawIndexed(vulkan.cmdBuffer, draw_num, instance_num, 0, 0, 0);
+    vkCmdDrawIndexed(vulkan.cmdBuffer, vertex_num, instance_num, 0, (int32_t)vertex_start, instance_start);
 }
 
 void vk_draw_array_indirect(rt_buffer_t vbo[], uint32_t vbo_num, rt_buffer_t& indirect, size_t offset)
@@ -3201,7 +3227,7 @@ void vk_draw_array_indirect(rt_buffer_t vbo[], uint32_t vbo_num, rt_buffer_t& in
     vkCmdDrawIndirect(vulkan.cmdBuffer, indirectNative->handle, (VkDeviceSize)offset, 1, sizeof(VkDrawIndirectCommand));
 }
 
-void vk_draw_index_indirect(rt_buffer_t vbo[], uint32_t vbo_num, rt_buffer_t& ibo, rt_buffer_t& indirect, size_t offset)
+void vk_draw_index_indirect(rt_buffer_t vbo[], uint32_t vbo_num, rt_buffer_t& ebo, rt_buffer_t& indirect, size_t offset)
 {
     if (vulkan.currentPipeline == nullptr)
     {
@@ -3213,7 +3239,7 @@ void vk_draw_index_indirect(rt_buffer_t vbo[], uint32_t vbo_num, rt_buffer_t& ib
         fprintf(stderr, "Pipeline not begin");
         abort();
     }
-    auto* indexNative = vk_buffer_native(ibo);
+    auto* indexNative = vk_buffer_native(ebo);
     auto* indirectNative = vk_buffer_native(indirect);
     if (!indexNative || !indirectNative)
         return;

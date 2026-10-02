@@ -586,6 +586,8 @@ struct dx_native_t
     ComPtr<ID3D12CommandSignature> drawSignature;
     ComPtr<ID3D12CommandSignature> drawIndexedSignature;
     ComPtr<ID3D12CommandSignature> dispatchSignature;
+    ComPtr<ID3D12CommandSignature> meshSignature;
+    uint32_t meshStride = 0;
     HANDLE fenceEvent = nullptr;
     uint64_t fenceValue = 0;
     uint32_t rtvSize = 0, dsvSize = 0, srvSize = 0, samplerSize = 0;
@@ -932,6 +934,7 @@ void dx_load_library(ID3D12Device* device, ID3D12CommandQueue* queue)
     rt_set_viewport = dx_set_viewport;
     rt_set_scissor = dx_set_scissor;
     rt_draw_mesh_task = dx_draw_mesh_task;
+    rt_draw_mesh_task_indirect = dx_draw_mesh_task_indirect;
     rt_push_constant = dx_push_constant;
     rt_push_const_int = dx_push_const_int;
     rt_push_const_uint = dx_push_const_uint;
@@ -1009,6 +1012,8 @@ void dx_unload_library()
     direct.drawSignature.Reset();
     direct.drawIndexedSignature.Reset();
     direct.dispatchSignature.Reset();
+    direct.meshSignature.Reset();
+    direct.meshStride = 0;
     direct.fence.Reset();
     direct.queue.Reset();
     direct.device.Reset();
@@ -1047,6 +1052,7 @@ void dx_unload_library()
     if (rt_set_viewport == dx_set_viewport) rt_set_viewport = nullptr;
     if (rt_set_scissor == dx_set_scissor) rt_set_scissor = nullptr;
     if (rt_draw_mesh_task == dx_draw_mesh_task) rt_draw_mesh_task = nullptr;
+    if (rt_draw_mesh_task_indirect == dx_draw_mesh_task_indirect) rt_draw_mesh_task_indirect = nullptr;
     if (rt_push_constant == dx_push_constant) rt_push_constant = nullptr;
     if (rt_push_const_int == dx_push_const_int) rt_push_const_int = nullptr;
     if (rt_push_const_uint == dx_push_const_uint) rt_push_const_uint = nullptr;
@@ -2128,6 +2134,12 @@ static ID3D12CommandSignature* dx_indirect_signature(D3D12_INDIRECT_ARGUMENT_TYP
         slot = &direct.drawSignature;
     else if (type == D3D12_INDIRECT_ARGUMENT_TYPE_DRAW_INDEXED)
         slot = &direct.drawIndexedSignature;
+    else if (type == D3D12_INDIRECT_ARGUMENT_TYPE_DISPATCH_MESH)
+    {
+        if (direct.meshSignature && direct.meshStride != stride)
+            direct.meshSignature.Reset();
+        slot = &direct.meshSignature;
+    }
     if (slot->Get())
         return slot->Get();
 
@@ -2142,6 +2154,8 @@ static ID3D12CommandSignature* dx_indirect_signature(D3D12_INDIRECT_ARGUMENT_TYP
         fprintf(stderr, "DirectX: failed to create command signature\n");
         abort();
     }
+    if (type == D3D12_INDIRECT_ARGUMENT_TYPE_DISPATCH_MESH)
+        direct.meshStride = stride;
     return slot->Get();
 }
 
@@ -2344,6 +2358,28 @@ void dx_draw_mesh_task(uint32_t groupX, uint32_t groupY, uint32_t groupZ)
     dx_flush_descriptors();
     if (direct.cmdMesh)
         direct.cmdMesh->DispatchMesh(max(1u, groupX), max(1u, groupY), max(1u, groupZ));
+}
+
+void dx_draw_mesh_task_indirect(rt_buffer_t& indirect, size_t offset, uint32_t draw_count, uint32_t draw_stride)
+{
+    if (direct.currentPipeline == nullptr)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    if (direct.currentPassType != RT_MODULE_RENDER)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    auto* native = dx_buffer_native(indirect);
+    if (!native || !native->handle || !direct.cmdMesh)
+        return;
+    dx_flush_descriptors();
+    if (native->heap != D3D12_HEAP_TYPE_UPLOAD)
+        dx_transition_buffer(*native, D3D12_RESOURCE_STATE_INDIRECT_ARGUMENT);
+    auto* signature = dx_indirect_signature(D3D12_INDIRECT_ARGUMENT_TYPE_DISPATCH_MESH, draw_stride);
+    direct.cmdMesh->ExecuteIndirect(signature, draw_count, native->handle.Get(), (UINT64)offset, nullptr, 0);
 }
 
 void dx_begin_transfer(rt_pass_transfer_t& pass)
@@ -2656,7 +2692,7 @@ static void dx_draw_mesh_impl(rt_mesh_t& mesh, uint32_t instanceCount)
         direct.cmd->DrawInstanced(vertex_count, instanceCount, 0, 0);
 }
 
-void dx_draw_array(rt_buffer_t vbo[], uint32_t vbo_num, uint32_t draw_num, uint32_t instance_num)
+void dx_draw_array(rt_buffer_t vbo[], uint32_t vbo_num, uint32_t vertex_num, uint32_t instance_num, uint32_t vertex_start, uint32_t instance_start)
 {
     if (direct.currentPipeline == nullptr)
     {
@@ -2670,10 +2706,10 @@ void dx_draw_array(rt_buffer_t vbo[], uint32_t vbo_num, uint32_t draw_num, uint3
     }
     dx_flush_descriptors();
     dx_bind_draw_vbos(vbo, vbo_num);
-    direct.cmd->DrawInstanced(draw_num, instance_num, 0, 0);
+    direct.cmd->DrawInstanced(vertex_num, instance_num, vertex_start, instance_start);
 }
 
-void dx_draw_index(rt_buffer_t vbo[], uint32_t vbo_num, rt_buffer_t& ibo, uint32_t draw_num, uint32_t instance_num)
+void dx_draw_index(rt_buffer_t vbo[], uint32_t vbo_num, rt_buffer_t& ebo, uint32_t vertex_num, uint32_t instance_num, uint32_t vertex_start, uint32_t instance_start)
 {
     if (direct.currentPipeline == nullptr)
     {
@@ -2685,7 +2721,7 @@ void dx_draw_index(rt_buffer_t vbo[], uint32_t vbo_num, rt_buffer_t& ibo, uint32
         fprintf(stderr, "Pipeline not begin");
         abort();
     }
-    auto* indexNative = dx_buffer_native(ibo);
+    auto* indexNative = dx_buffer_native(ebo);
     if (!indexNative || !indexNative->handle)
         return;
     dx_flush_descriptors();
@@ -2693,10 +2729,10 @@ void dx_draw_index(rt_buffer_t vbo[], uint32_t vbo_num, rt_buffer_t& ibo, uint32
     dx_transition_buffer(*indexNative, D3D12_RESOURCE_STATE_INDEX_BUFFER);
     D3D12_INDEX_BUFFER_VIEW view = {};
     view.BufferLocation = indexNative->handle->GetGPUVirtualAddress();
-    view.SizeInBytes = (UINT)ibo.size;
+    view.SizeInBytes = (UINT)ebo.size;
     view.Format = rt_to_dx_index_type(direct.currentRenderPass->module.index_type);
     direct.cmd->IASetIndexBuffer(&view);
-    direct.cmd->DrawIndexedInstanced(draw_num, instance_num, 0, 0, 0);
+    direct.cmd->DrawIndexedInstanced(vertex_num, instance_num, 0, (INT)vertex_start, instance_start);
 }
 
 void dx_draw_array_indirect(rt_buffer_t vbo[], uint32_t vbo_num, rt_buffer_t& indirect, size_t offset)
@@ -2722,7 +2758,7 @@ void dx_draw_array_indirect(rt_buffer_t vbo[], uint32_t vbo_num, rt_buffer_t& in
     direct.cmd->ExecuteIndirect(signature, 1, indirectNative->handle.Get(), (UINT64)offset, nullptr, 0);
 }
 
-void dx_draw_index_indirect(rt_buffer_t vbo[], uint32_t vbo_num, rt_buffer_t& ibo, rt_buffer_t& indirect, size_t offset)
+void dx_draw_index_indirect(rt_buffer_t vbo[], uint32_t vbo_num, rt_buffer_t& ebo, rt_buffer_t& indirect, size_t offset)
 {
     if (direct.currentPipeline == nullptr)
     {
@@ -2734,7 +2770,7 @@ void dx_draw_index_indirect(rt_buffer_t vbo[], uint32_t vbo_num, rt_buffer_t& ib
         fprintf(stderr, "Pipeline not begin");
         abort();
     }
-    auto* indexNative = dx_buffer_native(ibo);
+    auto* indexNative = dx_buffer_native(ebo);
     auto* indirectNative = dx_buffer_native(indirect);
     if (!indexNative || !indexNative->handle || !indirectNative || !indirectNative->handle)
         return;
@@ -2743,7 +2779,7 @@ void dx_draw_index_indirect(rt_buffer_t vbo[], uint32_t vbo_num, rt_buffer_t& ib
     dx_transition_buffer(*indexNative, D3D12_RESOURCE_STATE_INDEX_BUFFER);
     D3D12_INDEX_BUFFER_VIEW view = {};
     view.BufferLocation = indexNative->handle->GetGPUVirtualAddress();
-    view.SizeInBytes = (UINT)ibo.size;
+    view.SizeInBytes = (UINT)ebo.size;
     view.Format = rt_to_dx_index_type(direct.currentRenderPass->module.index_type);
     direct.cmd->IASetIndexBuffer(&view);
     if (indirectNative->heap != D3D12_HEAP_TYPE_UPLOAD)

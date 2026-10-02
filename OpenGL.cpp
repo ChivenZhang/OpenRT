@@ -676,6 +676,7 @@ void gl_load_library()
     rt_draw_array_indirect = gl_draw_array_indirect;
     rt_draw_index_indirect = gl_draw_index_indirect;
     rt_draw_mesh_task = gl_draw_mesh_task;
+    rt_draw_mesh_task_indirect = gl_draw_mesh_task_indirect;
     rt_push_constant = gl_push_constant;
     rt_push_const_int = gl_push_const_int;
     rt_push_const_uint = gl_push_const_uint;
@@ -794,6 +795,7 @@ void gl_unload_library()
     if(rt_draw_array_indirect == gl_draw_array_indirect) rt_draw_array_indirect = nullptr;
     if(rt_draw_index_indirect == gl_draw_index_indirect) rt_draw_index_indirect = nullptr;
     if(rt_draw_mesh_task == gl_draw_mesh_task) rt_draw_mesh_task = nullptr;
+    if(rt_draw_mesh_task_indirect == gl_draw_mesh_task_indirect) rt_draw_mesh_task_indirect = nullptr;
     if(rt_push_constant == gl_push_constant) rt_push_constant = nullptr;
     if(rt_push_const_int == gl_push_const_int) rt_push_const_int = nullptr;
     if(rt_push_const_uint == gl_push_const_uint) rt_push_const_uint = nullptr;
@@ -2145,6 +2147,23 @@ void gl_draw_mesh_task(uint32_t groupX, uint32_t groupY, uint32_t groupZ)
     glDrawMeshTasksNV(0, std::max(1U, groupX) * std::max(1U, groupY) * std::max(1U, groupZ));
 }
 
+void gl_draw_mesh_task_indirect(rt_buffer_t& indirect, size_t offset, uint32_t draw_count, uint32_t draw_stride)
+{
+    if (opengl.currentPipeline == nullptr)
+    {
+        fprintf(stderr, "Pipeline not begin\n");
+        abort();
+    }
+    if (opengl.currentPassType != RT_MODULE_RENDER)
+    {
+        fprintf(stderr, "Pipeline not begin\n");
+        abort();
+    }
+
+    glBindBuffer(GL_DRAW_INDIRECT_BUFFER, gl_buffer_name(indirect));
+    glMultiDrawMeshTasksIndirectNV((GLintptr)offset, (GLsizei)draw_count, (GLsizei)draw_stride);
+}
+
 // ====================================================================
 
 // 判断是否为打包像素类型（整个像素由一个数据单元表示）
@@ -2747,7 +2766,7 @@ void gl_destroy_mesh(rt_mesh_t& mesh)
     mesh.native = nullptr;
 }
 
-void gl_draw_array(rt_buffer_t vbo[], uint32_t vbo_num, uint32_t draw_num, uint32_t instance_num)
+void gl_draw_array(rt_buffer_t vbo[], uint32_t vbo_num, uint32_t vertex_num, uint32_t instance_num, uint32_t vertex_start, uint32_t instance_start)
 {
     if (opengl.currentPipeline == nullptr)
     {
@@ -2773,10 +2792,10 @@ void gl_draw_array(rt_buffer_t vbo[], uint32_t vbo_num, uint32_t draw_num, uint3
         glBindVertexBuffer(i, gl_buffer_name(vbo[i]), 0, stride);
     }
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
-    glDrawArraysInstanced(rt_to_gl_primitive(module.primitive), 0, (GLsizei)draw_num, (GLsizei)instance_num);
+    glDrawArraysInstancedBaseInstance(rt_to_gl_primitive(module.primitive), (GLint)vertex_start, (GLsizei)vertex_num, (GLsizei)instance_num, instance_start);
 }
 
-void gl_draw_index(rt_buffer_t vbo[], uint32_t vbo_num, rt_buffer_t& ibo, uint32_t draw_num, uint32_t instance_num)
+void gl_draw_index(rt_buffer_t vbo[], uint32_t vbo_num, rt_buffer_t& ebo, uint32_t vertex_num, uint32_t instance_num, uint32_t vertex_start, uint32_t instance_start)
 {
     if (opengl.currentPipeline == nullptr)
     {
@@ -2801,8 +2820,8 @@ void gl_draw_index(rt_buffer_t vbo[], uint32_t vbo_num, rt_buffer_t& ibo, uint32
         GLsizei stride = rt_to_gl_vertex_size(layout.format);
         glBindVertexBuffer(i, gl_buffer_name(vbo[i]), 0, stride);
     }
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, gl_buffer_name(ibo));
-    glDrawElementsInstanced(rt_to_gl_primitive(module.primitive), (GLsizei)draw_num, rt_to_gl_index_type(module.index_type), (void*)0, (GLsizei)instance_num);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, gl_buffer_name(ebo));
+    glDrawElementsInstancedBaseVertexBaseInstance(rt_to_gl_primitive(module.primitive), (GLsizei)vertex_num, rt_to_gl_index_type(module.index_type), (void*)0, (GLsizei)instance_num, (GLint)vertex_start, instance_start);
 }
 
 void gl_draw_array_indirect(rt_buffer_t vbo[], uint32_t vbo_num, rt_buffer_t& indirect, size_t offset)
@@ -2835,7 +2854,7 @@ void gl_draw_array_indirect(rt_buffer_t vbo[], uint32_t vbo_num, rt_buffer_t& in
     glDrawArraysIndirect(rt_to_gl_primitive(module.primitive), (void*)offset);
 }
 
-void gl_draw_index_indirect(rt_buffer_t vbo[], uint32_t vbo_num, rt_buffer_t& ibo, rt_buffer_t& indirect, size_t offset)
+void gl_draw_index_indirect(rt_buffer_t vbo[], uint32_t vbo_num, rt_buffer_t& ebo, rt_buffer_t& indirect, size_t offset)
 {
     if (opengl.currentPipeline == nullptr)
     {
@@ -2860,7 +2879,7 @@ void gl_draw_index_indirect(rt_buffer_t vbo[], uint32_t vbo_num, rt_buffer_t& ib
         GLsizei stride = rt_to_gl_vertex_size(layout.format);
         glBindVertexBuffer(i, gl_buffer_name(vbo[i]), 0, stride);
     }
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, gl_buffer_name(ibo));
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, gl_buffer_name(ebo));
     glBindBuffer(GL_DRAW_INDIRECT_BUFFER, gl_buffer_name(indirect));
     glDrawElementsIndirect(rt_to_gl_primitive(module.primitive), rt_to_gl_index_type(module.index_type), (void*)offset);
 }
