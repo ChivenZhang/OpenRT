@@ -25,10 +25,11 @@ void gl_unmap_buffer(rt_buffer_t& buffer);
 rt_texture_t gl_create_texture(rt_texture_info_t const& info);
 void gl_destroy_texture(rt_texture_t& texture);
 void gl_bind_texture(rt_texture_t& texture, rt_texture_bind_t bind = {});
-void gl_bind_texture_storage(rt_texture_t& texture, rt_texture_storage_bind_t bind = {});
+
 rt_texture_view_t gl_create_texture_view(rt_texture_t& texture, rt_texture_view_info_t const& info);
 void gl_destroy_texture_view(rt_texture_view_t& view);
 void gl_bind_texture_view(rt_texture_view_t& view, rt_texture_view_bind_t bind = {});
+void gl_bind_texture_storage(rt_texture_view_t& view, rt_texture_storage_bind_t bind = {});
 
 rt_sampler_t gl_create_sampler(rt_sampler_info_t const& info);
 void gl_destroy_sampler(rt_sampler_t& sampler);
@@ -53,11 +54,16 @@ void gl_push_const_mat4(const char* name, const float* value);
 void gl_begin_compute(rt_pass_compute_t& pass);
 void gl_end_compute(rt_pass_compute_t& pass);
 void gl_dispatch_compute(uint32_t groupX, uint32_t groupY, uint32_t groupZ);
+void gl_dispatch_compute_indirect(rt_buffer_t& indirect, size_t offset);
 
 void gl_begin_render(rt_pass_render_t& pass);
 void gl_end_render(rt_pass_render_t& pass);
 void gl_set_viewport(int32_t x, int32_t y, int32_t width, int32_t height);
 void gl_set_scissor(int32_t x, int32_t y, int32_t width, int32_t height);
+void gl_draw_array(rt_buffer_t vbo[], uint32_t vbo_num, uint32_t draw_num, uint32_t instance_num);
+void gl_draw_index(rt_buffer_t vbo[], uint32_t vbo_num, rt_buffer_t& ibo, uint32_t draw_num, uint32_t instance_num);
+void gl_draw_array_indirect(rt_buffer_t vbo[], uint32_t vbo_num, rt_buffer_t& indirect, size_t offset);
+void gl_draw_index_indirect(rt_buffer_t vbo[], uint32_t vbo_num, rt_buffer_t& ibo, rt_buffer_t& indirect, size_t offset);
 void gl_draw_mesh_task(uint32_t groupX, uint32_t groupY = 1, uint32_t groupZ = 1);
 
 void gl_begin_transfer(rt_pass_transfer_t& pass);

@@ -481,6 +481,7 @@ enum dx_binding_kind_t : uint32_t
 {
     DX_KIND_NONE = 0,
     DX_KIND_CBV,
+    DX_KIND_STORAGE,
     DX_KIND_SRV,
     DX_KIND_UAV,
     DX_KIND_SAMPLER,
@@ -582,6 +583,9 @@ struct dx_native_t
     ComPtr<ID3D12DescriptorHeap> srvHeap;
     ComPtr<ID3D12DescriptorHeap> samplerHeap;
     ComPtr<ID3D12Fence> fence;
+    ComPtr<ID3D12CommandSignature> drawSignature;
+    ComPtr<ID3D12CommandSignature> drawIndexedSignature;
+    ComPtr<ID3D12CommandSignature> dispatchSignature;
     HANDLE fenceEvent = nullptr;
     uint64_t fenceValue = 0;
     uint32_t rtvSize = 0, dsvSize = 0, srvSize = 0, samplerSize = 0;
@@ -774,40 +778,31 @@ static void dx_flush_descriptors()
         uint32_t binding = mod->descriptorBindings[i];
         auto& slot = direct.currentBinding[binding];
         uint32_t root = i + 1;
-        if (mod->kinds[i] == DX_KIND_CBV || (mod->kinds[i] == DX_KIND_SRV && slot.type == RT_BINDING_BUFFER) ||
-            (slot.buffer_bind.target == RT_SHADER_STORAGE_BUFFER && slot.buffer.handle))
+        if (mod->kinds[i] == DX_KIND_CBV)
         {
             auto* buf = dx_buffer_native(slot.buffer);
             if (!buf) continue;
-            bool storage = (slot.buffer_bind.target == RT_SHADER_STORAGE_BUFFER) || (mod->kinds[i] == DX_KIND_UAV);
-            dx_transition_buffer(*buf, storage ? D3D12_RESOURCE_STATE_UNORDERED_ACCESS : D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
+            dx_transition_buffer(*buf, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
             auto gpu = dx_alloc_srv();
-            if (storage)
-            {
-                D3D12_UNORDERED_ACCESS_VIEW_DESC uav = {};
-                uav.Format = DXGI_FORMAT_R32_TYPELESS;
-                uav.ViewDimension = D3D12_UAV_DIMENSION_BUFFER;
-                uav.Buffer.NumElements = (UINT)(slot.buffer.size / 4);
-                uav.Buffer.Flags = D3D12_BUFFER_UAV_FLAG_RAW;
-                direct.device->CreateUnorderedAccessView(buf->handle.Get(), nullptr, &uav, dx_srv_cpu(gpu));
-            }
-            else if (mod->kinds[i] == DX_KIND_CBV)
-            {
-                D3D12_CONSTANT_BUFFER_VIEW_DESC cbv = {};
-                cbv.BufferLocation = buf->handle->GetGPUVirtualAddress();
-                cbv.SizeInBytes = (UINT)((slot.buffer.size + 255) & ~255ull);
-                direct.device->CreateConstantBufferView(&cbv, dx_srv_cpu(gpu));
-            }
-            else
-            {
-                D3D12_SHADER_RESOURCE_VIEW_DESC srv = {};
-                srv.Format = DXGI_FORMAT_R32_TYPELESS;
-                srv.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
-                srv.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-                srv.Buffer.NumElements = (UINT)(slot.buffer.size / 4);
-                srv.Buffer.Flags = D3D12_BUFFER_SRV_FLAG_RAW;
-                direct.device->CreateShaderResourceView(buf->handle.Get(), &srv, dx_srv_cpu(gpu));
-            }
+            D3D12_CONSTANT_BUFFER_VIEW_DESC cbv = {};
+            cbv.BufferLocation = buf->handle->GetGPUVirtualAddress();
+            cbv.SizeInBytes = (UINT)((slot.buffer.size + 255) & ~255ull);
+            direct.device->CreateConstantBufferView(&cbv, dx_srv_cpu(gpu));
+            if (mod->cshader.BytecodeLength) direct.cmd->SetComputeRootDescriptorTable(root, gpu);
+            else direct.cmd->SetGraphicsRootDescriptorTable(root, gpu);
+        }
+        else if (mod->kinds[i] == DX_KIND_STORAGE)
+        {
+            auto* buf = dx_buffer_native(slot.buffer);
+            if (!buf) continue;
+            dx_transition_buffer(*buf, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+            auto gpu = dx_alloc_srv();
+            D3D12_UNORDERED_ACCESS_VIEW_DESC uav = {};
+            uav.Format = DXGI_FORMAT_R32_TYPELESS;
+            uav.ViewDimension = D3D12_UAV_DIMENSION_BUFFER;
+            uav.Buffer.NumElements = (UINT)(slot.buffer.size / 4);
+            uav.Buffer.Flags = D3D12_BUFFER_UAV_FLAG_RAW;
+            direct.device->CreateUnorderedAccessView(buf->handle.Get(), nullptr, &uav, dx_srv_cpu(gpu));
             if (mod->cshader.BytecodeLength) direct.cmd->SetComputeRootDescriptorTable(root, gpu);
             else direct.cmd->SetGraphicsRootDescriptorTable(root, gpu);
         }
@@ -916,10 +911,10 @@ void dx_load_library(ID3D12Device* device, ID3D12CommandQueue* queue)
     rt_create_texture = dx_create_texture;
     rt_destroy_texture = dx_destroy_texture;
     rt_bind_texture = dx_bind_texture;
-    rt_bind_texture_storage = dx_bind_texture_storage;
     rt_create_texture_view = dx_create_texture_view;
     rt_destroy_texture_view = dx_destroy_texture_view;
     rt_bind_texture_view = dx_bind_texture_view;
+    rt_bind_texture_storage = dx_bind_texture_storage;
     rt_create_sampler = dx_create_sampler;
     rt_destroy_sampler = dx_destroy_sampler;
     rt_bind_sampler = dx_bind_sampler;
@@ -931,6 +926,7 @@ void dx_load_library(ID3D12Device* device, ID3D12CommandQueue* queue)
     rt_begin_compute = dx_begin_compute;
     rt_end_compute = dx_end_compute;
     rt_dispatch_compute = dx_dispatch_compute;
+    rt_dispatch_compute_indirect = dx_dispatch_compute_indirect;
     rt_begin_render = dx_begin_render;
     rt_end_render = dx_end_render;
     rt_set_viewport = dx_set_viewport;
@@ -956,6 +952,10 @@ void dx_load_library(ID3D12Device* device, ID3D12CommandQueue* queue)
     rt_create_mesh = dx_create_mesh;
     rt_destroy_mesh = dx_destroy_mesh;
     rt_draw_mesh = dx_draw_mesh;
+    rt_draw_array = dx_draw_array;
+    rt_draw_index = dx_draw_index;
+    rt_draw_array_indirect = dx_draw_array_indirect;
+    rt_draw_index_indirect = dx_draw_index_indirect;
     rt_draw_mesh_multi = dx_draw_mesh_multi;
     rt_create_meshlet = dx_create_meshlet;
     rt_destroy_meshlet = dx_destroy_meshlet;
@@ -1006,6 +1006,9 @@ void dx_unload_library()
     direct.dsvHeap.Reset();
     direct.srvHeap.Reset();
     direct.samplerHeap.Reset();
+    direct.drawSignature.Reset();
+    direct.drawIndexedSignature.Reset();
+    direct.dispatchSignature.Reset();
     direct.fence.Reset();
     direct.queue.Reset();
     direct.device.Reset();
@@ -1023,10 +1026,10 @@ void dx_unload_library()
     if (rt_create_texture == dx_create_texture) rt_create_texture = nullptr;
     if (rt_destroy_texture == dx_destroy_texture) rt_destroy_texture = nullptr;
     if (rt_bind_texture == dx_bind_texture) rt_bind_texture = nullptr;
-    if (rt_bind_texture_storage == dx_bind_texture_storage) rt_bind_texture_storage = nullptr;
     if (rt_create_texture_view == dx_create_texture_view) rt_create_texture_view = nullptr;
     if (rt_destroy_texture_view == dx_destroy_texture_view) rt_destroy_texture_view = nullptr;
     if (rt_bind_texture_view == dx_bind_texture_view) rt_bind_texture_view = nullptr;
+    if (rt_bind_texture_storage == dx_bind_texture_storage) rt_bind_texture_storage = nullptr;
     if (rt_create_sampler == dx_create_sampler) rt_create_sampler = nullptr;
     if (rt_destroy_sampler == dx_destroy_sampler) rt_destroy_sampler = nullptr;
     if (rt_bind_sampler == dx_bind_sampler) rt_bind_sampler = nullptr;
@@ -1038,6 +1041,7 @@ void dx_unload_library()
     if (rt_begin_compute == dx_begin_compute) rt_begin_compute = nullptr;
     if (rt_end_compute == dx_end_compute) rt_end_compute = nullptr;
     if (rt_dispatch_compute == dx_dispatch_compute) rt_dispatch_compute = nullptr;
+    if (rt_dispatch_compute_indirect == dx_dispatch_compute_indirect) rt_dispatch_compute_indirect = nullptr;
     if (rt_begin_render == dx_begin_render) rt_begin_render = nullptr;
     if (rt_end_render == dx_end_render) rt_end_render = nullptr;
     if (rt_set_viewport == dx_set_viewport) rt_set_viewport = nullptr;
@@ -1063,6 +1067,10 @@ void dx_unload_library()
     if (rt_create_mesh == dx_create_mesh) rt_create_mesh = nullptr;
     if (rt_destroy_mesh == dx_destroy_mesh) rt_destroy_mesh = nullptr;
     if (rt_draw_mesh == dx_draw_mesh) rt_draw_mesh = nullptr;
+    if (rt_draw_array == dx_draw_array) rt_draw_array = nullptr;
+    if (rt_draw_index == dx_draw_index) rt_draw_index = nullptr;
+    if (rt_draw_array_indirect == dx_draw_array_indirect) rt_draw_array_indirect = nullptr;
+    if (rt_draw_index_indirect == dx_draw_index_indirect) rt_draw_index_indirect = nullptr;
     if (rt_draw_mesh_multi == dx_draw_mesh_multi) rt_draw_mesh_multi = nullptr;
     if (rt_create_meshlet == dx_create_meshlet) rt_create_meshlet = nullptr;
     if (rt_destroy_meshlet == dx_destroy_meshlet) rt_destroy_meshlet = nullptr;
@@ -1159,7 +1167,6 @@ void dx_bind_buffer(rt_buffer_t& buffer, rt_buffer_bind_t bind)
         fprintf(stderr, "Pipeline not begin");
         abort();
     }
-    direct.currentBinding[bind.binding].type = RT_BINDING_BUFFER;
     direct.currentBinding[bind.binding].buffer = buffer;
     direct.currentBinding[bind.binding].buffer_bind = bind;
 }
@@ -1354,18 +1361,6 @@ void dx_bind_texture(rt_texture_t& texture, rt_texture_bind_t bind)
     direct.currentBinding[bind.binding].texture_bind = bind;
 }
 
-void dx_bind_texture_storage(rt_texture_t& texture, rt_texture_storage_bind_t bind)
-{
-    if (direct.currentPipeline == nullptr)
-    {
-        fprintf(stderr, "Pipeline not begin");
-        abort();
-    }
-    direct.currentBinding[bind.binding].type = RT_BINDING_STORAGE_TEXTURE;
-    direct.currentBinding[bind.binding].storage_view = texture.default_view;
-    direct.currentBinding[bind.binding].storage_texture_bind = bind;
-}
-
 rt_texture_view_t dx_create_texture_view(rt_texture_t& texture, rt_texture_view_info_t const& info)
 {
     auto* tex = dx_texture_native(texture);
@@ -1475,6 +1470,18 @@ void dx_bind_texture_view(rt_texture_view_t& view, rt_texture_view_bind_t bind)
     direct.currentBinding[bind.binding].texture_bind.binding = bind.binding;
 }
 
+void dx_bind_texture_storage(rt_texture_view_t& view, rt_texture_storage_bind_t bind)
+{
+    if (direct.currentPipeline == nullptr)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    direct.currentBinding[bind.binding].type = RT_BINDING_STORAGE_TEXTURE;
+    direct.currentBinding[bind.binding].storage_view = view;
+    direct.currentBinding[bind.binding].storage_texture_bind = bind;
+}
+
 rt_sampler_t dx_create_sampler(rt_sampler_info_t const& info)
 {
     rt_sampler_t result = {};
@@ -1533,10 +1540,15 @@ rt_module_compute_t dx_create_module_compute(rt_module_compute_info_t const& inf
     {
         dx_binding_kind_t kind = DX_KIND_NONE;
         D3D12_DESCRIPTOR_RANGE_TYPE rangeType = D3D12_DESCRIPTOR_RANGE_TYPE_CBV;
-        if (info.binding[i].type == RT_BINDING_BUFFER)
+        if (info.binding[i].type == RT_BINDING_UNIFORM_BUFFER)
         {
             kind = DX_KIND_CBV;
             rangeType = D3D12_DESCRIPTOR_RANGE_TYPE_CBV;
+        }
+        else if (info.binding[i].type == RT_BINDING_STORAGE_BUFFER)
+        {
+            kind = DX_KIND_STORAGE;
+            rangeType = D3D12_DESCRIPTOR_RANGE_TYPE_UAV;
         }
         else if (info.binding[i].type == RT_BINDING_TEXTURE)
         {
@@ -1628,10 +1640,15 @@ rt_module_render_t dx_create_module_render(rt_module_render_info_t const& info)
     {
         dx_binding_kind_t kind = DX_KIND_NONE;
         D3D12_DESCRIPTOR_RANGE_TYPE rangeType = D3D12_DESCRIPTOR_RANGE_TYPE_CBV;
-        if (info.binding[i].type == RT_BINDING_BUFFER)
+        if (info.binding[i].type == RT_BINDING_UNIFORM_BUFFER)
         {
             kind = DX_KIND_CBV;
             rangeType = D3D12_DESCRIPTOR_RANGE_TYPE_CBV;
+        }
+        else if (info.binding[i].type == RT_BINDING_STORAGE_BUFFER)
+        {
+            kind = DX_KIND_STORAGE;
+            rangeType = D3D12_DESCRIPTOR_RANGE_TYPE_UAV;
         }
         else if (info.binding[i].type == RT_BINDING_TEXTURE)
         {
@@ -1837,10 +1854,15 @@ rt_module_render_t dx_create_module_meshlet(rt_module_render_info_t const& info)
     {
         dx_binding_kind_t kind = DX_KIND_NONE;
         D3D12_DESCRIPTOR_RANGE_TYPE rangeType = D3D12_DESCRIPTOR_RANGE_TYPE_CBV;
-        if (info.binding[i].type == RT_BINDING_BUFFER)
+        if (info.binding[i].type == RT_BINDING_UNIFORM_BUFFER)
         {
             kind = DX_KIND_CBV;
             rangeType = D3D12_DESCRIPTOR_RANGE_TYPE_CBV;
+        }
+        else if (info.binding[i].type == RT_BINDING_STORAGE_BUFFER)
+        {
+            kind = DX_KIND_STORAGE;
+            rangeType = D3D12_DESCRIPTOR_RANGE_TYPE_UAV;
         }
         else if (info.binding[i].type == RT_BINDING_TEXTURE)
         {
@@ -2097,6 +2119,75 @@ void dx_dispatch_compute(uint32_t groupX, uint32_t groupY, uint32_t groupZ)
     }
     dx_flush_descriptors();
     direct.cmd->Dispatch(max(1u, groupX), max(1u, groupY), max(1u, groupZ));
+}
+
+static ID3D12CommandSignature* dx_indirect_signature(D3D12_INDIRECT_ARGUMENT_TYPE type, UINT stride)
+{
+    ComPtr<ID3D12CommandSignature>* slot = &direct.dispatchSignature;
+    if (type == D3D12_INDIRECT_ARGUMENT_TYPE_DRAW)
+        slot = &direct.drawSignature;
+    else if (type == D3D12_INDIRECT_ARGUMENT_TYPE_DRAW_INDEXED)
+        slot = &direct.drawIndexedSignature;
+    if (slot->Get())
+        return slot->Get();
+
+    D3D12_INDIRECT_ARGUMENT_DESC arg = {};
+    arg.Type = type;
+    D3D12_COMMAND_SIGNATURE_DESC desc = {};
+    desc.ByteStride = stride;
+    desc.NumArgumentDescs = 1;
+    desc.pArgumentDescs = &arg;
+    if (FAILED(direct.device->CreateCommandSignature(&desc, nullptr, IID_PPV_ARGS(&(*slot)))))
+    {
+        fprintf(stderr, "DirectX: failed to create command signature\n");
+        abort();
+    }
+    return slot->Get();
+}
+
+static void dx_bind_draw_vbos(rt_buffer_t vbo[], uint32_t vbo_num)
+{
+    rt_module_render_t const& module = direct.currentRenderPass->module;
+    uint32_t count = vbo_num;
+    if (count > (uint32_t)std::size(module.vertex))
+        count = (uint32_t)std::size(module.vertex);
+    for (uint32_t i = 0; i < count; ++i)
+    {
+        rt_vertex_t const& layout = module.vertex[i];
+        if (layout.format == RT_VERTEX_NONE || !vbo || vbo[i].handle == 0)
+            continue;
+        auto* native = dx_buffer_native(vbo[i]);
+        if (!native || !native->handle)
+            continue;
+        dx_transition_buffer(*native, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
+        D3D12_VERTEX_BUFFER_VIEW view = {};
+        view.BufferLocation = native->handle->GetGPUVirtualAddress();
+        view.SizeInBytes = (UINT)vbo[i].size;
+        view.StrideInBytes = rt_to_dx_vertex_size(layout.format);
+        direct.cmd->IASetVertexBuffers(layout.location, 1, &view);
+    }
+}
+
+void dx_dispatch_compute_indirect(rt_buffer_t& indirect, size_t offset)
+{
+    if (direct.currentPipeline == nullptr)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    if (direct.currentPassType != RT_MODULE_COMPUTE)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    auto* native = dx_buffer_native(indirect);
+    if (!native || !native->handle)
+        return;
+    dx_flush_descriptors();
+    if (native->heap != D3D12_HEAP_TYPE_UPLOAD)
+        dx_transition_buffer(*native, D3D12_RESOURCE_STATE_INDIRECT_ARGUMENT);
+    auto* signature = dx_indirect_signature(D3D12_INDIRECT_ARGUMENT_TYPE_DISPATCH, sizeof(D3D12_DISPATCH_ARGUMENTS));
+    direct.cmd->ExecuteIndirect(signature, 1, native->handle.Get(), (UINT64)offset, nullptr, 0);
 }
 
 void dx_begin_render(rt_pass_render_t& pass)
@@ -2565,6 +2656,102 @@ static void dx_draw_mesh_impl(rt_mesh_t& mesh, uint32_t instanceCount)
         direct.cmd->DrawInstanced(vertex_count, instanceCount, 0, 0);
 }
 
+void dx_draw_array(rt_buffer_t vbo[], uint32_t vbo_num, uint32_t draw_num, uint32_t instance_num)
+{
+    if (direct.currentPipeline == nullptr)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    if (direct.currentPassType != RT_MODULE_RENDER)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    dx_flush_descriptors();
+    dx_bind_draw_vbos(vbo, vbo_num);
+    direct.cmd->DrawInstanced(draw_num, instance_num, 0, 0);
+}
+
+void dx_draw_index(rt_buffer_t vbo[], uint32_t vbo_num, rt_buffer_t& ibo, uint32_t draw_num, uint32_t instance_num)
+{
+    if (direct.currentPipeline == nullptr)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    if (direct.currentPassType != RT_MODULE_RENDER)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    auto* indexNative = dx_buffer_native(ibo);
+    if (!indexNative || !indexNative->handle)
+        return;
+    dx_flush_descriptors();
+    dx_bind_draw_vbos(vbo, vbo_num);
+    dx_transition_buffer(*indexNative, D3D12_RESOURCE_STATE_INDEX_BUFFER);
+    D3D12_INDEX_BUFFER_VIEW view = {};
+    view.BufferLocation = indexNative->handle->GetGPUVirtualAddress();
+    view.SizeInBytes = (UINT)ibo.size;
+    view.Format = rt_to_dx_index_type(direct.currentRenderPass->module.index_type);
+    direct.cmd->IASetIndexBuffer(&view);
+    direct.cmd->DrawIndexedInstanced(draw_num, instance_num, 0, 0, 0);
+}
+
+void dx_draw_array_indirect(rt_buffer_t vbo[], uint32_t vbo_num, rt_buffer_t& indirect, size_t offset)
+{
+    if (direct.currentPipeline == nullptr)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    if (direct.currentPassType != RT_MODULE_RENDER)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    auto* indirectNative = dx_buffer_native(indirect);
+    if (!indirectNative || !indirectNative->handle)
+        return;
+    dx_flush_descriptors();
+    dx_bind_draw_vbos(vbo, vbo_num);
+    if (indirectNative->heap != D3D12_HEAP_TYPE_UPLOAD)
+        dx_transition_buffer(*indirectNative, D3D12_RESOURCE_STATE_INDIRECT_ARGUMENT);
+    auto* signature = dx_indirect_signature(D3D12_INDIRECT_ARGUMENT_TYPE_DRAW, sizeof(D3D12_DRAW_ARGUMENTS));
+    direct.cmd->ExecuteIndirect(signature, 1, indirectNative->handle.Get(), (UINT64)offset, nullptr, 0);
+}
+
+void dx_draw_index_indirect(rt_buffer_t vbo[], uint32_t vbo_num, rt_buffer_t& ibo, rt_buffer_t& indirect, size_t offset)
+{
+    if (direct.currentPipeline == nullptr)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    if (direct.currentPassType != RT_MODULE_RENDER)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    auto* indexNative = dx_buffer_native(ibo);
+    auto* indirectNative = dx_buffer_native(indirect);
+    if (!indexNative || !indexNative->handle || !indirectNative || !indirectNative->handle)
+        return;
+    dx_flush_descriptors();
+    dx_bind_draw_vbos(vbo, vbo_num);
+    dx_transition_buffer(*indexNative, D3D12_RESOURCE_STATE_INDEX_BUFFER);
+    D3D12_INDEX_BUFFER_VIEW view = {};
+    view.BufferLocation = indexNative->handle->GetGPUVirtualAddress();
+    view.SizeInBytes = (UINT)ibo.size;
+    view.Format = rt_to_dx_index_type(direct.currentRenderPass->module.index_type);
+    direct.cmd->IASetIndexBuffer(&view);
+    if (indirectNative->heap != D3D12_HEAP_TYPE_UPLOAD)
+        dx_transition_buffer(*indirectNative, D3D12_RESOURCE_STATE_INDIRECT_ARGUMENT);
+    auto* signature = dx_indirect_signature(D3D12_INDIRECT_ARGUMENT_TYPE_DRAW_INDEXED, sizeof(D3D12_DRAW_INDEXED_ARGUMENTS));
+    direct.cmd->ExecuteIndirect(signature, 1, indirectNative->handle.Get(), (UINT64)offset, nullptr, 0);
+}
+
 void dx_draw_mesh(rt_mesh_t& mesh)
 {
     dx_draw_mesh_impl(mesh, 1);
@@ -2629,14 +2816,14 @@ void dx_draw_meshlet(rt_meshlet_t& meshlet)
         for (uint32_t k = 0; k < std::size(meshlet.vertex); ++k)
         {
             if (meshlet.vertex[k].handle == 0 || meshlet.location[k] != layout.location) continue;
-            dx_bind_buffer(meshlet.vertex[k], {.binding = layout.location, .target = RT_SHADER_STORAGE_BUFFER});
+            dx_bind_buffer(meshlet.vertex[k], {.binding = layout.location});
             break;
         }
         if (layout.location + 1 > index_binding)
             index_binding = layout.location + 1;
     }
     if (meshlet.index.handle)
-        dx_bind_buffer(meshlet.index, {.binding = index_binding, .target = RT_SHADER_STORAGE_BUFFER});
+        dx_bind_buffer(meshlet.index, {.binding = index_binding});
     dx_flush_descriptors();
     auto* native = (dx_meshlet_native_t*)meshlet.native;
     uint32_t tasks = native && native->indexCount ? native->indexCount / 3 : 1;

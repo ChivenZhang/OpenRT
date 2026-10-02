@@ -25,10 +25,11 @@ void dx_unmap_buffer(rt_buffer_t& buffer);
 rt_texture_t dx_create_texture(rt_texture_info_t const& info);
 void dx_destroy_texture(rt_texture_t& texture);
 void dx_bind_texture(rt_texture_t& texture, rt_texture_bind_t bind = {});
-void dx_bind_texture_storage(rt_texture_t& texture, rt_texture_storage_bind_t bind = {});
+
 rt_texture_view_t dx_create_texture_view(rt_texture_t& texture, rt_texture_view_info_t const& info);
 void dx_destroy_texture_view(rt_texture_view_t& view);
 void dx_bind_texture_view(rt_texture_view_t& view, rt_texture_view_bind_t bind = {});
+void dx_bind_texture_storage(rt_texture_view_t& view, rt_texture_storage_bind_t bind = {});
 
 rt_sampler_t dx_create_sampler(rt_sampler_info_t const& info);
 void dx_destroy_sampler(rt_sampler_t& sampler);
@@ -53,6 +54,7 @@ void dx_push_const_mat4(const char* name, const float* value);
 void dx_begin_compute(rt_pass_compute_t& pass);
 void dx_end_compute(rt_pass_compute_t& pass);
 void dx_dispatch_compute(uint32_t groupX, uint32_t groupY, uint32_t groupZ);
+void dx_dispatch_compute_indirect(rt_buffer_t& indirect, size_t offset);
 
 void dx_begin_render(rt_pass_render_t& pass);
 void dx_end_render(rt_pass_render_t& pass);
@@ -72,6 +74,10 @@ void dx_copy_texture_buffer(rt_buffer_texel_t source, rt_texture_copy_t destinat
 rt_mesh_t dx_create_mesh(const float* vertices, const float* normals, const float* uvs, size_t vertex_count, const unsigned int* indices, size_t index_count);
 void dx_destroy_mesh(rt_mesh_t& mesh);
 void dx_draw_mesh(rt_mesh_t& mesh);
+void dx_draw_array(rt_buffer_t vbo[], uint32_t vbo_num, uint32_t draw_num, uint32_t instance_num);
+void dx_draw_index(rt_buffer_t vbo[], uint32_t vbo_num, rt_buffer_t& ibo, uint32_t draw_num, uint32_t instance_num);
+void dx_draw_array_indirect(rt_buffer_t vbo[], uint32_t vbo_num, rt_buffer_t& indirect, size_t offset);
+void dx_draw_index_indirect(rt_buffer_t vbo[], uint32_t vbo_num, rt_buffer_t& ibo, rt_buffer_t& indirect, size_t offset);
 void dx_draw_mesh_multi(rt_mesh_t& mesh, uint32_t count);
 
 rt_meshlet_t dx_create_meshlet(const float* vertices, const float* normals, const float* uvs, size_t vertex_count, const unsigned int* indices, size_t index_count);

@@ -253,7 +253,8 @@ enum rt_access_t : uint32_t
 enum rt_binding_type_t : uint32_t
 {
     RT_BINDING_NONE = 0,
-    RT_BINDING_BUFFER,
+    RT_BINDING_UNIFORM_BUFFER,
+    RT_BINDING_STORAGE_BUFFER,
     RT_BINDING_SAMPLER,
     RT_BINDING_TEXTURE,
     RT_BINDING_STORAGE_TEXTURE,
@@ -416,7 +417,6 @@ struct rt_buffer_info_t
 struct rt_buffer_bind_t
 {
     uint32_t binding = 0;
-    rt_buffer_target_t target = RT_UNIFORM_BUFFER; // RT_UNIFORM_BUFFER / RT_SHADER_STORAGE_BUFFER
 };
 
 // ====================================================================
@@ -487,7 +487,6 @@ struct rt_texture_info_t
 struct rt_texture_bind_t
 {
     uint32_t binding = 0;
-    rt_texture_aspect_t aspect_mode = RT_TEXTURE_ASPECT_DEPTH;
 };
 
 struct rt_texture_storage_bind_t
@@ -527,7 +526,7 @@ struct rt_sampler_bind_t
 struct rt_binding_t
 {
     uint32_t binding = 0;
-    rt_binding_type_t type = {};  // RT_BINDING_BUFFER / RT_BINDING_TEXTURE / RT_BINDING_STORAGE_TEXTURE / RT_BINDING_SAMPLER
+    rt_binding_type_t type = {};  // RT_BINDING_UNIFORM_BUFFER / RT_BINDING_STORAGE_BUFFER / RT_BINDING_TEXTURE / RT_BINDING_STORAGE_TEXTURE / RT_BINDING_SAMPLER
 };
 
 struct rt_module_compute_info_t
@@ -823,11 +822,11 @@ OPENRT_API void (*rt_unmap_buffer)(rt_buffer_t& buffer);
 OPENRT_API rt_texture_t (*rt_create_texture)(rt_texture_info_t const& info);
 OPENRT_API void (*rt_destroy_texture)(rt_texture_t& texture);
 OPENRT_API void (*rt_bind_texture)(rt_texture_t& texture, rt_texture_bind_t bind);
-OPENRT_API void (*rt_bind_texture_storage)(rt_texture_t& texture, rt_texture_storage_bind_t bind);
 
 OPENRT_API rt_texture_view_t (*rt_create_texture_view)(rt_texture_t& texture, rt_texture_view_info_t const& info);
 OPENRT_API void (*rt_destroy_texture_view)(rt_texture_view_t& view);
 OPENRT_API void (*rt_bind_texture_view)(rt_texture_view_t& view, rt_texture_view_bind_t bind);
+OPENRT_API void (*rt_bind_texture_storage)(rt_texture_view_t& view, rt_texture_storage_bind_t bind);
 
 OPENRT_API rt_sampler_t (*rt_create_sampler)(rt_sampler_info_t const& info);
 OPENRT_API void (*rt_destroy_sampler)(rt_sampler_t& sampler);
@@ -842,11 +841,16 @@ OPENRT_API void (*rt_destroy_module_compute)(rt_module_compute_t& module);
 OPENRT_API void (*rt_begin_compute)(rt_pass_compute_t& pass);
 OPENRT_API void (*rt_end_compute)(rt_pass_compute_t& pass);
 OPENRT_API void (*rt_dispatch_compute)(uint32_t groupX, uint32_t groupY, uint32_t groupZ);
+OPENRT_API void (*rt_dispatch_compute_indirect)(rt_buffer_t& indirect, size_t offset);
 
 OPENRT_API void (*rt_begin_render)(rt_pass_render_t& pass);
 OPENRT_API void (*rt_end_render)(rt_pass_render_t& pass);
 OPENRT_API void (*rt_set_viewport)(int32_t x, int32_t y, int32_t width, int32_t height);
 OPENRT_API void (*rt_set_scissor)(int32_t x, int32_t y, int32_t width, int32_t height);
+OPENRT_API void (*rt_draw_array)(rt_buffer_t vbo[], uint32_t vbo_num, uint32_t draw_num, uint32_t instance_num);
+OPENRT_API void (*rt_draw_index)(rt_buffer_t vbo[], uint32_t vbo_num, rt_buffer_t& ibo, uint32_t draw_num, uint32_t instance_num);
+OPENRT_API void (*rt_draw_array_indirect)(rt_buffer_t vbo[], uint32_t vbo_num, rt_buffer_t& indirect, size_t offset);
+OPENRT_API void (*rt_draw_index_indirect)(rt_buffer_t vbo[], uint32_t vbo_num, rt_buffer_t& ibo, rt_buffer_t& indirect, size_t offset);
 OPENRT_API void (*rt_draw_mesh_task)(uint32_t groupX, uint32_t groupY, uint32_t groupZ);
 
 OPENRT_API void (*rt_push_constant)(uint8_t const* buffer, size_t length);

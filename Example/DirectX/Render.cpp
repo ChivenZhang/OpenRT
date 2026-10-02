@@ -214,7 +214,8 @@ void frame(int width, int height)
         rt_bind_sampler(sampler0, {.binding = 1,});
 
         static auto mesh = rt_create_mesh_sphere(2, 64, 32);
-        rt_draw_mesh(mesh);
+        // rt_draw_mesh(mesh);
+        rt_draw_index(mesh.vertex, 3, mesh.index, mesh.index.size / sizeof(uint32_t), 1);
 
         rt_end_render(pass);
     }

@@ -94,11 +94,11 @@ void (*rt_unmap_buffer)(rt_buffer_t& buffer) = nullptr;
 rt_texture_t (*rt_create_texture)(rt_texture_info_t const& info) = nullptr;
 void (*rt_destroy_texture)(rt_texture_t& texture) = nullptr;
 void (*rt_bind_texture)(rt_texture_t& texture, rt_texture_bind_t bind) = nullptr;
-void (*rt_bind_texture_storage)(rt_texture_t& texture, rt_texture_storage_bind_t bind) = nullptr;
 
 rt_texture_view_t (*rt_create_texture_view)(rt_texture_t& texture, rt_texture_view_info_t const& info) = nullptr;
 void (*rt_destroy_texture_view)(rt_texture_view_t& view) = nullptr;
 void (*rt_bind_texture_view)(rt_texture_view_t& view, rt_texture_view_bind_t bind) = nullptr;
+void (*rt_bind_texture_storage)(rt_texture_view_t& view, rt_texture_storage_bind_t bind) = nullptr;
 
 rt_sampler_t (*rt_create_sampler)(rt_sampler_info_t const& info) = nullptr;
 void (*rt_destroy_sampler)(rt_sampler_t& sampler) = nullptr;
@@ -113,11 +113,16 @@ void (*rt_destroy_module_compute)(rt_module_compute_t& module) = nullptr;
 void (*rt_begin_compute)(rt_pass_compute_t& pass) = nullptr;
 void (*rt_end_compute)(rt_pass_compute_t& pass) = nullptr;
 void (*rt_dispatch_compute)(uint32_t groupX, uint32_t groupY, uint32_t groupZ) = nullptr;
+void (*rt_dispatch_compute_indirect)(rt_buffer_t& indirect, size_t offset) = nullptr;
 
 void (*rt_begin_render)(rt_pass_render_t& pass) = nullptr;
 void (*rt_end_render)(rt_pass_render_t& pass) = nullptr;
 void (*rt_set_viewport)(int32_t x, int32_t y, int32_t width, int32_t height) = nullptr;
 void (*rt_set_scissor)(int32_t x, int32_t y, int32_t width, int32_t height) = nullptr;
+void (*rt_draw_array)(rt_buffer_t vbo[], uint32_t vbo_num, uint32_t draw_num, uint32_t instance_num) = nullptr;
+void (*rt_draw_index)(rt_buffer_t vbo[], uint32_t vbo_num, rt_buffer_t& ibo, uint32_t draw_num, uint32_t instance_num) = nullptr;
+void (*rt_draw_array_indirect)(rt_buffer_t vbo[], uint32_t vbo_num, rt_buffer_t& indirect, size_t offset) = nullptr;
+void (*rt_draw_index_indirect)(rt_buffer_t vbo[], uint32_t vbo_num, rt_buffer_t& ibo, rt_buffer_t& indirect, size_t offset) = nullptr;
 void (*rt_draw_mesh_task)(uint32_t groupX, uint32_t groupY, uint32_t groupZ) = nullptr;
 
 void (*rt_push_constant)(uint8_t const* buffer, size_t length) = nullptr;

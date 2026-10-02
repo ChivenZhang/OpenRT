@@ -968,23 +968,24 @@ static void mt_flush_descriptors()
     mt_apply_push();
     for (uint32_t i = 0; i < RT_MAX_BINDING_HANDLE_NUM; ++i)
     {
-        auto& slot = metal.currentBinding[i];
-        if (slot.type == RT_BINDING_NONE) continue;
-        if (slot.type == RT_BINDING_BUFFER)
+        auto& bind = mod->bindings[i];
+        if (bind.type == RT_BINDING_NONE) continue;
+        auto& slot = metal.currentBinding[bind.binding];
+        if (bind.type == RT_BINDING_UNIFORM_BUFFER || bind.type == RT_BINDING_STORAGE_BUFFER)
         {
             auto* buf = mt_buffer_native(slot.buffer);
             if (!buf) continue;
-            bool storage = (slot.buffer_bind.target == RT_SHADER_STORAGE_BUFFER);
+            bool storage = (bind.type == RT_BINDING_STORAGE_BUFFER);
             mt_transition_buffer(*buf, storage ? MTL_STATE_SHADER_WRITE : MTL_STATE_SHADER_READ);
             if (metal.renderEncoder)
             {
-                metal.renderEncoder->setVertexBuffer(buf->handle, 0, slot.buffer_bind.binding);
-                metal.renderEncoder->setFragmentBuffer(buf->handle, 0, slot.buffer_bind.binding);
+                metal.renderEncoder->setVertexBuffer(buf->handle, 0, bind.binding);
+                metal.renderEncoder->setFragmentBuffer(buf->handle, 0, bind.binding);
             }
             if (metal.computeEncoder)
-                metal.computeEncoder->setBuffer(buf->handle, 0, slot.buffer_bind.binding);
+                metal.computeEncoder->setBuffer(buf->handle, 0, bind.binding);
         }
-        else if (slot.type == RT_BINDING_TEXTURE)
+        else if (bind.type == RT_BINDING_TEXTURE)
         {
             auto* view = mt_texture_view_native(slot.texture_view.handle);
             if (!view) continue;
@@ -995,11 +996,11 @@ static void mt_flush_descriptors()
             if (!gpuTex) continue;
             mt_transition_image(*tex, MTL_STATE_SHADER_READ);
             if (metal.renderEncoder)
-                metal.renderEncoder->setFragmentTexture(gpuTex, slot.texture_bind.binding);
+                metal.renderEncoder->setFragmentTexture(gpuTex, bind.binding);
             if (metal.computeEncoder)
-                metal.computeEncoder->setTexture(gpuTex, slot.texture_bind.binding);
+                metal.computeEncoder->setTexture(gpuTex, bind.binding);
         }
-        else if (slot.type == RT_BINDING_STORAGE_TEXTURE)
+        else if (bind.type == RT_BINDING_STORAGE_TEXTURE)
         {
             auto* view = mt_texture_view_native(slot.storage_view.handle);
             if (!view) continue;
@@ -1010,18 +1011,18 @@ static void mt_flush_descriptors()
             if (!gpuTex) continue;
             mt_transition_image(*tex, MTL_STATE_SHADER_WRITE);
             if (metal.renderEncoder)
-                metal.renderEncoder->setFragmentTexture(gpuTex, slot.storage_texture_bind.binding);
+                metal.renderEncoder->setFragmentTexture(gpuTex, bind.binding);
             if (metal.computeEncoder)
-                metal.computeEncoder->setTexture(gpuTex, slot.storage_texture_bind.binding);
+                metal.computeEncoder->setTexture(gpuTex, bind.binding);
         }
-        else if (slot.type == RT_BINDING_SAMPLER)
+        else if (bind.type == RT_BINDING_SAMPLER)
         {
             auto* samp = mt_sampler_native(slot.sampler);
             if (!samp) continue;
             if (metal.renderEncoder)
-                metal.renderEncoder->setFragmentSamplerState(samp->handle, slot.sampler_bind.binding);
+                metal.renderEncoder->setFragmentSamplerState(samp->handle, bind.binding);
             if (metal.computeEncoder)
-                metal.computeEncoder->setSamplerState(samp->handle, slot.sampler_bind.binding);
+                metal.computeEncoder->setSamplerState(samp->handle, bind.binding);
         }
     }
 }
@@ -1052,10 +1053,10 @@ void mt_load_library(MTL::Device* device, MTL::CommandQueue* queue)
     rt_create_texture = mt_create_texture;
     rt_destroy_texture = mt_destroy_texture;
     rt_bind_texture = mt_bind_texture;
-    rt_bind_texture_storage = mt_bind_texture_storage;
     rt_create_texture_view = mt_create_texture_view;
     rt_destroy_texture_view = mt_destroy_texture_view;
     rt_bind_texture_view = mt_bind_texture_view;
+    rt_bind_texture_storage = mt_bind_texture_storage;
     rt_create_sampler = mt_create_sampler;
     rt_destroy_sampler = mt_destroy_sampler;
     rt_bind_sampler = mt_bind_sampler;
@@ -1067,6 +1068,7 @@ void mt_load_library(MTL::Device* device, MTL::CommandQueue* queue)
     rt_begin_compute = mt_begin_compute;
     rt_end_compute = mt_end_compute;
     rt_dispatch_compute = mt_dispatch_compute;
+    rt_dispatch_compute_indirect = mt_dispatch_compute_indirect;
     rt_begin_render = mt_begin_render;
     rt_end_render = mt_end_render;
     rt_set_viewport = mt_set_viewport;
@@ -1092,6 +1094,10 @@ void mt_load_library(MTL::Device* device, MTL::CommandQueue* queue)
     rt_create_mesh = mt_create_mesh;
     rt_destroy_mesh = mt_destroy_mesh;
     rt_draw_mesh = mt_draw_mesh;
+    rt_draw_array = mt_draw_array;
+    rt_draw_index = mt_draw_index;
+    rt_draw_array_indirect = mt_draw_array_indirect;
+    rt_draw_index_indirect = mt_draw_index_indirect;
     rt_draw_mesh_multi = mt_draw_mesh_multi;
     rt_create_meshlet = mt_create_meshlet;
     rt_destroy_meshlet = mt_destroy_meshlet;
@@ -1146,10 +1152,10 @@ void mt_unload_library()
     if (rt_create_texture == mt_create_texture) rt_create_texture = nullptr;
     if (rt_destroy_texture == mt_destroy_texture) rt_destroy_texture = nullptr;
     if (rt_bind_texture == mt_bind_texture) rt_bind_texture = nullptr;
-    if (rt_bind_texture_storage == mt_bind_texture_storage) rt_bind_texture_storage = nullptr;
     if (rt_create_texture_view == mt_create_texture_view) rt_create_texture_view = nullptr;
     if (rt_destroy_texture_view == mt_destroy_texture_view) rt_destroy_texture_view = nullptr;
     if (rt_bind_texture_view == mt_bind_texture_view) rt_bind_texture_view = nullptr;
+    if (rt_bind_texture_storage == mt_bind_texture_storage) rt_bind_texture_storage = nullptr;
     if (rt_create_sampler == mt_create_sampler) rt_create_sampler = nullptr;
     if (rt_destroy_sampler == mt_destroy_sampler) rt_destroy_sampler = nullptr;
     if (rt_bind_sampler == mt_bind_sampler) rt_bind_sampler = nullptr;
@@ -1161,6 +1167,7 @@ void mt_unload_library()
     if (rt_begin_compute == mt_begin_compute) rt_begin_compute = nullptr;
     if (rt_end_compute == mt_end_compute) rt_end_compute = nullptr;
     if (rt_dispatch_compute == mt_dispatch_compute) rt_dispatch_compute = nullptr;
+    if (rt_dispatch_compute_indirect == mt_dispatch_compute_indirect) rt_dispatch_compute_indirect = nullptr;
     if (rt_begin_render == mt_begin_render) rt_begin_render = nullptr;
     if (rt_end_render == mt_end_render) rt_end_render = nullptr;
     if (rt_set_viewport == mt_set_viewport) rt_set_viewport = nullptr;
@@ -1186,6 +1193,10 @@ void mt_unload_library()
     if (rt_create_mesh == mt_create_mesh) rt_create_mesh = nullptr;
     if (rt_destroy_mesh == mt_destroy_mesh) rt_destroy_mesh = nullptr;
     if (rt_draw_mesh == mt_draw_mesh) rt_draw_mesh = nullptr;
+    if (rt_draw_array == mt_draw_array) rt_draw_array = nullptr;
+    if (rt_draw_index == mt_draw_index) rt_draw_index = nullptr;
+    if (rt_draw_array_indirect == mt_draw_array_indirect) rt_draw_array_indirect = nullptr;
+    if (rt_draw_index_indirect == mt_draw_index_indirect) rt_draw_index_indirect = nullptr;
     if (rt_draw_mesh_multi == mt_draw_mesh_multi) rt_draw_mesh_multi = nullptr;
     if (rt_create_meshlet == mt_create_meshlet) rt_create_meshlet = nullptr;
     if (rt_destroy_meshlet == mt_destroy_meshlet) rt_destroy_meshlet = nullptr;
@@ -1253,7 +1264,6 @@ void mt_bind_buffer(rt_buffer_t& buffer, rt_buffer_bind_t bind)
         fprintf(stderr, "Pipeline not begin");
         abort();
     }
-    metal.currentBinding[bind.binding].type = RT_BINDING_BUFFER;
     metal.currentBinding[bind.binding].buffer = buffer;
     metal.currentBinding[bind.binding].buffer_bind = bind;
 }
@@ -1417,18 +1427,6 @@ void mt_bind_texture(rt_texture_t& texture, rt_texture_bind_t bind)
     metal.currentBinding[bind.binding].texture_bind = bind;
 }
 
-void mt_bind_texture_storage(rt_texture_t& texture, rt_texture_storage_bind_t bind)
-{
-    if (metal.currentPipeline == nullptr)
-    {
-        fprintf(stderr, "Pipeline not begin");
-        abort();
-    }
-    metal.currentBinding[bind.binding].type = RT_BINDING_STORAGE_TEXTURE;
-    metal.currentBinding[bind.binding].storage_view = texture.default_view;
-    metal.currentBinding[bind.binding].storage_texture_bind = bind;
-}
-
 rt_texture_view_t mt_create_texture_view(rt_texture_t& texture, rt_texture_view_info_t const& info)
 {
     auto* tex = mt_texture_native(texture);
@@ -1506,6 +1504,18 @@ void mt_bind_texture_view(rt_texture_view_t& view, rt_texture_view_bind_t bind)
     metal.currentBinding[bind.binding].texture_view = view;
     metal.currentBinding[bind.binding].texture_bind = {};
     metal.currentBinding[bind.binding].texture_bind.binding = bind.binding;
+}
+
+void mt_bind_texture_storage(rt_texture_view_t& view, rt_texture_storage_bind_t bind)
+{
+    if (metal.currentPipeline == nullptr)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    metal.currentBinding[bind.binding].type = RT_BINDING_STORAGE_TEXTURE;
+    metal.currentBinding[bind.binding].storage_view = view;
+    metal.currentBinding[bind.binding].storage_texture_bind = bind;
 }
 
 rt_sampler_t mt_create_sampler(rt_sampler_info_t const& info)
@@ -1803,6 +1813,55 @@ void mt_dispatch_compute(uint32_t groupX, uint32_t groupY, uint32_t groupZ)
     if (mod && mod->computePipeline)
         threads = MTL::Size::Make(mod->computePipeline->threadExecutionWidth(), 1, 1);
     metal.computeEncoder->dispatchThreadgroups(groups, threads);
+}
+
+static void mt_bind_draw_vbos(rt_buffer_t vbo[], uint32_t vbo_num)
+{
+    rt_module_render_t const& module = metal.currentRenderPass->module;
+    uint32_t count = vbo_num;
+    if (count > (uint32_t)std::size(module.vertex))
+        count = (uint32_t)std::size(module.vertex);
+    for (uint32_t i = 0; i < count; ++i)
+    {
+        rt_vertex_t const& layout = module.vertex[i];
+        if (layout.format == RT_VERTEX_NONE || !vbo || vbo[i].handle == 0)
+            continue;
+        auto* native = mt_buffer_native(vbo[i]);
+        if (!native || !native->handle)
+            continue;
+        mt_transition_buffer(*native, MTL_STATE_VERTEX);
+        metal.renderEncoder->setVertexBuffer(native->handle, 0, layout.location);
+    }
+}
+
+static MTL::PrimitiveType mt_draw_primitive()
+{
+    auto* mod = (mt_module_native_t*)metal.currentRenderPass->module.native;
+    return mod ? mod->primitive : MTL::PrimitiveTypeTriangle;
+}
+
+void mt_dispatch_compute_indirect(rt_buffer_t& indirect, size_t offset)
+{
+    if (metal.currentPipeline == nullptr)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    if (metal.currentPassType != RT_MODULE_COMPUTE)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    auto* native = mt_buffer_native(indirect);
+    if (!native || !native->handle)
+        return;
+    mt_flush_descriptors();
+    mt_transition_buffer(*native, MTL_STATE_SHADER_READ);
+    MTL::Size threads = MTL::Size::Make(1, 1, 1);
+    auto* mod = mt_current_module_native();
+    if (mod && mod->computePipeline)
+        threads = MTL::Size::Make(mod->computePipeline->threadExecutionWidth(), 1, 1);
+    metal.computeEncoder->dispatchThreadgroups(native->handle, (NS::UInteger)offset, threads);
 }
 
 void mt_begin_render(rt_pass_render_t& pass)
@@ -2232,6 +2291,91 @@ static void mt_draw_mesh_impl(rt_mesh_t& mesh, uint32_t instanceCount)
         metal.renderEncoder->drawPrimitives(primitive, 0, vertex_count, instanceCount);
 }
 
+void mt_draw_array(rt_buffer_t vbo[], uint32_t vbo_num, uint32_t draw_num, uint32_t instance_num)
+{
+    if (metal.currentPipeline == nullptr)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    if (metal.currentPassType != RT_MODULE_RENDER)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    mt_flush_descriptors();
+    mt_bind_draw_vbos(vbo, vbo_num);
+    metal.renderEncoder->drawPrimitives(mt_draw_primitive(), 0, draw_num, instance_num);
+}
+
+void mt_draw_index(rt_buffer_t vbo[], uint32_t vbo_num, rt_buffer_t& ibo, uint32_t draw_num, uint32_t instance_num)
+{
+    if (metal.currentPipeline == nullptr)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    if (metal.currentPassType != RT_MODULE_RENDER)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    auto* indexNative = mt_buffer_native(ibo);
+    if (!indexNative || !indexNative->handle)
+        return;
+    mt_flush_descriptors();
+    mt_bind_draw_vbos(vbo, vbo_num);
+    mt_transition_buffer(*indexNative, MTL_STATE_INDEX);
+    metal.renderEncoder->drawIndexedPrimitives(mt_draw_primitive(), draw_num,
+        rt_to_mt_index_type(metal.currentRenderPass->module.index_type), indexNative->handle, 0, instance_num);
+}
+
+void mt_draw_array_indirect(rt_buffer_t vbo[], uint32_t vbo_num, rt_buffer_t& indirect, size_t offset)
+{
+    if (metal.currentPipeline == nullptr)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    if (metal.currentPassType != RT_MODULE_RENDER)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    auto* indirectNative = mt_buffer_native(indirect);
+    if (!indirectNative || !indirectNative->handle)
+        return;
+    mt_flush_descriptors();
+    mt_bind_draw_vbos(vbo, vbo_num);
+    mt_transition_buffer(*indirectNative, MTL_STATE_SHADER_READ);
+    metal.renderEncoder->drawPrimitives(mt_draw_primitive(), indirectNative->handle, (NS::UInteger)offset);
+}
+
+void mt_draw_index_indirect(rt_buffer_t vbo[], uint32_t vbo_num, rt_buffer_t& ibo, rt_buffer_t& indirect, size_t offset)
+{
+    if (metal.currentPipeline == nullptr)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    if (metal.currentPassType != RT_MODULE_RENDER)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    auto* indexNative = mt_buffer_native(ibo);
+    auto* indirectNative = mt_buffer_native(indirect);
+    if (!indexNative || !indexNative->handle || !indirectNative || !indirectNative->handle)
+        return;
+    mt_flush_descriptors();
+    mt_bind_draw_vbos(vbo, vbo_num);
+    mt_transition_buffer(*indexNative, MTL_STATE_INDEX);
+    mt_transition_buffer(*indirectNative, MTL_STATE_SHADER_READ);
+    metal.renderEncoder->drawIndexedPrimitives(mt_draw_primitive(),
+        rt_to_mt_index_type(metal.currentRenderPass->module.index_type),
+        indexNative->handle, 0, indirectNative->handle, (NS::UInteger)offset);
+}
+
 void mt_draw_mesh(rt_mesh_t& mesh)
 {
     mt_draw_mesh_impl(mesh, 1);
@@ -2296,14 +2440,14 @@ void mt_draw_meshlet(rt_meshlet_t& meshlet)
         for (uint32_t k = 0; k < std::size(meshlet.vertex); ++k)
         {
             if (meshlet.vertex[k].handle == 0 || meshlet.location[k] != layout.location) continue;
-            mt_bind_buffer(meshlet.vertex[k], {.binding = layout.location, .target = RT_SHADER_STORAGE_BUFFER});
+            mt_bind_buffer(meshlet.vertex[k], {.binding = layout.location});
             break;
         }
         if (layout.location + 1 > index_binding)
             index_binding = layout.location + 1;
     }
     if (meshlet.index.handle)
-        mt_bind_buffer(meshlet.index, {.binding = index_binding, .target = RT_SHADER_STORAGE_BUFFER});
+        mt_bind_buffer(meshlet.index, {.binding = index_binding});
     mt_flush_descriptors();
     auto* native = (mt_meshlet_native_t*)meshlet.native;
     uint32_t tasks = native && native->indexCount ? native->indexCount / 3 : 1;

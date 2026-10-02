@@ -250,7 +250,8 @@ static VkDescriptorType rt_to_vk_descriptor(rt_binding_type_t bindingType)
     switch (bindingType)
     {
         case RT_BINDING_NONE: return VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-        case RT_BINDING_BUFFER: return VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        case RT_BINDING_UNIFORM_BUFFER: return VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        case RT_BINDING_STORAGE_BUFFER: return VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         case RT_BINDING_SAMPLER: return VK_DESCRIPTOR_TYPE_SAMPLER;
         case RT_BINDING_TEXTURE: return VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
         case RT_BINDING_STORAGE_TEXTURE: return VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
@@ -1028,8 +1029,6 @@ static void vk_flush_descriptors()
         {
             auto* buf = vk_buffer_native(slot.buffer);
             if (!buf) continue;
-            if (slot.buffer_bind.target == RT_SHADER_STORAGE_BUFFER)
-                writes[writeCount].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
             bufferInfos[writeCount] = {buf->handle, 0, VK_WHOLE_SIZE};
             writes[writeCount].pBufferInfo = &bufferInfos[writeCount];
             VkPipelineStageFlags dstStage = (vulkan.currentPassType == RT_MODULE_COMPUTE) ?
@@ -1171,10 +1170,10 @@ void vk_load_library(VkInstance instance, VkPhysicalDevice physical, VkDevice de
     rt_create_texture = vk_create_texture;
     rt_destroy_texture = vk_destroy_texture;
     rt_bind_texture = vk_bind_texture;
-    rt_bind_texture_storage = vk_bind_texture_storage;
     rt_create_texture_view = vk_create_texture_view;
     rt_destroy_texture_view = vk_destroy_texture_view;
     rt_bind_texture_view = vk_bind_texture_view;
+    rt_bind_texture_storage = vk_bind_texture_storage;
     rt_create_sampler = vk_create_sampler;
     rt_destroy_sampler = vk_destroy_sampler;
     rt_bind_sampler = vk_bind_sampler;
@@ -1186,6 +1185,7 @@ void vk_load_library(VkInstance instance, VkPhysicalDevice physical, VkDevice de
     rt_begin_compute = vk_begin_compute;
     rt_end_compute = vk_end_compute;
     rt_dispatch_compute = vk_dispatch_compute;
+    rt_dispatch_compute_indirect = vk_dispatch_compute_indirect;
     rt_begin_render = vk_begin_render;
     rt_end_render = vk_end_render;
     rt_set_viewport = vk_set_viewport;
@@ -1211,6 +1211,10 @@ void vk_load_library(VkInstance instance, VkPhysicalDevice physical, VkDevice de
     rt_create_mesh = vk_create_mesh;
     rt_destroy_mesh = vk_destroy_mesh;
     rt_draw_mesh = vk_draw_mesh;
+    rt_draw_array = vk_draw_array;
+    rt_draw_index = vk_draw_index;
+    rt_draw_array_indirect = vk_draw_array_indirect;
+    rt_draw_index_indirect = vk_draw_index_indirect;
     rt_create_meshlet = vk_create_meshlet;
     rt_destroy_meshlet = vk_destroy_meshlet;
     rt_draw_meshlet = vk_draw_meshlet;
@@ -1305,10 +1309,10 @@ void vk_unload_library()
     if (rt_create_texture == vk_create_texture) rt_create_texture = nullptr;
     if (rt_destroy_texture == vk_destroy_texture) rt_destroy_texture = nullptr;
     if (rt_bind_texture == vk_bind_texture) rt_bind_texture = nullptr;
-    if (rt_bind_texture_storage == vk_bind_texture_storage) rt_bind_texture_storage = nullptr;
     if (rt_create_texture_view == vk_create_texture_view) rt_create_texture_view = nullptr;
     if (rt_destroy_texture_view == vk_destroy_texture_view) rt_destroy_texture_view = nullptr;
     if (rt_bind_texture_view == vk_bind_texture_view) rt_bind_texture_view = nullptr;
+    if (rt_bind_texture_storage == vk_bind_texture_storage) rt_bind_texture_storage = nullptr;
     if (rt_create_sampler == vk_create_sampler) rt_create_sampler = nullptr;
     if (rt_destroy_sampler == vk_destroy_sampler) rt_destroy_sampler = nullptr;
     if (rt_bind_sampler == vk_bind_sampler) rt_bind_sampler = nullptr;
@@ -1320,6 +1324,7 @@ void vk_unload_library()
     if (rt_begin_compute == vk_begin_compute) rt_begin_compute = nullptr;
     if (rt_end_compute == vk_end_compute) rt_end_compute = nullptr;
     if (rt_dispatch_compute == vk_dispatch_compute) rt_dispatch_compute = nullptr;
+    if (rt_dispatch_compute_indirect == vk_dispatch_compute_indirect) rt_dispatch_compute_indirect = nullptr;
     if (rt_begin_render == vk_begin_render) rt_begin_render = nullptr;
     if (rt_end_render == vk_end_render) rt_end_render = nullptr;
     if (rt_set_viewport == vk_set_viewport) rt_set_viewport = nullptr;
@@ -1345,6 +1350,10 @@ void vk_unload_library()
     if (rt_create_mesh == vk_create_mesh) rt_create_mesh = nullptr;
     if (rt_destroy_mesh == vk_destroy_mesh) rt_destroy_mesh = nullptr;
     if (rt_draw_mesh == vk_draw_mesh) rt_draw_mesh = nullptr;
+    if (rt_draw_array == vk_draw_array) rt_draw_array = nullptr;
+    if (rt_draw_index == vk_draw_index) rt_draw_index = nullptr;
+    if (rt_draw_array_indirect == vk_draw_array_indirect) rt_draw_array_indirect = nullptr;
+    if (rt_draw_index_indirect == vk_draw_index_indirect) rt_draw_index_indirect = nullptr;
     if (rt_create_meshlet == vk_create_meshlet) rt_create_meshlet = nullptr;
     if (rt_destroy_meshlet == vk_destroy_meshlet) rt_destroy_meshlet = nullptr;
     if (rt_draw_meshlet == vk_draw_meshlet) rt_draw_meshlet = nullptr;
@@ -1482,7 +1491,6 @@ void vk_bind_buffer(rt_buffer_t& buffer, rt_buffer_bind_t bind)
         fprintf(stderr, "Pipeline not begin");
         abort();
     }
-    vulkan.currentBinding[bind.binding].type = RT_BINDING_BUFFER;
     vulkan.currentBinding[bind.binding].buffer = buffer;
     vulkan.currentBinding[bind.binding].buffer_bind = bind;
 }
@@ -1700,18 +1708,6 @@ void vk_bind_texture(rt_texture_t& texture, rt_texture_bind_t bind)
     vulkan.currentBinding[bind.binding].texture_bind = bind;
 }
 
-void vk_bind_texture_storage(rt_texture_t& texture, rt_texture_storage_bind_t bind)
-{
-    if (vulkan.currentPipeline == nullptr)
-    {
-        fprintf(stderr, "Pipeline not begin");
-        abort();
-    }
-    vulkan.currentBinding[bind.binding].type = RT_BINDING_STORAGE_TEXTURE;
-    vulkan.currentBinding[bind.binding].storage_view = texture.default_view;
-    vulkan.currentBinding[bind.binding].storage_texture_bind = bind;
-}
-
 rt_texture_view_t vk_create_texture_view(rt_texture_t& texture, rt_texture_view_info_t const& info)
 {
     auto* tex = vk_texture_native(texture);
@@ -1798,6 +1794,18 @@ void vk_bind_texture_view(rt_texture_view_t& view, rt_texture_view_bind_t bind)
     vulkan.currentBinding[bind.binding].texture_view = view;
     vulkan.currentBinding[bind.binding].texture_bind = {};
     vulkan.currentBinding[bind.binding].texture_bind.binding = bind.binding;
+}
+
+void vk_bind_texture_storage(rt_texture_view_t& view, rt_texture_storage_bind_t bind)
+{
+    if (vulkan.currentPipeline == nullptr)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    vulkan.currentBinding[bind.binding].type = RT_BINDING_STORAGE_TEXTURE;
+    vulkan.currentBinding[bind.binding].storage_view = view;
+    vulkan.currentBinding[bind.binding].storage_texture_bind = bind;
 }
 
 rt_sampler_t vk_create_sampler(rt_sampler_info_t const& info)
@@ -2583,6 +2591,57 @@ void vk_dispatch_compute(uint32_t groupX, uint32_t groupY, uint32_t groupZ)
     vkCmdDispatch(vulkan.cmdBuffer, std::max(1u, groupX), std::max(1u, groupY), std::max(1u, groupZ));
 }
 
+static void vk_bind_draw_vbos(rt_buffer_t vbo[], uint32_t vbo_num)
+{
+    rt_module_render_t const& module = vulkan.currentRenderPass->module;
+    uint32_t count = vbo_num;
+    if (count > (uint32_t)std::size(module.vertex))
+        count = (uint32_t)std::size(module.vertex);
+
+    VkBuffer buffers[RT_MAX_VERTEX_BUFFER_NUM] = {};
+    uint32_t slots[RT_MAX_VERTEX_BUFFER_NUM] = {};
+    uint32_t bindCount = 0;
+    for (uint32_t i = 0; i < count; ++i)
+    {
+        rt_vertex_t const& layout = module.vertex[i];
+        if (layout.format == RT_VERTEX_NONE || !vbo || vbo[i].handle == 0)
+            continue;
+        auto* native = vk_buffer_native(vbo[i]);
+        if (!native)
+            continue;
+        vk_transition_buffer(*native, VK_PIPELINE_STAGE_VERTEX_INPUT_BIT, VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT);
+        buffers[bindCount] = native->handle;
+        slots[bindCount] = layout.location;
+        bindCount++;
+    }
+    vk_begin_rendering();
+    for (uint32_t i = 0; i < bindCount; ++i)
+    {
+        VkDeviceSize offset = 0;
+        vkCmdBindVertexBuffers(vulkan.cmdBuffer, slots[i], 1, &buffers[i], &offset);
+    }
+}
+
+void vk_dispatch_compute_indirect(rt_buffer_t& indirect, size_t offset)
+{
+    if (vulkan.currentPipeline == nullptr)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    if (vulkan.currentPassType != RT_MODULE_COMPUTE)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    auto* native = vk_buffer_native(indirect);
+    if (!native)
+        return;
+    vk_flush_descriptors();
+    vk_transition_buffer(*native, VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT, VK_ACCESS_INDIRECT_COMMAND_READ_BIT);
+    vkCmdDispatchIndirect(vulkan.cmdBuffer, native->handle, (VkDeviceSize)offset);
+}
+
 void vk_begin_render(rt_pass_render_t& pass)
 {
     if (vulkan.currentPipeline)
@@ -3081,6 +3140,92 @@ void vk_draw_mesh(rt_mesh_t& mesh)
         vkCmdDraw(vulkan.cmdBuffer, vertex_count, 1, 0, 0);
 }
 
+void vk_draw_array(rt_buffer_t vbo[], uint32_t vbo_num, uint32_t draw_num, uint32_t instance_num)
+{
+    if (vulkan.currentPipeline == nullptr)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    if (vulkan.currentPassType != RT_MODULE_RENDER)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    vk_flush_descriptors();
+    vk_bind_draw_vbos(vbo, vbo_num);
+    vkCmdDraw(vulkan.cmdBuffer, draw_num, instance_num, 0, 0);
+}
+
+void vk_draw_index(rt_buffer_t vbo[], uint32_t vbo_num, rt_buffer_t& ibo, uint32_t draw_num, uint32_t instance_num)
+{
+    if (vulkan.currentPipeline == nullptr)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    if (vulkan.currentPassType != RT_MODULE_RENDER)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    auto* indexNative = vk_buffer_native(ibo);
+    if (!indexNative)
+        return;
+    vk_flush_descriptors();
+    vk_transition_buffer(*indexNative, VK_PIPELINE_STAGE_VERTEX_INPUT_BIT, VK_ACCESS_INDEX_READ_BIT);
+    vk_bind_draw_vbos(vbo, vbo_num);
+    rt_module_render_t const& module = vulkan.currentRenderPass->module;
+    vkCmdBindIndexBuffer(vulkan.cmdBuffer, indexNative->handle, 0, rt_to_vk_index_type(module.index_type));
+    vkCmdDrawIndexed(vulkan.cmdBuffer, draw_num, instance_num, 0, 0, 0);
+}
+
+void vk_draw_array_indirect(rt_buffer_t vbo[], uint32_t vbo_num, rt_buffer_t& indirect, size_t offset)
+{
+    if (vulkan.currentPipeline == nullptr)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    if (vulkan.currentPassType != RT_MODULE_RENDER)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    auto* indirectNative = vk_buffer_native(indirect);
+    if (!indirectNative)
+        return;
+    vk_flush_descriptors();
+    vk_transition_buffer(*indirectNative, VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT, VK_ACCESS_INDIRECT_COMMAND_READ_BIT);
+    vk_bind_draw_vbos(vbo, vbo_num);
+    vkCmdDrawIndirect(vulkan.cmdBuffer, indirectNative->handle, (VkDeviceSize)offset, 1, sizeof(VkDrawIndirectCommand));
+}
+
+void vk_draw_index_indirect(rt_buffer_t vbo[], uint32_t vbo_num, rt_buffer_t& ibo, rt_buffer_t& indirect, size_t offset)
+{
+    if (vulkan.currentPipeline == nullptr)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    if (vulkan.currentPassType != RT_MODULE_RENDER)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    auto* indexNative = vk_buffer_native(ibo);
+    auto* indirectNative = vk_buffer_native(indirect);
+    if (!indexNative || !indirectNative)
+        return;
+    vk_flush_descriptors();
+    vk_transition_buffer(*indexNative, VK_PIPELINE_STAGE_VERTEX_INPUT_BIT, VK_ACCESS_INDEX_READ_BIT);
+    vk_transition_buffer(*indirectNative, VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT, VK_ACCESS_INDIRECT_COMMAND_READ_BIT);
+    vk_bind_draw_vbos(vbo, vbo_num);
+    rt_module_render_t const& module = vulkan.currentRenderPass->module;
+    vkCmdBindIndexBuffer(vulkan.cmdBuffer, indexNative->handle, 0, rt_to_vk_index_type(module.index_type));
+    vkCmdDrawIndexedIndirect(vulkan.cmdBuffer, indirectNative->handle, (VkDeviceSize)offset, 1, sizeof(VkDrawIndexedIndirectCommand));
+}
+
 rt_meshlet_t vk_create_meshlet(const float* vertices, const float* normals, const float* uvs, size_t vertex_count, const unsigned int* indices, size_t index_count)
 {
     rt_meshlet_t result = {};
@@ -3135,14 +3280,14 @@ void vk_draw_meshlet(rt_meshlet_t& meshlet)
         for (uint32_t k = 0; k < std::size(meshlet.vertex); ++k)
         {
             if (meshlet.vertex[k].handle == 0 || meshlet.location[k] != layout.location) continue;
-            vk_bind_buffer(meshlet.vertex[k], {.binding = layout.location, .target = RT_SHADER_STORAGE_BUFFER});
+            vk_bind_buffer(meshlet.vertex[k], {.binding = layout.location});
             break;
         }
         if (layout.location + 1 > index_binding)
             index_binding = layout.location + 1;
     }
     if (meshlet.index.handle)
-        vk_bind_buffer(meshlet.index, {.binding = index_binding, .target = RT_SHADER_STORAGE_BUFFER});
+        vk_bind_buffer(meshlet.index, {.binding = index_binding});
     vk_flush_descriptors();
     vk_begin_rendering();
     auto* native = (vk_meshlet_native_t*)meshlet.native;

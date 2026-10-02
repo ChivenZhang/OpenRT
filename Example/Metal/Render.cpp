@@ -129,6 +129,7 @@ void frame(int width, int height)
         .colors = {{.format = RT_TEXTURE_BGRA8UNORM,}},
         .depth = {.write = true, .func = RT_LEQUAL,},
         .vertex = {rt_vertex_vertex, rt_vertex_normal, rt_vertex_uv,},
+        .binding = {{.binding = 0, .type = RT_BINDING_TEXTURE}, {.binding = 1, .type = RT_BINDING_SAMPLER}},
     });
     static auto pass_color = rt_create_texture({
         .width = (uint32_t)width, .height = (uint32_t)height,
