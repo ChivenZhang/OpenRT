@@ -1569,9 +1569,13 @@ rt_module_compute_t mt_create_module_compute(rt_module_compute_info_t const& inf
         mt_destroy_module_native(handle, result.native);
         return {};
     }
+    for (uint32_t i = 0; i < RT_MAX_BINDING_HANDLE_NUM; ++i)
+        native.bindings[i] = info.binding[i];
     metal.moduleID = handle;
     result.handle = handle;
     result.native = &native;
+    for (size_t i = 0; i < std::size(info.binding); ++i)
+        result.binding[i] = info.binding[i];
     return result;
 }
 

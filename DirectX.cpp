@@ -1521,14 +1521,55 @@ rt_module_compute_t dx_create_module_compute(rt_module_compute_info_t const& inf
     native.cshader.pShaderBytecode = native.ccode.data();
     native.cshader.BytecodeLength = native.ccode.size();
     native.descriptorCount = 0;
-    D3D12_ROOT_PARAMETER params[1] = {};
+    D3D12_DESCRIPTOR_RANGE ranges[RT_MAX_BINDING_HANDLE_NUM] = {};
+    D3D12_ROOT_PARAMETER params[1 + RT_MAX_BINDING_HANDLE_NUM] = {};
     params[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
     params[0].Constants.ShaderRegister = 16;
     params[0].Constants.RegisterSpace = 0;
     params[0].Constants.Num32BitValues = 32;
     params[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+    uint32_t paramCount = 1;
+    for (uint32_t i = 0; i < RT_MAX_BINDING_HANDLE_NUM; ++i)
+    {
+        dx_binding_kind_t kind = DX_KIND_NONE;
+        D3D12_DESCRIPTOR_RANGE_TYPE rangeType = D3D12_DESCRIPTOR_RANGE_TYPE_CBV;
+        if (info.binding[i].type == RT_BINDING_BUFFER)
+        {
+            kind = DX_KIND_CBV;
+            rangeType = D3D12_DESCRIPTOR_RANGE_TYPE_CBV;
+        }
+        else if (info.binding[i].type == RT_BINDING_TEXTURE)
+        {
+            kind = DX_KIND_SRV;
+            rangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
+        }
+        else if (info.binding[i].type == RT_BINDING_STORAGE_TEXTURE)
+        {
+            kind = DX_KIND_UAV;
+            rangeType = D3D12_DESCRIPTOR_RANGE_TYPE_UAV;
+        }
+        else if (info.binding[i].type == RT_BINDING_SAMPLER)
+        {
+            kind = DX_KIND_SAMPLER;
+            rangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SAMPLER;
+        }
+        else continue;
+        native.kinds[native.descriptorCount] = kind;
+        native.descriptorBindings[native.descriptorCount] = info.binding[i].binding;
+        ranges[native.descriptorCount].RangeType = rangeType;
+        ranges[native.descriptorCount].NumDescriptors = 1;
+        ranges[native.descriptorCount].BaseShaderRegister = info.binding[i].binding;
+        ranges[native.descriptorCount].RegisterSpace = 0;
+        ranges[native.descriptorCount].OffsetInDescriptorsFromTableStart = 0;
+        params[paramCount].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+        params[paramCount].DescriptorTable.NumDescriptorRanges = 1;
+        params[paramCount].DescriptorTable.pDescriptorRanges = &ranges[native.descriptorCount];
+        params[paramCount].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+        native.descriptorCount++;
+        paramCount++;
+    }
     D3D12_ROOT_SIGNATURE_DESC desc = {};
-    desc.NumParameters = 1;
+    desc.NumParameters = paramCount;
     desc.pParameters = params;
     desc.Flags = D3D12_ROOT_SIGNATURE_FLAG_NONE;
     ComPtr<ID3DBlob> blob, error;
@@ -1551,6 +1592,8 @@ rt_module_compute_t dx_create_module_compute(rt_module_compute_info_t const& inf
     direct.moduleID = handle;
     result.handle = handle;
     result.native = &native;
+    for (size_t i = 0; i < std::size(info.binding); ++i)
+        result.binding[i] = info.binding[i];
     return result;
 }
 

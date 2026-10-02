@@ -524,6 +524,12 @@ struct rt_sampler_bind_t
 
 // ====================================================================
 
+struct rt_binding_t
+{
+    uint32_t binding = 0;
+    rt_binding_type_t type = {};  // RT_BINDING_BUFFER / RT_BINDING_TEXTURE / RT_BINDING_STORAGE_TEXTURE / RT_BINDING_SAMPLER
+};
+
 struct rt_module_compute_info_t
 {
     struct
@@ -532,11 +538,16 @@ struct rt_module_compute_info_t
         uint32_t size = 0;
         const char* entry = "main";
     } cshader;
+
+    rt_binding_t binding[RT_MAX_BINDING_HANDLE_NUM];
 };
 
 struct rt_module_compute_t
 {
     uint32_t handle = 0;
+
+    rt_binding_t binding[RT_MAX_BINDING_HANDLE_NUM];
+    
     void* native = nullptr;
 };
 
@@ -549,12 +560,6 @@ struct rt_vertex_t
 inline rt_vertex_t rt_vertex_vertex{.location = 0, .format = RT_VERTEX_FLOAT32X3, .instance = false};
 inline rt_vertex_t rt_vertex_normal{.location = 1, .format = RT_VERTEX_FLOAT32X3, .instance = false};
 inline rt_vertex_t rt_vertex_uv{.location = 2, .format = RT_VERTEX_FLOAT32X2, .instance = false};
-
-struct rt_binding_t
-{
-    uint32_t binding = 0;
-    rt_binding_type_t type = {};  // RT_BINDING_BUFFER / RT_BINDING_TEXTURE / RT_BINDING_STORAGE_TEXTURE / RT_BINDING_SAMPLER
-};
 
 struct rt_module_render_info_t
 {

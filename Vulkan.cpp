@@ -1865,13 +1865,42 @@ rt_module_compute_t vk_create_module_compute(rt_module_compute_info_t const& inf
         vulkan.modules.erase(handle);
         return {};
     }
+    VkDescriptorSetLayoutBinding layoutBindings[RT_MAX_BINDING_HANDLE_NUM] = {};
     native.descriptorCount = 0;
+    for (uint32_t i = 0; i < RT_MAX_BINDING_HANDLE_NUM; ++i)
+    {
+        if (info.binding[i].type == RT_BINDING_NONE)
+            continue;
+        auto& item = layoutBindings[native.descriptorCount];
+        item.binding = info.binding[i].binding;
+        item.descriptorType = rt_to_vk_descriptor(info.binding[i].type);
+        item.descriptorCount = 1;
+        item.stageFlags = native.shaderStages;
+        native.descriptorBindings[native.descriptorCount] = info.binding[i].binding;
+        native.descriptorTypes[native.descriptorCount] = item.descriptorType;
+        native.descriptorCount++;
+    }
+
     VkDescriptorSetLayoutCreateInfo setLayoutInfo = {};
     setLayoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+    setLayoutInfo.bindingCount = native.descriptorCount;
+    setLayoutInfo.pBindings = native.descriptorCount ? layoutBindings : nullptr;
     if (vkCreateDescriptorSetLayout(vulkan.device, &setLayoutInfo, vulkan.allocator, &native.descriptorSetLayout) != VK_SUCCESS)
     {
+        result.native = &native;
         vk_destroy_module_native(handle, result.native);
         return {};
+    }
+
+    if (native.descriptorCount > 0)
+    {
+        VkDescriptorSetAllocateInfo alloc = {};
+        alloc.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+        alloc.descriptorPool = vulkan.descriptorPool;
+        alloc.descriptorSetCount = 1;
+        alloc.pSetLayouts = &native.descriptorSetLayout;
+        if (vkAllocateDescriptorSets(vulkan.device, &alloc, &native.descriptorSet) != VK_SUCCESS)
+            native.descriptorSet = nullptr;
     }
     VkPushConstantRange push = {};
     push.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
@@ -1904,6 +1933,8 @@ rt_module_compute_t vk_create_module_compute(rt_module_compute_info_t const& inf
     vulkan.moduleID = handle;
     result.handle = handle;
     result.native = &native;
+    for (size_t i = 0; i < std::size(info.binding); ++i)
+        result.binding[i] = info.binding[i];
     return result;
 }
 

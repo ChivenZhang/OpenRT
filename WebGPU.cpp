@@ -1433,7 +1433,7 @@ rt_module_compute_t wg_create_module_compute(rt_module_compute_info_t const& inf
     uint32_t handle = webgpu.moduleID + 1;
     auto& native = webgpu.modules[handle];
     native.cshader = wg_create_shader(info.cshader.code, info.cshader.size);
-    if (!native.cshader || !wg_create_pipeline_layout(native, nullptr))
+    if (!native.cshader || !wg_create_pipeline_layout(native, info.binding))
     {
         result.native = &native;
         wg_destroy_module_native(handle, result.native);
@@ -1453,6 +1453,8 @@ rt_module_compute_t wg_create_module_compute(rt_module_compute_info_t const& inf
     webgpu.moduleID = handle;
     result.handle = handle;
     result.native = &native;
+    for (size_t i = 0; i < std::size(info.binding); ++i)
+        result.binding[i] = info.binding[i];
     return result;
 }
 

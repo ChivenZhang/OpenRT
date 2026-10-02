@@ -1338,6 +1338,11 @@ rt_module_compute_t gl_create_module_compute(rt_module_compute_info_t const& inf
     opengl.moduleID = handle;
     result.handle = handle;
     result.native = &native;
+    for (size_t i = 0; i < std::size(info.binding); ++i)
+    {
+        result.binding[i].binding = info.binding[i].binding;
+        result.binding[i].type = info.binding[i].type;
+    }
     return result;
 }
 
