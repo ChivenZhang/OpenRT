@@ -976,6 +976,8 @@ void wg_load_library(WGPUDevice device, WGPUQueue queue)
     rt_bind_module_render = wg_bind_module_render;
     rt_set_viewport = wg_set_viewport;
     rt_set_scissor = wg_set_scissor;
+    rt_set_blend_constant = wg_set_blend_constant;
+    rt_set_stencil_reference = wg_set_stencil_reference;
     rt_draw_mesh_task = wg_draw_mesh_task;
     rt_draw_mesh_task_indirect = wg_draw_mesh_task_indirect;
     rt_push_constant = wg_push_constant;
@@ -1093,6 +1095,8 @@ void wg_unload_library()
     if (rt_bind_module_render == wg_bind_module_render) rt_bind_module_render = nullptr;
     if (rt_set_viewport == wg_set_viewport) rt_set_viewport = nullptr;
     if (rt_set_scissor == wg_set_scissor) rt_set_scissor = nullptr;
+    if (rt_set_blend_constant == wg_set_blend_constant) rt_set_blend_constant = nullptr;
+    if (rt_set_stencil_reference == wg_set_stencil_reference) rt_set_stencil_reference = nullptr;
     if (rt_draw_mesh_task == wg_draw_mesh_task) rt_draw_mesh_task = nullptr;
     if (rt_draw_mesh_task_indirect == wg_draw_mesh_task_indirect) rt_draw_mesh_task_indirect = nullptr;
     if (rt_push_constant == wg_push_constant) rt_push_constant = nullptr;
@@ -1879,8 +1883,10 @@ void wg_begin_render(rt_pass_render_t& pass)
     wg_end_pass_encoders();
     wg_ensure_encoder();
     webgpu.renderPass = wgpuCommandEncoderBeginRenderPass(webgpu.encoder, &desc);
-    wg_set_viewport(0, 0, (int32_t)width, (int32_t)height);
+    wg_set_viewport(0.0f, 0.0f, (float)width, (float)height, 0.0f, 1.0f);
     wg_set_scissor(0, 0, (int32_t)width, (int32_t)height);
+    wg_set_blend_constant(0.0f, 0.0f, 0.0f, 0.0f);
+    wg_set_stencil_reference(pass.stencil.refer);
 }
 
 void wg_end_render(rt_pass_render_t& pass)
@@ -1930,7 +1936,7 @@ void wg_bind_module_render(rt_module_render_t& module)
         wgpuRenderPassEncoderSetPipeline(webgpu.renderPass, mod->renderPipeline);
 }
 
-void wg_set_viewport(int32_t x, int32_t y, int32_t width, int32_t height)
+void wg_set_viewport(float x, float y, float width, float height, float minDepth, float maxDepth)
 {
     if (webgpu.currentPipeline == nullptr)
     {
@@ -1938,7 +1944,7 @@ void wg_set_viewport(int32_t x, int32_t y, int32_t width, int32_t height)
         abort();
     }
     if (!webgpu.renderPass) return;
-    wgpuRenderPassEncoderSetViewport(webgpu.renderPass, (float)x, (float)y, (float)width, (float)height, 0.0f, 1.0f);
+    wgpuRenderPassEncoderSetViewport(webgpu.renderPass, x, y, width, height, minDepth, maxDepth);
 }
 
 void wg_set_scissor(int32_t x, int32_t y, int32_t width, int32_t height)
@@ -1951,6 +1957,29 @@ void wg_set_scissor(int32_t x, int32_t y, int32_t width, int32_t height)
     if (!webgpu.renderPass) return;
     wgpuRenderPassEncoderSetScissorRect(webgpu.renderPass, (uint32_t)std::max(0, x), (uint32_t)std::max(0, y),
         (uint32_t)std::max(0, width), (uint32_t)std::max(0, height));
+}
+
+void wg_set_blend_constant(float r, float g, float b, float a)
+{
+    if (webgpu.currentPipeline == nullptr || webgpu.currentPassType != RT_MODULE_RENDER)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    if (!webgpu.renderPass) return;
+    WGPUColor color = {r, g, b, a};
+    wgpuRenderPassEncoderSetBlendConstant(webgpu.renderPass, &color);
+}
+
+void wg_set_stencil_reference(int32_t refer)
+{
+    if (webgpu.currentPipeline == nullptr || webgpu.currentPassType != RT_MODULE_RENDER)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    if (!webgpu.renderPass) return;
+    wgpuRenderPassEncoderSetStencilReference(webgpu.renderPass, (uint32_t)refer);
 }
 
 void wg_draw_array(rt_buffer_t vbo[], uint32_t vbo_num, uint32_t vertex_num, uint32_t instance_num, uint32_t vertex_start, uint32_t instance_start)

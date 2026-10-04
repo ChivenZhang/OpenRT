@@ -1103,6 +1103,8 @@ void mt_load_library(MTL::Device* device, MTL::CommandQueue* queue)
     rt_bind_module_render = mt_bind_module_render;
     rt_set_viewport = mt_set_viewport;
     rt_set_scissor = mt_set_scissor;
+    rt_set_blend_constant = mt_set_blend_constant;
+    rt_set_stencil_reference = mt_set_stencil_reference;
     rt_draw_mesh_task = mt_draw_mesh_task;
     rt_draw_mesh_task_indirect = mt_draw_mesh_task_indirect;
     rt_push_constant = mt_push_constant;
@@ -1204,6 +1206,8 @@ void mt_unload_library()
     if (rt_bind_module_render == mt_bind_module_render) rt_bind_module_render = nullptr;
     if (rt_set_viewport == mt_set_viewport) rt_set_viewport = nullptr;
     if (rt_set_scissor == mt_set_scissor) rt_set_scissor = nullptr;
+    if (rt_set_blend_constant == mt_set_blend_constant) rt_set_blend_constant = nullptr;
+    if (rt_set_stencil_reference == mt_set_stencil_reference) rt_set_stencil_reference = nullptr;
     if (rt_draw_mesh_task == mt_draw_mesh_task) rt_draw_mesh_task = nullptr;
     if (rt_draw_mesh_task_indirect == mt_draw_mesh_task_indirect) rt_draw_mesh_task_indirect = nullptr;
     if (rt_push_constant == mt_push_constant) rt_push_constant = nullptr;
@@ -1944,8 +1948,10 @@ void mt_begin_render(rt_pass_render_t& pass)
     mt_end_encoder();
     metal.renderEncoder = metal.cmd->renderCommandEncoder(desc);
     if (metal.renderEncoder) metal.renderEncoder->retain();
-    mt_set_viewport(0, 0, (int32_t)width, (int32_t)height);
+    mt_set_viewport(0.0f, 0.0f, (float)width, (float)height, 0.0f, 1.0f);
     mt_set_scissor(0, 0, (int32_t)width, (int32_t)height);
+    mt_set_blend_constant(0.0f, 0.0f, 0.0f, 0.0f);
+    mt_set_stencil_reference(pass.stencil.refer);
 }
 
 void mt_end_render(rt_pass_render_t& pass)
@@ -1997,7 +2003,7 @@ void mt_bind_module_render(rt_module_render_t& module)
     metal.renderEncoder->setFrontFacingWinding(mod->winding);
 }
 
-void mt_set_viewport(int32_t x, int32_t y, int32_t width, int32_t height)
+void mt_set_viewport(float x, float y, float width, float height, float minDepth, float maxDepth)
 {
     if (metal.currentPipeline == nullptr)
     {
@@ -2005,7 +2011,7 @@ void mt_set_viewport(int32_t x, int32_t y, int32_t width, int32_t height)
         abort();
     }
     if (!metal.renderEncoder) return;
-    MTL::Viewport vp = {(double)x, (double)y, (double)width, (double)height, 0.0, 1.0};
+    MTL::Viewport vp = {(double)x, (double)y, (double)width, (double)height, (double)minDepth, (double)maxDepth};
     metal.renderEncoder->setViewport(vp);
 }
 
@@ -2019,6 +2025,28 @@ void mt_set_scissor(int32_t x, int32_t y, int32_t width, int32_t height)
     if (!metal.renderEncoder) return;
     MTL::ScissorRect rect = {(NS::UInteger)std::max(0, x), (NS::UInteger)std::max(0, y), (NS::UInteger)std::max(0, width), (NS::UInteger)std::max(0, height)};
     metal.renderEncoder->setScissorRect(rect);
+}
+
+void mt_set_blend_constant(float r, float g, float b, float a)
+{
+    if (metal.currentPipeline == nullptr || metal.currentPassType != RT_MODULE_RENDER)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    if (!metal.renderEncoder) return;
+    metal.renderEncoder->setBlendColor(r, g, b, a);
+}
+
+void mt_set_stencil_reference(int32_t refer)
+{
+    if (metal.currentPipeline == nullptr || metal.currentPassType != RT_MODULE_RENDER)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    if (!metal.renderEncoder) return;
+    metal.renderEncoder->setStencilReferenceValue((uint32_t)refer);
 }
 
 void mt_draw_array(rt_buffer_t vbo[], uint32_t vbo_num, uint32_t vertex_num, uint32_t instance_num, uint32_t vertex_start, uint32_t instance_start)

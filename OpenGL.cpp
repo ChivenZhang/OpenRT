@@ -541,6 +541,7 @@ struct OpenGL
     };
     rt_module_render_t* currentRenderModule = nullptr;
     rt_module_compute_t* currentComputeModule = nullptr;
+    int32_t stencilRefer = 0;
 } static thread_local opengl;
 
 static gl_buffer_native_t* gl_buffer_native(rt_buffer_t const& buffer)
@@ -684,6 +685,8 @@ void gl_load_library()
     rt_bind_module_render = gl_bind_module_render;
     rt_set_viewport = gl_set_viewport;
     rt_set_scissor = gl_set_scissor;
+    rt_set_blend_constant = gl_set_blend_constant;
+    rt_set_stencil_reference = gl_set_stencil_reference;
     rt_draw_array = gl_draw_array;
     rt_draw_index = gl_draw_index;
     rt_draw_array_indirect = gl_draw_array_indirect;
@@ -804,6 +807,8 @@ void gl_unload_library()
     if (rt_bind_module_render == gl_bind_module_render) rt_bind_module_render = nullptr;
     if(rt_set_viewport == gl_set_viewport) rt_set_viewport = nullptr;
     if(rt_set_scissor == gl_set_scissor) rt_set_scissor = nullptr;
+    if (rt_set_blend_constant == gl_set_blend_constant) rt_set_blend_constant = nullptr;
+    if (rt_set_stencil_reference == gl_set_stencil_reference) rt_set_stencil_reference = nullptr;
     if(rt_draw_array == gl_draw_array) rt_draw_array = nullptr;
     if(rt_draw_index == gl_draw_index) rt_draw_index = nullptr;
     if(rt_draw_array_indirect == gl_draw_array_indirect) rt_draw_array_indirect = nullptr;
@@ -1756,6 +1761,9 @@ void gl_begin_render(rt_pass_render_t& pass)
         if (pass.colors[i].texture_view.handle)
             offscreen = true;
     }
+    opengl.stencilRefer = offscreen ? pass.stencil.refer : pass.screen.stencil.refer;
+    glBlendColor(0.0f, 0.0f, 0.0f, 0.0f);
+
     if (offscreen)
     {
         glGenFramebuffers(1, &opengl.framebuffer);
@@ -1818,7 +1826,7 @@ void gl_begin_render(rt_pass_render_t& pass)
             fprintf(stderr, "Framebuffer not complete\n");
             abort();
         }
-        gl_set_viewport(0, 0, (int32_t)width, (int32_t)height);
+        gl_set_viewport(0.0f, 0.0f, (float)width, (float)height, 0.0f, 1.0f);
 
         glDisable(GL_BLEND);
         glDepthMask(GL_TRUE);
@@ -1915,7 +1923,7 @@ void gl_begin_render(rt_pass_render_t& pass)
             glDisable(GL_STENCIL_TEST);
         }
         glStencilMask(pass.screen.stencil.write);
-        glStencilFunc(rt_to_gl_compare(pass.screen.stencil.func), pass.screen.stencil.refer, pass.screen.stencil.read);
+        glStencilFunc(rt_to_gl_compare(pass.screen.stencil.func), opengl.stencilRefer, pass.screen.stencil.read);
         glStencilOp(rt_to_gl_stencil_op(pass.screen.stencil.sfail), rt_to_gl_stencil_op(pass.screen.stencil.zfail), rt_to_gl_stencil_op(pass.screen.stencil.zpass));
     }
 }
@@ -2030,8 +2038,8 @@ void gl_bind_module_render(rt_module_render_t& module)
             glDisable(GL_STENCIL_TEST);
         }
         glStencilMask(module.stencil.write);
-        glStencilFuncSeparate(GL_BACK, rt_to_gl_compare(module.stencil.back.func), pass.stencil.refer, module.stencil.read);
-        glStencilFuncSeparate(GL_FRONT, rt_to_gl_compare(module.stencil.front.func), pass.stencil.refer, module.stencil.read);
+        glStencilFuncSeparate(GL_BACK, rt_to_gl_compare(module.stencil.back.func), opengl.stencilRefer, module.stencil.read);
+        glStencilFuncSeparate(GL_FRONT, rt_to_gl_compare(module.stencil.front.func), opengl.stencilRefer, module.stencil.read);
         glStencilOpSeparate(GL_BACK, rt_to_gl_stencil_op(module.stencil.back.sfail), rt_to_gl_stencil_op(module.stencil.back.zfail), rt_to_gl_stencil_op(module.stencil.back.zpass));
         glStencilOpSeparate(GL_FRONT, rt_to_gl_stencil_op(module.stencil.front.sfail), rt_to_gl_stencil_op(module.stencil.front.zfail), rt_to_gl_stencil_op(module.stencil.front.zpass));
     }
@@ -2052,7 +2060,7 @@ void gl_bind_module_render(rt_module_render_t& module)
     glPolygonMode(GL_FRONT_AND_BACK, rt_to_gl_fill(module.fill_mode));
 }
 
-void gl_set_viewport(int32_t x, int32_t y, int32_t width, int32_t height)
+void gl_set_viewport(float x, float y, float width, float height, float minDepth, float maxDepth)
 {
     if (opengl.currentPipeline == nullptr)
     {
@@ -2065,7 +2073,8 @@ void gl_set_viewport(int32_t x, int32_t y, int32_t width, int32_t height)
         abort();
     }
 
-    glViewport(x, y, width, height);
+    glViewportIndexedf(0, x, y, width, height);
+    glDepthRangef(minDepth, maxDepth);
 }
 
 void gl_set_scissor(int32_t x, int32_t y, int32_t width, int32_t height)
@@ -2083,6 +2092,41 @@ void gl_set_scissor(int32_t x, int32_t y, int32_t width, int32_t height)
 
     glEnable(GL_SCISSOR_TEST);
     glScissor(x, y, width, height);
+}
+
+void gl_set_blend_constant(float r, float g, float b, float a)
+{
+    if (opengl.currentPipeline == nullptr || opengl.currentPassType != RT_MODULE_RENDER)
+    {
+        fprintf(stderr, "Pipeline not begin\n");
+        abort();
+    }
+
+    glBlendColor(r, g, b, a);
+}
+
+void gl_set_stencil_reference(int32_t refer)
+{
+    if (opengl.currentPipeline == nullptr || opengl.currentPassType != RT_MODULE_RENDER)
+    {
+        fprintf(stderr, "Pipeline not begin\n");
+        abort();
+    }
+    opengl.stencilRefer = refer;
+
+    rt_pass_render_t const& pass = *opengl.currentRenderPass;
+    if (opengl.framebuffer)
+    {
+        if (opengl.currentRenderModule == nullptr)
+            return;
+        rt_module_render_t const& module = *opengl.currentRenderModule;
+        glStencilFuncSeparate(GL_BACK, rt_to_gl_compare(module.stencil.back.func), refer, module.stencil.read);
+        glStencilFuncSeparate(GL_FRONT, rt_to_gl_compare(module.stencil.front.func), refer, module.stencil.read);
+    }
+    else
+    {
+        glStencilFunc(rt_to_gl_compare(pass.screen.stencil.func), refer, pass.screen.stencil.read);
+    }
 }
 
 void gl_draw_array(rt_buffer_t vbo[], uint32_t vbo_num, uint32_t vertex_num, uint32_t instance_num, uint32_t vertex_start, uint32_t instance_start)
@@ -3110,7 +3154,7 @@ void gl_draw_screen(int width, int height, rt_color_t clear, rt_texture_t& textu
     rt_pass_render_t pass = {.screen = {.color = { .clear = true, .value = clear,}}};
     gl_begin_render(pass);
     gl_bind_module_render(module);
-    gl_set_viewport(0, 0, width, height);
+    gl_set_viewport(0.0f, 0.0f, (float)width, (float)height, 0.0f, 1.0f);
     gl_bind_texture(texture, {.binding = 0,});
     if (texture.handle)
     {

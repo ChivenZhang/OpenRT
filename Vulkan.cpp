@@ -1222,6 +1222,8 @@ void vk_load_library(VkInstance instance, VkPhysicalDevice physical, VkDevice de
     rt_bind_module_render = vk_bind_module_render;
     rt_set_viewport = vk_set_viewport;
     rt_set_scissor = vk_set_scissor;
+    rt_set_blend_constant = vk_set_blend_constant;
+    rt_set_stencil_reference = vk_set_stencil_reference;
     rt_draw_mesh_task = vk_draw_mesh_task;
     rt_draw_mesh_task_indirect = vk_draw_mesh_task_indirect;
     rt_push_constant = vk_push_constant;
@@ -1363,6 +1365,8 @@ void vk_unload_library()
     if (rt_bind_module_render == vk_bind_module_render) rt_bind_module_render = nullptr;
     if (rt_set_viewport == vk_set_viewport) rt_set_viewport = nullptr;
     if (rt_set_scissor == vk_set_scissor) rt_set_scissor = nullptr;
+    if (rt_set_blend_constant == vk_set_blend_constant) rt_set_blend_constant = nullptr;
+    if (rt_set_stencil_reference == vk_set_stencil_reference) rt_set_stencil_reference = nullptr;
     if (rt_draw_mesh_task == vk_draw_mesh_task) rt_draw_mesh_task = nullptr;
     if (rt_draw_mesh_task_indirect == vk_draw_mesh_task_indirect) rt_draw_mesh_task_indirect = nullptr;
     if (rt_push_constant == vk_push_constant) rt_push_constant = nullptr;
@@ -2226,10 +2230,10 @@ rt_module_render_t vk_create_module_render(rt_module_render_info_t const& info)
     colorBlending.attachmentCount = colorCount;
     colorBlending.pAttachments = colorCount ? colorBlendAttachments : nullptr;
 
-    VkDynamicState dynamicStates[] = {VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR};
+    VkDynamicState dynamicStates[] = {VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR, VK_DYNAMIC_STATE_BLEND_CONSTANTS, VK_DYNAMIC_STATE_STENCIL_REFERENCE};
     VkPipelineDynamicStateCreateInfo dynamicState = {};
     dynamicState.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
-    dynamicState.dynamicStateCount = 2;
+    dynamicState.dynamicStateCount = (uint32_t)std::size(dynamicStates);
     dynamicState.pDynamicStates = dynamicStates;
 
     VkFormat depthStencilFormat = VK_FORMAT_UNDEFINED;
@@ -2541,8 +2545,10 @@ void vk_begin_render(rt_pass_render_t& pass)
     native.hasStencil = hasDepth && rt_texture_has_stencil(pass.depth.texture_view.format);
     std::memcpy(native.colorAttachments, colorAttachments, sizeof(colorAttachments));
     native.depthAttachment = depthAttachment;
-    vk_set_viewport(0, 0, (int32_t)width, (int32_t)height);
+    vk_set_viewport(0.0f, 0.0f, (float)width, (float)height, 0.0f, 1.0f);
     vk_set_scissor(0, 0, (int32_t)width, (int32_t)height);
+    vk_set_blend_constant(0.0f, 0.0f, 0.0f, 0.0f);
+    vk_set_stencil_reference(pass.stencil.refer);
 }
 
 void vk_end_render(rt_pass_render_t& pass)
@@ -2592,7 +2598,7 @@ void vk_bind_module_render(rt_module_render_t& module)
     vkCmdBindPipeline(vulkan.cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, mod->pipeline);
 }
 
-void vk_set_viewport(int32_t x, int32_t y, int32_t width, int32_t height)
+void vk_set_viewport(float x, float y, float width, float height, float minDepth, float maxDepth)
 {
     if (vulkan.currentPipeline == nullptr)
     {
@@ -2601,18 +2607,18 @@ void vk_set_viewport(int32_t x, int32_t y, int32_t width, int32_t height)
     }
     VkViewport viewport = {};
 #ifdef VULKAN_FLIPPING_VIEWPORT
-    viewport.x = (float)x;
-    viewport.y = (float)y + height;
-    viewport.width = (float)width;
-    viewport.height = -(float)height;
+    viewport.x = x;
+    viewport.y = y + height;
+    viewport.width = width;
+    viewport.height = -height;
 #else
-    viewport.x = (float)x;
-    viewport.y = (float)y;
-    viewport.width = (float)width;
-    viewport.height = (float)height;
+    viewport.x = x;
+    viewport.y = y;
+    viewport.width = width;
+    viewport.height = height;
 #endif
-    viewport.minDepth = 0.0f;
-    viewport.maxDepth = 1.0f;
+    viewport.minDepth = minDepth;
+    viewport.maxDepth = maxDepth;
     vkCmdSetViewport(vulkan.cmdBuffer, 0, 1, &viewport);
 }
 
@@ -2627,6 +2633,27 @@ void vk_set_scissor(int32_t x, int32_t y, int32_t width, int32_t height)
     scissor.offset = {x, y};
     scissor.extent = {(uint32_t)std::max(0, width), (uint32_t)std::max(0, height)};
     vkCmdSetScissor(vulkan.cmdBuffer, 0, 1, &scissor);
+}
+
+void vk_set_blend_constant(float r, float g, float b, float a)
+{
+    if (vulkan.currentPipeline == nullptr || vulkan.currentPassType != RT_MODULE_RENDER)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    const float constants[4] = {r, g, b, a};
+    vkCmdSetBlendConstants(vulkan.cmdBuffer, constants);
+}
+
+void vk_set_stencil_reference(int32_t refer)
+{
+    if (vulkan.currentPipeline == nullptr || vulkan.currentPassType != RT_MODULE_RENDER)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    vkCmdSetStencilReference(vulkan.cmdBuffer, VK_STENCIL_FACE_FRONT_AND_BACK, (uint32_t)refer);
 }
 
 void vk_draw_array(rt_buffer_t vbo[], uint32_t vbo_num, uint32_t vertex_num, uint32_t instance_num, uint32_t vertex_start, uint32_t instance_start)

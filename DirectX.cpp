@@ -963,6 +963,8 @@ void dx_load_library(ID3D12Device* device, ID3D12CommandQueue* queue)
     rt_bind_module_render = dx_bind_module_render;
     rt_set_viewport = dx_set_viewport;
     rt_set_scissor = dx_set_scissor;
+    rt_set_blend_constant = dx_set_blend_constant;
+    rt_set_stencil_reference = dx_set_stencil_reference;
     rt_draw_mesh_task = dx_draw_mesh_task;
     rt_draw_mesh_task_indirect = dx_draw_mesh_task_indirect;
     rt_push_constant = dx_push_constant;
@@ -1082,6 +1084,8 @@ void dx_unload_library()
     if (rt_bind_module_render == dx_bind_module_render) rt_bind_module_render = nullptr;
     if (rt_set_viewport == dx_set_viewport) rt_set_viewport = nullptr;
     if (rt_set_scissor == dx_set_scissor) rt_set_scissor = nullptr;
+    if (rt_set_blend_constant == dx_set_blend_constant) rt_set_blend_constant = nullptr;
+    if (rt_set_stencil_reference == dx_set_stencil_reference) rt_set_stencil_reference = nullptr;
     if (rt_draw_mesh_task == dx_draw_mesh_task) rt_draw_mesh_task = nullptr;
     if (rt_draw_mesh_task_indirect == dx_draw_mesh_task_indirect) rt_draw_mesh_task_indirect = nullptr;
     if (rt_push_constant == dx_push_constant) rt_push_constant = nullptr;
@@ -2185,8 +2189,10 @@ void dx_begin_render(rt_pass_render_t& pass)
     }
 
     direct.cmd->OMSetRenderTargets(colorCount, colorCount ? rtvs : nullptr, FALSE, hasDepth ? &dsv : nullptr);
-    dx_set_viewport(0, 0, (int32_t)width, (int32_t)height);
+    dx_set_viewport(0.0f, 0.0f, (float)width, (float)height, 0.0f, 1.0f);
     dx_set_scissor(0, 0, (int32_t)width, (int32_t)height);
+    dx_set_blend_constant(0.0f, 0.0f, 0.0f, 0.0f);
+    dx_set_stencil_reference(pass.stencil.refer);
 }
 
 void dx_end_render(rt_pass_render_t& pass)
@@ -2233,14 +2239,14 @@ void dx_bind_module_render(rt_module_render_t& module)
     direct.cmd->IASetPrimitiveTopology(mod->topology);
 }
 
-void dx_set_viewport(int32_t x, int32_t y, int32_t width, int32_t height)
+void dx_set_viewport(float x, float y, float width, float height, float minDepth, float maxDepth)
 {
     if (direct.currentPipeline == nullptr)
     {
         fprintf(stderr, "Pipeline not begin");
         abort();
     }
-    D3D12_VIEWPORT viewport = {(float)x, (float)y, (float)width, (float)height, 0.0f, 1.0f};
+    D3D12_VIEWPORT viewport = {x, y, width, height, minDepth, maxDepth};
     direct.cmd->RSSetViewports(1, &viewport);
 }
 
@@ -2253,6 +2259,27 @@ void dx_set_scissor(int32_t x, int32_t y, int32_t width, int32_t height)
     }
     D3D12_RECT scissor = {x, y, x + max(0, width), y + max(0, height)};
     direct.cmd->RSSetScissorRects(1, &scissor);
+}
+
+void dx_set_blend_constant(float r, float g, float b, float a)
+{
+    if (direct.currentPipeline == nullptr || direct.currentPassType != RT_MODULE_RENDER)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    const float factor[4] = {r, g, b, a};
+    direct.cmd->OMSetBlendFactor(factor);
+}
+
+void dx_set_stencil_reference(int32_t refer)
+{
+    if (direct.currentPipeline == nullptr || direct.currentPassType != RT_MODULE_RENDER)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    direct.cmd->OMSetStencilRef((UINT)refer);
 }
 
 void dx_draw_array(rt_buffer_t vbo[], uint32_t vbo_num, uint32_t vertex_num, uint32_t instance_num, uint32_t vertex_start, uint32_t instance_start)
