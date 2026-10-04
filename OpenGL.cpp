@@ -180,128 +180,128 @@ static void rt_to_gl_transfer(rt_texture_format_t texFormat, rt_texture_aspect_t
     }
 }
 
-static void rt_to_gl_vertex_format(GLuint index, rt_vertex_format_t format)
+static void rt_to_gl_vertex_format(GLuint index, rt_vertex_format_t format, GLuint offset)
 {
     switch (format)
     {
         case RT_VERTEX_NONE:
             break;
         case RT_VERTEX_UINT8:
-            glVertexAttribIFormat(index, 1, GL_UNSIGNED_BYTE, 0);
+            glVertexAttribIFormat(index, 1, GL_UNSIGNED_BYTE, offset);
             break;
         case RT_VERTEX_UINT8X2:
-            glVertexAttribIFormat(index, 2, GL_UNSIGNED_BYTE, 0);
+            glVertexAttribIFormat(index, 2, GL_UNSIGNED_BYTE, offset);
             break;
         case RT_VERTEX_UINT8X4:
-            glVertexAttribIFormat(index, 4, GL_UNSIGNED_BYTE, 0);
+            glVertexAttribIFormat(index, 4, GL_UNSIGNED_BYTE, offset);
             break;
         case RT_VERTEX_SINT8:
-            glVertexAttribIFormat(index, 1, GL_BYTE, 0);
+            glVertexAttribIFormat(index, 1, GL_BYTE, offset);
             break;
         case RT_VERTEX_SINT8X2:
-            glVertexAttribIFormat(index, 2, GL_BYTE, 0);
+            glVertexAttribIFormat(index, 2, GL_BYTE, offset);
             break;
         case RT_VERTEX_SINT8X4:
-            glVertexAttribIFormat(index, 4, GL_BYTE, 0);
+            glVertexAttribIFormat(index, 4, GL_BYTE, offset);
             break;
         case RT_VERTEX_UNORM8:
-            glVertexAttribFormat(index, 1, GL_UNSIGNED_BYTE, GL_TRUE, 0);
+            glVertexAttribFormat(index, 1, GL_UNSIGNED_BYTE, GL_TRUE, offset);
             break;
         case RT_VERTEX_UNORM8X2:
-            glVertexAttribFormat(index, 2, GL_UNSIGNED_BYTE, GL_TRUE, 0);
+            glVertexAttribFormat(index, 2, GL_UNSIGNED_BYTE, GL_TRUE, offset);
             break;
         case RT_VERTEX_UNORM8X4:
-            glVertexAttribFormat(index, 4, GL_UNSIGNED_BYTE, GL_TRUE, 0);
+            glVertexAttribFormat(index, 4, GL_UNSIGNED_BYTE, GL_TRUE, offset);
             break;
         case RT_VERTEX_SNORM8:
-            glVertexAttribFormat(index, 1, GL_BYTE, GL_TRUE, 0);
+            glVertexAttribFormat(index, 1, GL_BYTE, GL_TRUE, offset);
             break;
         case RT_VERTEX_SNORM8X2:
-            glVertexAttribFormat(index, 2, GL_BYTE, GL_TRUE, 0);
+            glVertexAttribFormat(index, 2, GL_BYTE, GL_TRUE, offset);
             break;
         case RT_VERTEX_SNORM8X4:
-            glVertexAttribFormat(index, 4, GL_BYTE, GL_TRUE, 0);
+            glVertexAttribFormat(index, 4, GL_BYTE, GL_TRUE, offset);
             break;
         case RT_VERTEX_UINT16:
-            glVertexAttribIFormat(index, 1, GL_UNSIGNED_SHORT, 0);
+            glVertexAttribIFormat(index, 1, GL_UNSIGNED_SHORT, offset);
             break;
         case RT_VERTEX_UINT16X2:
-            glVertexAttribIFormat(index, 2, GL_UNSIGNED_SHORT, 0);
+            glVertexAttribIFormat(index, 2, GL_UNSIGNED_SHORT, offset);
             break;
         case RT_VERTEX_UINT16X4:
-            glVertexAttribIFormat(index, 4, GL_UNSIGNED_SHORT, 0);
+            glVertexAttribIFormat(index, 4, GL_UNSIGNED_SHORT, offset);
             break;
         case RT_VERTEX_SINT16:
-            glVertexAttribIFormat(index, 1, GL_SHORT, 0);
+            glVertexAttribIFormat(index, 1, GL_SHORT, offset);
             break;
         case RT_VERTEX_SINT16X2:
-            glVertexAttribIFormat(index, 2, GL_SHORT, 0);
+            glVertexAttribIFormat(index, 2, GL_SHORT, offset);
             break;
         case RT_VERTEX_SINT16X4:
-            glVertexAttribIFormat(index, 4, GL_SHORT, 0);
+            glVertexAttribIFormat(index, 4, GL_SHORT, offset);
             break;
         case RT_VERTEX_UNORM16:
-            glVertexAttribFormat(index, 1, GL_UNSIGNED_SHORT, GL_TRUE, 0);
+            glVertexAttribFormat(index, 1, GL_UNSIGNED_SHORT, GL_TRUE, offset);
             break;
         case RT_VERTEX_UNORM16X2:
-            glVertexAttribFormat(index, 2, GL_UNSIGNED_SHORT, GL_TRUE, 0);
+            glVertexAttribFormat(index, 2, GL_UNSIGNED_SHORT, GL_TRUE, offset);
             break;
         case RT_VERTEX_UNORM16X4:
-            glVertexAttribFormat(index, 4, GL_UNSIGNED_SHORT, GL_TRUE, 0);
+            glVertexAttribFormat(index, 4, GL_UNSIGNED_SHORT, GL_TRUE, offset);
             break;
         case RT_VERTEX_SNORM16:
-            glVertexAttribFormat(index, 1, GL_SHORT, GL_TRUE, 0);
+            glVertexAttribFormat(index, 1, GL_SHORT, GL_TRUE, offset);
             break;
         case RT_VERTEX_SNORM16X2:
-            glVertexAttribFormat(index, 2, GL_SHORT, GL_TRUE, 0);
+            glVertexAttribFormat(index, 2, GL_SHORT, GL_TRUE, offset);
             break;
         case RT_VERTEX_SNORM16X4:
-            glVertexAttribFormat(index, 4, GL_SHORT, GL_TRUE, 0);
+            glVertexAttribFormat(index, 4, GL_SHORT, GL_TRUE, offset);
             break;
         case RT_VERTEX_FLOAT16:
-            glVertexAttribFormat(index, 1, GL_HALF_FLOAT, GL_FALSE, 0);
+            glVertexAttribFormat(index, 1, GL_HALF_FLOAT, GL_FALSE, offset);
             break;
         case RT_VERTEX_FLOAT16X2:
-            glVertexAttribFormat(index, 2, GL_HALF_FLOAT, GL_FALSE, 0);
+            glVertexAttribFormat(index, 2, GL_HALF_FLOAT, GL_FALSE, offset);
             break;
         case RT_VERTEX_FLOAT16X4:
-            glVertexAttribFormat(index, 4, GL_HALF_FLOAT, GL_FALSE, 0);
+            glVertexAttribFormat(index, 4, GL_HALF_FLOAT, GL_FALSE, offset);
             break;
         case RT_VERTEX_FLOAT32:
-            glVertexAttribFormat(index, 1, GL_FLOAT, GL_FALSE, 0);
+            glVertexAttribFormat(index, 1, GL_FLOAT, GL_FALSE, offset);
             break;
         case RT_VERTEX_FLOAT32X2:
-            glVertexAttribFormat(index, 2, GL_FLOAT, GL_FALSE, 0);
+            glVertexAttribFormat(index, 2, GL_FLOAT, GL_FALSE, offset);
             break;
         case RT_VERTEX_FLOAT32X3:
-            glVertexAttribFormat(index, 3, GL_FLOAT, GL_FALSE, 0);
+            glVertexAttribFormat(index, 3, GL_FLOAT, GL_FALSE, offset);
             break;
         case RT_VERTEX_FLOAT32X4:
-            glVertexAttribFormat(index, 4, GL_FLOAT, GL_FALSE, 0);
+            glVertexAttribFormat(index, 4, GL_FLOAT, GL_FALSE, offset);
             break;
         case RT_VERTEX_UINT32:
-            glVertexAttribIFormat(index, 1, GL_UNSIGNED_INT, 0);
+            glVertexAttribIFormat(index, 1, GL_UNSIGNED_INT, offset);
             break;
         case RT_VERTEX_UINT32X2:
-            glVertexAttribIFormat(index, 2, GL_UNSIGNED_INT, 0);
+            glVertexAttribIFormat(index, 2, GL_UNSIGNED_INT, offset);
             break;
         case RT_VERTEX_UINT32X3:
-            glVertexAttribIFormat(index, 3, GL_UNSIGNED_INT, 0);
+            glVertexAttribIFormat(index, 3, GL_UNSIGNED_INT, offset);
             break;
         case RT_VERTEX_UINT32X4:
-            glVertexAttribIFormat(index, 4, GL_UNSIGNED_INT, 0);
+            glVertexAttribIFormat(index, 4, GL_UNSIGNED_INT, offset);
             break;
         case RT_VERTEX_SINT32:
-            glVertexAttribIFormat(index, 1, GL_INT, 0);
+            glVertexAttribIFormat(index, 1, GL_INT, offset);
             break;
         case RT_VERTEX_SINT32X2:
-            glVertexAttribIFormat(index, 2, GL_INT, 0);
+            glVertexAttribIFormat(index, 2, GL_INT, offset);
             break;
         case RT_VERTEX_SINT32X3:
-            glVertexAttribIFormat(index, 3, GL_INT, 0);
+            glVertexAttribIFormat(index, 3, GL_INT, offset);
             break;
         case RT_VERTEX_SINT32X4:
-            glVertexAttribIFormat(index, 4, GL_INT, 0);
+            glVertexAttribIFormat(index, 4, GL_INT, offset);
             break;
         default:
             break;
@@ -1480,13 +1480,15 @@ rt_module_render_t gl_create_module_render(rt_module_render_info_t const& info)
     for (uint32_t i = 0; i < std::size(info.vertex); ++i)
     {
         auto& vertex = info.vertex[i];
-        if (vertex.format == RT_VERTEX_NONE)
-            continue;
-
-        glEnableVertexAttribArray(vertex.location);
-        rt_to_gl_vertex_format(vertex.location, vertex.format);
-        glVertexAttribBinding(vertex.location, i);
-        glVertexBindingDivisor(i, vertex.instance ? 1 : 0);
+        for (auto& attrib : vertex.attrib)
+        {
+            if (attrib.format == RT_VERTEX_NONE)
+                continue;
+            glEnableVertexAttribArray(attrib.location);
+            rt_to_gl_vertex_format(attrib.location, attrib.format, attrib.offset);
+            glVertexAttribBinding(attrib.location, i);
+            glVertexBindingDivisor(i, vertex.instance ? 1 : 0);
+        }
     }
     glBindVertexArray(0);
 
@@ -1518,9 +1520,7 @@ rt_module_render_t gl_create_module_render(rt_module_render_info_t const& info)
     result.index_type = info.index_type;
     for (size_t i = 0; i < std::size(info.vertex); ++i)
     {
-        result.vertex[i].location = info.vertex[i].location;
-        result.vertex[i].format = info.vertex[i].format;
-        result.vertex[i].instance = info.vertex[i].instance;
+        result.vertex[i] = info.vertex[i];
     }
     for (size_t i = 0; i < std::size(info.binding); ++i)
     {
@@ -1708,6 +1708,23 @@ static GLsizei rt_to_gl_vertex_size(rt_vertex_format_t format)
         case RT_VERTEX_SINT32X4: return 16;
         default: return 0;
     }
+}
+
+static GLsizei rt_to_gl_vertex_stride(rt_vertex_t const& layout)
+{
+    // stride != 0: use it as-is; stride == 0: tight-pack from the attributes
+    if (layout.stride)
+        return (GLsizei)layout.stride;
+    GLsizei stride = 0;
+    for (auto& attrib : layout.attrib)
+    {
+        if (attrib.format == RT_VERTEX_NONE)
+            continue;
+        GLsizei end = (GLsizei)attrib.offset + rt_to_gl_vertex_size(attrib.format);
+        if (end > stride)
+            stride = end;
+    }
+    return stride;
 }
 
 static GLenum rt_to_gl_index_type(rt_index_type_t type)
@@ -2087,10 +2104,9 @@ void gl_draw_array(rt_buffer_t vbo[], uint32_t vbo_num, uint32_t vertex_num, uin
         count = (uint32_t)std::size(module.vertex);
     for (uint32_t i = 0; i < count; ++i)
     {
-        rt_vertex_t const& layout = module.vertex[i];
-        if (layout.format == RT_VERTEX_NONE || !vbo || vbo[i].handle == 0)
+        GLsizei stride = rt_to_gl_vertex_stride(module.vertex[i]);
+        if (stride == 0 || !vbo || vbo[i].handle == 0)
             continue;
-        GLsizei stride = rt_to_gl_vertex_size(layout.format);
         glBindVertexBuffer(i, gl_buffer_name(vbo[i]), 0, stride);
     }
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
@@ -2116,10 +2132,9 @@ void gl_draw_index(rt_buffer_t vbo[], uint32_t vbo_num, rt_buffer_t& ebo, uint32
         count = (uint32_t)std::size(module.vertex);
     for (uint32_t i = 0; i < count; ++i)
     {
-        rt_vertex_t const& layout = module.vertex[i];
-        if (layout.format == RT_VERTEX_NONE || !vbo || vbo[i].handle == 0)
+        GLsizei stride = rt_to_gl_vertex_stride(module.vertex[i]);
+        if (stride == 0 || !vbo || vbo[i].handle == 0)
             continue;
-        GLsizei stride = rt_to_gl_vertex_size(layout.format);
         glBindVertexBuffer(i, gl_buffer_name(vbo[i]), 0, stride);
     }
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, gl_buffer_name(ebo));
@@ -2145,10 +2160,9 @@ void gl_draw_array_indirect(rt_buffer_t vbo[], uint32_t vbo_num, rt_buffer_t& in
         count = (uint32_t)std::size(module.vertex);
     for (uint32_t i = 0; i < count; ++i)
     {
-        rt_vertex_t const& layout = module.vertex[i];
-        if (layout.format == RT_VERTEX_NONE || !vbo || vbo[i].handle == 0)
+        GLsizei stride = rt_to_gl_vertex_stride(module.vertex[i]);
+        if (stride == 0 || !vbo || vbo[i].handle == 0)
             continue;
-        GLsizei stride = rt_to_gl_vertex_size(layout.format);
         glBindVertexBuffer(i, gl_buffer_name(vbo[i]), 0, stride);
     }
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
@@ -2175,10 +2189,9 @@ void gl_draw_index_indirect(rt_buffer_t vbo[], uint32_t vbo_num, rt_buffer_t& eb
         count = (uint32_t)std::size(module.vertex);
     for (uint32_t i = 0; i < count; ++i)
     {
-        rt_vertex_t const& layout = module.vertex[i];
-        if (layout.format == RT_VERTEX_NONE || !vbo || vbo[i].handle == 0)
+        GLsizei stride = rt_to_gl_vertex_stride(module.vertex[i]);
+        if (stride == 0 || !vbo || vbo[i].handle == 0)
             continue;
-        GLsizei stride = rt_to_gl_vertex_size(layout.format);
         glBindVertexBuffer(i, gl_buffer_name(vbo[i]), 0, stride);
     }
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, gl_buffer_name(ebo));
@@ -2864,21 +2877,26 @@ void gl_draw_mesh(rt_mesh_t& mesh)
     for (uint32_t i = 0; i < std::size(module.vertex); ++i)
     {
         rt_vertex_t const& layout = module.vertex[i];
-        if (layout.format == RT_VERTEX_NONE)
+        GLsizei stride = rt_to_gl_vertex_stride(layout);
+        if (stride == 0)
             continue;
 
         GLuint buffer = 0;
-        GLsizei stride = rt_to_gl_vertex_size(layout.format);
-        for (uint32_t k = 0; k < std::size(mesh.vertex); ++k)
+        for (uint32_t k = 0; k < std::size(mesh.vertex) && buffer == 0; ++k)
         {
-            if (mesh.vertex[k].handle == 0 || mesh.location[k] != layout.location)
+            if (mesh.vertex[k].handle == 0)
                 continue;
-            buffer = gl_buffer_name(mesh.vertex[k]);
-            if (vertex_count == 0 && stride > 0)
-                vertex_count = (GLsizei)(mesh.vertex[k].size / (size_t)stride);
-            glBindVertexBuffer(layout.location, buffer, 0, buffer ? stride : 0);
-            break;
+            for (auto& attrib : layout.attrib)
+            {
+                if (attrib.format == RT_VERTEX_NONE || mesh.location[k] != attrib.location)
+                    continue;
+                buffer = gl_buffer_name(mesh.vertex[k]);
+                if (vertex_count == 0)
+                    vertex_count = (GLsizei)(mesh.vertex[k].size / (size_t)stride);
+                break;
+            }
         }
+        glBindVertexBuffer(i, buffer, 0, buffer ? stride : 0);
     }
 
     if (mesh.index.handle)
@@ -2914,21 +2932,26 @@ void gl_draw_mesh_multi(rt_mesh_t& mesh, uint32_t count)
     for (uint32_t i = 0; i < std::size(module.vertex); ++i)
     {
         rt_vertex_t const& layout = module.vertex[i];
-        if (layout.format == RT_VERTEX_NONE)
+        GLsizei stride = rt_to_gl_vertex_stride(layout);
+        if (stride == 0)
             continue;
 
         GLuint buffer = 0;
-        GLsizei stride = rt_to_gl_vertex_size(layout.format);
-        for (uint32_t k = 0; k < std::size(mesh.vertex); ++k)
+        for (uint32_t k = 0; k < std::size(mesh.vertex) && buffer == 0; ++k)
         {
-            if (mesh.vertex[k].handle == 0 || mesh.location[k] != layout.location)
+            if (mesh.vertex[k].handle == 0)
                 continue;
-            buffer = gl_buffer_name(mesh.vertex[k]);
-            if (vertex_count == 0 && stride > 0)
-                vertex_count = (GLsizei)(mesh.vertex[k].size / (size_t)stride);
-            glBindVertexBuffer(layout.location, buffer, 0, buffer ? stride : 0);
-            break;
+            for (auto& attrib : layout.attrib)
+            {
+                if (attrib.format == RT_VERTEX_NONE || mesh.location[k] != attrib.location)
+                    continue;
+                buffer = gl_buffer_name(mesh.vertex[k]);
+                if (vertex_count == 0)
+                    vertex_count = (GLsizei)(mesh.vertex[k].size / (size_t)stride);
+                break;
+            }
         }
+        glBindVertexBuffer(i, buffer, 0, buffer ? stride : 0);
     }
 
     if (mesh.index.handle)
@@ -3005,19 +3028,21 @@ void gl_draw_meshlet(rt_meshlet_t& meshlet)
     uint32_t index_binding = 0;
     for (uint32_t i = 0; i < std::size(module.vertex); ++i)
     {
-        rt_vertex_t const& layout = module.vertex[i];
-        if (layout.format == RT_VERTEX_NONE)
-            continue;
-
-        for (uint32_t k = 0; k < std::size(meshlet.vertex); ++k)
+        for (auto& attrib : module.vertex[i].attrib)
         {
-            if (meshlet.vertex[k].handle == 0 || meshlet.location[k] != layout.location)
+            if (attrib.format == RT_VERTEX_NONE)
                 continue;
-            glBindBufferBase(GL_SHADER_STORAGE_BUFFER, layout.location, gl_buffer_name(meshlet.vertex[k]));
-            break;
+
+            for (uint32_t k = 0; k < std::size(meshlet.vertex); ++k)
+            {
+                if (meshlet.vertex[k].handle == 0 || meshlet.location[k] != attrib.location)
+                    continue;
+                glBindBufferBase(GL_SHADER_STORAGE_BUFFER, attrib.location, gl_buffer_name(meshlet.vertex[k]));
+                break;
+            }
+            if (attrib.location + 1 > index_binding)
+                index_binding = attrib.location + 1;
         }
-        if (layout.location + 1 > index_binding)
-            index_binding = layout.location + 1;
     }
 
     if (meshlet.index.handle)

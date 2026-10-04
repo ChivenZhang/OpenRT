@@ -358,6 +358,23 @@ static uint32_t rt_to_dx_vertex_size(rt_vertex_format_t format)
     }
 }
 
+static uint32_t rt_to_dx_vertex_stride(rt_vertex_t const& layout)
+{
+    // stride != 0: use it as-is; stride == 0: tight-pack from the attributes
+    if (layout.stride)
+        return layout.stride;
+    uint32_t stride = 0;
+    for (auto& attrib : layout.attrib)
+    {
+        if (attrib.format == RT_VERTEX_NONE)
+            continue;
+        uint32_t end = attrib.offset + rt_to_dx_vertex_size(attrib.format);
+        if (end > stride)
+            stride = end;
+    }
+    return stride;
+}
+
 static uint32_t rt_to_dx_index_size(rt_index_type_t type)
 {
     switch (type)
@@ -1731,20 +1748,23 @@ rt_module_render_t dx_create_module_render(rt_module_render_info_t const& info)
         dx_destroy_module_native(handle, result.native);
         return {};
     }
-    D3D12_INPUT_ELEMENT_DESC elements[RT_MAX_VERTEX_BUFFER_NUM] = {};
+    D3D12_INPUT_ELEMENT_DESC elements[RT_MAX_VERTEX_BUFFER_NUM * RT_MAX_VERTEX_ATTRIB_NUM] = {};
     uint32_t attrCount = 0;
     for (uint32_t i = 0; i < RT_MAX_VERTEX_BUFFER_NUM; ++i)
     {
-        if (info.vertex[i].format == RT_VERTEX_NONE) continue;
-        elements[attrCount].SemanticName = "TEXCOORD";
-        elements[attrCount].SemanticIndex = info.vertex[i].location;
-        elements[attrCount].Format = rt_to_dx_vertex_format(info.vertex[i].format);
-        elements[attrCount].InputSlot = info.vertex[i].location;
-        elements[attrCount].AlignedByteOffset = 0;
-        elements[attrCount].InputSlotClass = info.vertex[i].instance ?
-            D3D12_INPUT_CLASSIFICATION_PER_INSTANCE_DATA : D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA;
-        elements[attrCount].InstanceDataStepRate = info.vertex[i].instance ? 1 : 0;
-        attrCount++;
+        for (auto& attrib : info.vertex[i].attrib)
+        {
+            if (attrib.format == RT_VERTEX_NONE) continue;
+            elements[attrCount].SemanticName = "TEXCOORD";
+            elements[attrCount].SemanticIndex = attrib.location;
+            elements[attrCount].Format = rt_to_dx_vertex_format(attrib.format);
+            elements[attrCount].InputSlot = i;
+            elements[attrCount].AlignedByteOffset = attrib.offset;
+            elements[attrCount].InputSlotClass = info.vertex[i].instance ?
+                D3D12_INPUT_CLASSIFICATION_PER_INSTANCE_DATA : D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA;
+            elements[attrCount].InstanceDataStepRate = info.vertex[i].instance ? 1 : 0;
+            attrCount++;
+        }
     }
     const bool depthEnabled = (info.depth.func != RT_ALWAYS || info.depth.write);
     const bool stencilEnabled =
@@ -2073,8 +2093,8 @@ static void dx_bind_draw_vbos(rt_buffer_t vbo[], uint32_t vbo_num)
         count = (uint32_t)std::size(module.vertex);
     for (uint32_t i = 0; i < count; ++i)
     {
-        rt_vertex_t const& layout = module.vertex[i];
-        if (layout.format == RT_VERTEX_NONE || !vbo || vbo[i].handle == 0)
+        uint32_t stride = rt_to_dx_vertex_stride(module.vertex[i]);
+        if (stride == 0 || !vbo || vbo[i].handle == 0)
             continue;
         auto* native = dx_buffer_native(vbo[i]);
         if (!native || !native->handle)
@@ -2083,8 +2103,8 @@ static void dx_bind_draw_vbos(rt_buffer_t vbo[], uint32_t vbo_num)
         D3D12_VERTEX_BUFFER_VIEW view = {};
         view.BufferLocation = native->handle->GetGPUVirtualAddress();
         view.SizeInBytes = (UINT)vbo[i].size;
-        view.StrideInBytes = rt_to_dx_vertex_size(layout.format);
-        direct.cmd->IASetVertexBuffers(layout.location, 1, &view);
+        view.StrideInBytes = stride;
+        direct.cmd->IASetVertexBuffers(i, 1, &view);
     }
 }
 
@@ -2649,22 +2669,28 @@ static void dx_draw_mesh_impl(rt_mesh_t& mesh, uint32_t instanceCount)
     for (uint32_t i = 0; i < std::size(module.vertex); ++i)
     {
         rt_vertex_t const& layout = module.vertex[i];
-        if (layout.format == RT_VERTEX_NONE) continue;
-        for (uint32_t k = 0; k < std::size(mesh.vertex); ++k)
+        uint32_t stride = rt_to_dx_vertex_stride(layout);
+        if (stride == 0) continue;
+        bool bound = false;
+        for (uint32_t k = 0; k < std::size(mesh.vertex) && !bound; ++k)
         {
-            if (mesh.vertex[k].handle == 0 || mesh.location[k] != layout.location) continue;
-            auto* native = dx_buffer_native(mesh.vertex[k]);
-            if (!native) break;
-            dx_transition_buffer(*native, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
-            uint32_t stride = rt_to_dx_vertex_size(layout.format);
-            D3D12_VERTEX_BUFFER_VIEW view = {};
-            view.BufferLocation = native->handle->GetGPUVirtualAddress();
-            view.SizeInBytes = (UINT)mesh.vertex[k].size;
-            view.StrideInBytes = stride;
-            direct.cmd->IASetVertexBuffers(layout.location, 1, &view);
-            if (vertex_count == 0 && stride)
-                vertex_count = (uint32_t)(mesh.vertex[k].size / stride);
-            break;
+            if (mesh.vertex[k].handle == 0) continue;
+            for (auto& attrib : layout.attrib)
+            {
+                if (attrib.format == RT_VERTEX_NONE || mesh.location[k] != attrib.location) continue;
+                auto* native = dx_buffer_native(mesh.vertex[k]);
+                if (!native) break;
+                dx_transition_buffer(*native, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
+                D3D12_VERTEX_BUFFER_VIEW view = {};
+                view.BufferLocation = native->handle->GetGPUVirtualAddress();
+                view.SizeInBytes = (UINT)mesh.vertex[k].size;
+                view.StrideInBytes = stride;
+                direct.cmd->IASetVertexBuffers(i, 1, &view);
+                if (vertex_count == 0)
+                    vertex_count = (uint32_t)(mesh.vertex[k].size / stride);
+                bound = true;
+                break;
+            }
         }
     }
     if (mesh.index.handle)
@@ -2776,16 +2802,18 @@ void dx_draw_meshlet(rt_meshlet_t& meshlet)
     uint32_t index_binding = 0;
     for (uint32_t i = 0; i < std::size(module.vertex); ++i)
     {
-        rt_vertex_t const& layout = module.vertex[i];
-        if (layout.format == RT_VERTEX_NONE) continue;
-        for (uint32_t k = 0; k < std::size(meshlet.vertex); ++k)
+        for (auto& attrib : module.vertex[i].attrib)
         {
-            if (meshlet.vertex[k].handle == 0 || meshlet.location[k] != layout.location) continue;
-            dx_bind_buffer(meshlet.vertex[k], {.binding = layout.location});
-            break;
+            if (attrib.format == RT_VERTEX_NONE) continue;
+            for (uint32_t k = 0; k < std::size(meshlet.vertex); ++k)
+            {
+                if (meshlet.vertex[k].handle == 0 || meshlet.location[k] != attrib.location) continue;
+                dx_bind_buffer(meshlet.vertex[k], {.binding = attrib.location});
+                break;
+            }
+            if (attrib.location + 1 > index_binding)
+                index_binding = attrib.location + 1;
         }
-        if (layout.location + 1 > index_binding)
-            index_binding = layout.location + 1;
     }
     if (meshlet.index.handle)
         dx_bind_buffer(meshlet.index, {.binding = index_binding});

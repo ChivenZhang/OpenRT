@@ -358,6 +358,23 @@ static uint32_t rt_to_mt_vertex_size(rt_vertex_format_t format)
     }
 }
 
+static uint32_t rt_to_mt_vertex_stride(rt_vertex_t const& layout)
+{
+    // stride != 0: use it as-is; stride == 0: tight-pack from the attributes
+    if (layout.stride)
+        return layout.stride;
+    uint32_t stride = 0;
+    for (auto& attrib : layout.attrib)
+    {
+        if (attrib.format == RT_VERTEX_NONE)
+            continue;
+        uint32_t end = attrib.offset + rt_to_mt_vertex_size(attrib.format);
+        if (end > stride)
+            stride = end;
+    }
+    return stride;
+}
+
 static uint32_t rt_to_mt_index_size(rt_index_type_t type)
 {
     switch (type)
@@ -1659,14 +1676,18 @@ rt_module_render_t mt_create_module_render(rt_module_render_info_t const& info)
         MTL::VertexDescriptor* vd = MTL::VertexDescriptor::alloc()->init();
         for (uint32_t i = 0; i < RT_MAX_VERTEX_BUFFER_NUM; ++i)
         {
-            if (info.vertex[i].format == RT_VERTEX_NONE) continue;
-            uint32_t loc = info.vertex[i].location;
-            vd->attributes()->object(loc)->setFormat(rt_to_mt_vertex_format(info.vertex[i].format));
-            vd->attributes()->object(loc)->setOffset(0);
-            vd->attributes()->object(loc)->setBufferIndex(loc);
-            vd->layouts()->object(loc)->setStride(rt_to_mt_vertex_size(info.vertex[i].format));
-            vd->layouts()->object(loc)->setStepFunction(info.vertex[i].instance ? MTL::VertexStepFunctionPerInstance : MTL::VertexStepFunctionPerVertex);
-            vd->layouts()->object(loc)->setStepRate(1);
+            uint32_t stride = rt_to_mt_vertex_stride(info.vertex[i]);
+            if (stride == 0) continue;
+            for (auto& attrib : info.vertex[i].attrib)
+            {
+                if (attrib.format == RT_VERTEX_NONE) continue;
+                vd->attributes()->object(attrib.location)->setFormat(rt_to_mt_vertex_format(attrib.format));
+                vd->attributes()->object(attrib.location)->setOffset(attrib.offset);
+                vd->attributes()->object(attrib.location)->setBufferIndex(i);
+            }
+            vd->layouts()->object(i)->setStride(stride);
+            vd->layouts()->object(i)->setStepFunction(info.vertex[i].instance ? MTL::VertexStepFunctionPerInstance : MTL::VertexStepFunctionPerVertex);
+            vd->layouts()->object(i)->setStepRate(1);
         }
         desc->setVertexDescriptor(vd);
         mt_release(vd);
@@ -1841,14 +1862,13 @@ static void mt_bind_draw_vbos(rt_buffer_t vbo[], uint32_t vbo_num)
         count = (uint32_t)std::size(module.vertex);
     for (uint32_t i = 0; i < count; ++i)
     {
-        rt_vertex_t const& layout = module.vertex[i];
-        if (layout.format == RT_VERTEX_NONE || !vbo || vbo[i].handle == 0)
+        if (rt_to_mt_vertex_stride(module.vertex[i]) == 0 || !vbo || vbo[i].handle == 0)
             continue;
         auto* native = mt_buffer_native(vbo[i]);
         if (!native || !native->handle)
             continue;
         mt_transition_buffer(*native, MTL_STATE_VERTEX);
-        metal.renderEncoder->setVertexBuffer(native->handle, 0, layout.location);
+        metal.renderEncoder->setVertexBuffer(native->handle, 0, i);
     }
 }
 
@@ -2369,18 +2389,24 @@ static void mt_draw_mesh_impl(rt_mesh_t& mesh, uint32_t instanceCount)
     for (uint32_t i = 0; i < std::size(module.vertex); ++i)
     {
         rt_vertex_t const& layout = module.vertex[i];
-        if (layout.format == RT_VERTEX_NONE) continue;
-        for (uint32_t k = 0; k < std::size(mesh.vertex); ++k)
+        uint32_t stride = rt_to_mt_vertex_stride(layout);
+        if (stride == 0) continue;
+        bool bound = false;
+        for (uint32_t k = 0; k < std::size(mesh.vertex) && !bound; ++k)
         {
-            if (mesh.vertex[k].handle == 0 || mesh.location[k] != layout.location) continue;
-            auto* native = mt_buffer_native(mesh.vertex[k]);
-            if (!native) break;
-            mt_transition_buffer(*native, MTL_STATE_VERTEX);
-            metal.renderEncoder->setVertexBuffer(native->handle, 0, layout.location);
-            uint32_t stride = rt_to_mt_vertex_size(layout.format);
-            if (vertex_count == 0 && stride)
-                vertex_count = (uint32_t)(mesh.vertex[k].size / stride);
-            break;
+            if (mesh.vertex[k].handle == 0) continue;
+            for (auto& attrib : layout.attrib)
+            {
+                if (attrib.format == RT_VERTEX_NONE || mesh.location[k] != attrib.location) continue;
+                auto* native = mt_buffer_native(mesh.vertex[k]);
+                if (!native) break;
+                mt_transition_buffer(*native, MTL_STATE_VERTEX);
+                metal.renderEncoder->setVertexBuffer(native->handle, 0, i);
+                if (vertex_count == 0)
+                    vertex_count = (uint32_t)(mesh.vertex[k].size / stride);
+                bound = true;
+                break;
+            }
         }
     }
     MTL::PrimitiveType primitive = mod ? mod->primitive : MTL::PrimitiveTypeTriangle;
@@ -2489,16 +2515,18 @@ void mt_draw_meshlet(rt_meshlet_t& meshlet)
     uint32_t index_binding = 0;
     for (uint32_t i = 0; i < std::size(module.vertex); ++i)
     {
-        rt_vertex_t const& layout = module.vertex[i];
-        if (layout.format == RT_VERTEX_NONE) continue;
-        for (uint32_t k = 0; k < std::size(meshlet.vertex); ++k)
+        for (auto& attrib : module.vertex[i].attrib)
         {
-            if (meshlet.vertex[k].handle == 0 || meshlet.location[k] != layout.location) continue;
-            mt_bind_buffer(meshlet.vertex[k], {.binding = layout.location});
-            break;
+            if (attrib.format == RT_VERTEX_NONE) continue;
+            for (uint32_t k = 0; k < std::size(meshlet.vertex); ++k)
+            {
+                if (meshlet.vertex[k].handle == 0 || meshlet.location[k] != attrib.location) continue;
+                mt_bind_buffer(meshlet.vertex[k], {.binding = attrib.location});
+                break;
+            }
+            if (attrib.location + 1 > index_binding)
+                index_binding = attrib.location + 1;
         }
-        if (layout.location + 1 > index_binding)
-            index_binding = layout.location + 1;
     }
     if (meshlet.index.handle)
         mt_bind_buffer(meshlet.index, {.binding = index_binding});

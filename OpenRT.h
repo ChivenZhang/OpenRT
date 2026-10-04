@@ -29,7 +29,8 @@
 #endif
 
 #define RT_MAX_COLOR_TEXTURE_NUM 8
-#define RT_MAX_VERTEX_BUFFER_NUM 10
+#define RT_MAX_VERTEX_BUFFER_NUM 8
+#define RT_MAX_VERTEX_ATTRIB_NUM 16
 #define RT_MAX_BINDING_HANDLE_NUM 16
 #define RT_PI 3.14159265358979323846    // pi
 #define RT_PI_2 1.57079632679489661923  // pi/2
@@ -550,15 +551,22 @@ struct rt_module_compute_t
     void* native = nullptr;
 };
 
-struct rt_vertex_t
+struct rt_vertex_attrib_t
 {
     uint32_t location = 0;
+    uint32_t offset = 0;
     rt_vertex_format_t format = RT_VERTEX_NONE;
-    bool instance = false;
 };
-inline rt_vertex_t rt_vertex_vertex{.location = 0, .format = RT_VERTEX_FLOAT32X3, .instance = false};
-inline rt_vertex_t rt_vertex_normal{.location = 1, .format = RT_VERTEX_FLOAT32X3, .instance = false};
-inline rt_vertex_t rt_vertex_uv{.location = 2, .format = RT_VERTEX_FLOAT32X2, .instance = false};
+
+struct rt_vertex_t
+{
+    uint32_t stride = 0;
+    bool instance = false;
+    rt_vertex_attrib_t attrib[RT_MAX_VERTEX_ATTRIB_NUM];
+};
+inline rt_vertex_t rt_vertex_vertex{.stride = 12, .instance = false, .attrib = {{.location = 0, .offset = 0, .format = RT_VERTEX_FLOAT32X3}}};
+inline rt_vertex_t rt_vertex_normal{.stride = 12, .instance = false, .attrib = {{.location = 1, .offset = 0, .format = RT_VERTEX_FLOAT32X3}}};
+inline rt_vertex_t rt_vertex_uv{.stride = 8, .instance = false, .attrib = {{.location = 2, .offset = 0, .format = RT_VERTEX_FLOAT32X2}}};
 
 struct rt_module_render_info_t
 {

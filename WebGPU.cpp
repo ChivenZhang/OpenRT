@@ -338,6 +338,23 @@ static uint32_t rt_to_wg_vertex_size(rt_vertex_format_t format)
     }
 }
 
+static uint32_t rt_to_wg_vertex_stride(rt_vertex_t const& layout)
+{
+    // stride != 0: use it as-is; stride == 0: tight-pack from the attributes
+    if (layout.stride)
+        return layout.stride;
+    uint32_t stride = 0;
+    for (auto& attrib : layout.attrib)
+    {
+        if (attrib.format == RT_VERTEX_NONE)
+            continue;
+        uint32_t end = attrib.offset + rt_to_wg_vertex_size(attrib.format);
+        if (end > stride)
+            stride = end;
+    }
+    return stride;
+}
+
 static uint32_t rt_to_wg_index_size(rt_index_type_t type)
 {
     switch (type)
@@ -1517,20 +1534,27 @@ rt_module_render_t wg_create_module_render(rt_module_render_info_t const& info)
         wg_destroy_module_native(handle, result.native);
         return {};
     }
-    WGPUVertexAttribute attributes[RT_MAX_VERTEX_BUFFER_NUM] = {};
+    WGPUVertexAttribute attributes[RT_MAX_VERTEX_BUFFER_NUM][RT_MAX_VERTEX_ATTRIB_NUM] = {};
     WGPUVertexBufferLayout layouts[RT_MAX_VERTEX_BUFFER_NUM] = {};
-    uint32_t attrCount = 0;
+    uint32_t bufferCount = 0;
     for (uint32_t i = 0; i < RT_MAX_VERTEX_BUFFER_NUM; ++i)
     {
-        if (info.vertex[i].format == RT_VERTEX_NONE) continue;
-        attributes[attrCount].format = rt_to_wg_vertex_format(info.vertex[i].format);
-        attributes[attrCount].offset = 0;
-        attributes[attrCount].shaderLocation = info.vertex[i].location;
-        layouts[attrCount].arrayStride = rt_to_wg_vertex_size(info.vertex[i].format);
-        layouts[attrCount].stepMode = info.vertex[i].instance ? WGPUVertexStepMode_Instance : WGPUVertexStepMode_Vertex;
-        layouts[attrCount].attributeCount = 1;
-        layouts[attrCount].attributes = &attributes[attrCount];
-        attrCount++;
+        uint32_t stride = rt_to_wg_vertex_stride(info.vertex[i]);
+        if (stride == 0) continue; // unused slot: stepMode 0 + attributeCount 0 marks the slot as not used
+        uint32_t attribCount = 0;
+        for (auto& attrib : info.vertex[i].attrib)
+        {
+            if (attrib.format == RT_VERTEX_NONE) continue;
+            attributes[i][attribCount].format = rt_to_wg_vertex_format(attrib.format);
+            attributes[i][attribCount].offset = attrib.offset;
+            attributes[i][attribCount].shaderLocation = attrib.location;
+            attribCount++;
+        }
+        layouts[i].arrayStride = stride;
+        layouts[i].stepMode = info.vertex[i].instance ? WGPUVertexStepMode_Instance : WGPUVertexStepMode_Vertex;
+        layouts[i].attributeCount = attribCount;
+        layouts[i].attributes = attributes[i];
+        bufferCount = i + 1;
     }
     WGPUColorTargetState targets[RT_MAX_COLOR_TEXTURE_NUM] = {};
     WGPUBlendState blends[RT_MAX_COLOR_TEXTURE_NUM] = {};
@@ -1580,8 +1604,8 @@ rt_module_render_t wg_create_module_render(rt_module_render_info_t const& info)
     desc.layout = native.pipelineLayout;
     desc.vertex.module = native.vshader;
     desc.vertex.entryPoint = wg_string((info.vshader.entry && info.vshader.entry[0]) ? info.vshader.entry : "main");
-    desc.vertex.bufferCount = attrCount;
-    desc.vertex.buffers = layouts;
+    desc.vertex.bufferCount = bufferCount;
+    desc.vertex.buffers = bufferCount ? layouts : nullptr;
     desc.primitive.topology = rt_to_wg_primitive(info.primitive);
     desc.primitive.frontFace = (info.wind_mode == RT_CW) ? WGPUFrontFace_CW : WGPUFrontFace_CCW;
     desc.primitive.cullMode = rt_to_wg_cull(info.cull_mode);
@@ -1768,14 +1792,13 @@ static void wg_bind_draw_vbos(rt_buffer_t vbo[], uint32_t vbo_num)
         count = (uint32_t)std::size(module.vertex);
     for (uint32_t i = 0; i < count; ++i)
     {
-        rt_vertex_t const& layout = module.vertex[i];
-        if (layout.format == RT_VERTEX_NONE || !vbo || vbo[i].handle == 0)
+        if (rt_to_wg_vertex_stride(module.vertex[i]) == 0 || !vbo || vbo[i].handle == 0)
             continue;
         auto* native = wg_buffer_native(vbo[i]);
         if (!native || !native->handle)
             continue;
         wg_transition_buffer(*native, WG_STATE_VERTEX);
-        wgpuRenderPassEncoderSetVertexBuffer(webgpu.renderPass, layout.location, native->handle, 0, vbo[i].size);
+        wgpuRenderPassEncoderSetVertexBuffer(webgpu.renderPass, i, native->handle, 0, vbo[i].size);
     }
 }
 
@@ -2287,18 +2310,24 @@ static void wg_draw_mesh_impl(rt_mesh_t& mesh, uint32_t instanceCount)
     for (uint32_t i = 0; i < std::size(module.vertex); ++i)
     {
         rt_vertex_t const& layout = module.vertex[i];
-        if (layout.format == RT_VERTEX_NONE) continue;
-        for (uint32_t k = 0; k < std::size(mesh.vertex); ++k)
+        uint32_t stride = rt_to_wg_vertex_stride(layout);
+        if (stride == 0) continue;
+        bool bound = false;
+        for (uint32_t k = 0; k < std::size(mesh.vertex) && !bound; ++k)
         {
-            if (mesh.vertex[k].handle == 0 || mesh.location[k] != layout.location) continue;
-            auto* native = wg_buffer_native(mesh.vertex[k]);
-            if (!native) break;
-            wg_transition_buffer(*native, WG_STATE_VERTEX);
-            wgpuRenderPassEncoderSetVertexBuffer(webgpu.renderPass, layout.location, native->handle, 0, mesh.vertex[k].size);
-            uint32_t stride = rt_to_wg_vertex_size(layout.format);
-            if (vertex_count == 0 && stride)
-                vertex_count = (uint32_t)(mesh.vertex[k].size / stride);
-            break;
+            if (mesh.vertex[k].handle == 0) continue;
+            for (auto& attrib : layout.attrib)
+            {
+                if (attrib.format == RT_VERTEX_NONE || mesh.location[k] != attrib.location) continue;
+                auto* native = wg_buffer_native(mesh.vertex[k]);
+                if (!native) break;
+                wg_transition_buffer(*native, WG_STATE_VERTEX);
+                wgpuRenderPassEncoderSetVertexBuffer(webgpu.renderPass, i, native->handle, 0, mesh.vertex[k].size);
+                if (vertex_count == 0)
+                    vertex_count = (uint32_t)(mesh.vertex[k].size / stride);
+                bound = true;
+                break;
+            }
         }
     }
     if (mesh.index.handle)
@@ -2406,16 +2435,18 @@ void wg_draw_meshlet(rt_meshlet_t& meshlet)
     uint32_t index_binding = 0;
     for (uint32_t i = 0; i < std::size(module.vertex); ++i)
     {
-        rt_vertex_t const& layout = module.vertex[i];
-        if (layout.format == RT_VERTEX_NONE) continue;
-        for (uint32_t k = 0; k < std::size(meshlet.vertex); ++k)
+        for (auto& attrib : module.vertex[i].attrib)
         {
-            if (meshlet.vertex[k].handle == 0 || meshlet.location[k] != layout.location) continue;
-            wg_bind_buffer(meshlet.vertex[k], {.binding = layout.location});
-            break;
+            if (attrib.format == RT_VERTEX_NONE) continue;
+            for (uint32_t k = 0; k < std::size(meshlet.vertex); ++k)
+            {
+                if (meshlet.vertex[k].handle == 0 || meshlet.location[k] != attrib.location) continue;
+                wg_bind_buffer(meshlet.vertex[k], {.binding = attrib.location});
+                break;
+            }
+            if (attrib.location + 1 > index_binding)
+                index_binding = attrib.location + 1;
         }
-        if (layout.location + 1 > index_binding)
-            index_binding = layout.location + 1;
     }
     if (meshlet.index.handle)
         wg_bind_buffer(meshlet.index, {.binding = index_binding});

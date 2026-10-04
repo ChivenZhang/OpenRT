@@ -421,6 +421,23 @@ static uint32_t rt_to_vk_vertex_size(rt_vertex_format_t format)
     }
 }
 
+static uint32_t rt_to_vk_vertex_stride(rt_vertex_t const& layout)
+{
+    // stride != 0: use it as-is; stride == 0: tight-pack from the attributes
+    if (layout.stride)
+        return layout.stride;
+    uint32_t stride = 0;
+    for (auto& attrib : layout.attrib)
+    {
+        if (attrib.format == RT_VERTEX_NONE)
+            continue;
+        uint32_t end = attrib.offset + rt_to_vk_vertex_size(attrib.format);
+        if (end > stride)
+            stride = end;
+    }
+    return stride;
+}
+
 static uint32_t rt_to_vk_index_size(rt_index_type_t type)
 {
     switch (type)
@@ -2099,26 +2116,34 @@ rt_module_render_t vk_create_module_render(rt_module_render_info_t const& info)
     }
 
     VkVertexInputBindingDescription bindingDescs[RT_MAX_VERTEX_BUFFER_NUM] = {};
-    VkVertexInputAttributeDescription attribDescs[RT_MAX_VERTEX_BUFFER_NUM] = {};
+    VkVertexInputAttributeDescription attribDescs[RT_MAX_VERTEX_BUFFER_NUM * RT_MAX_VERTEX_ATTRIB_NUM] = {};
+    uint32_t bindingCount = 0;
     uint32_t attribCount = 0;
     for (uint32_t i = 0; i < RT_MAX_VERTEX_BUFFER_NUM; ++i)
     {
-        if (info.vertex[i].format == RT_VERTEX_NONE)
+        uint32_t stride = rt_to_vk_vertex_stride(info.vertex[i]);
+        if (stride == 0)
             continue;
-        bindingDescs[attribCount].binding = info.vertex[i].location;
-        bindingDescs[attribCount].stride = rt_to_vk_vertex_size(info.vertex[i].format);
-        bindingDescs[attribCount].inputRate = info.vertex[i].instance ? VK_VERTEX_INPUT_RATE_INSTANCE : VK_VERTEX_INPUT_RATE_VERTEX;
-        attribDescs[attribCount].location = info.vertex[i].location;
-        attribDescs[attribCount].binding = info.vertex[i].location;
-        attribDescs[attribCount].format = rt_to_vk_vertex_format(info.vertex[i].format);
-        attribDescs[attribCount].offset = 0;
-        attribCount++;
+        bindingDescs[bindingCount].binding = i;
+        bindingDescs[bindingCount].stride = stride;
+        bindingDescs[bindingCount].inputRate = info.vertex[i].instance ? VK_VERTEX_INPUT_RATE_INSTANCE : VK_VERTEX_INPUT_RATE_VERTEX;
+        bindingCount++;
+        for (auto& attrib : info.vertex[i].attrib)
+        {
+            if (attrib.format == RT_VERTEX_NONE)
+                continue;
+            attribDescs[attribCount].location = attrib.location;
+            attribDescs[attribCount].binding = i;
+            attribDescs[attribCount].format = rt_to_vk_vertex_format(attrib.format);
+            attribDescs[attribCount].offset = attrib.offset;
+            attribCount++;
+        }
     }
 
     VkPipelineVertexInputStateCreateInfo vertexInput = {};
     vertexInput.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
-    vertexInput.vertexBindingDescriptionCount = attribCount;
-    vertexInput.pVertexBindingDescriptions = attribCount == 0 ? nullptr : bindingDescs;
+    vertexInput.vertexBindingDescriptionCount = bindingCount;
+    vertexInput.pVertexBindingDescriptions = bindingCount == 0 ? nullptr : bindingDescs;
     vertexInput.vertexAttributeDescriptionCount = attribCount;
     vertexInput.pVertexAttributeDescriptions = attribCount == 0 ? nullptr : attribDescs;
 
@@ -2416,15 +2441,14 @@ static void vk_bind_draw_vbos(rt_buffer_t vbo[], uint32_t vbo_num)
     uint32_t bindCount = 0;
     for (uint32_t i = 0; i < count; ++i)
     {
-        rt_vertex_t const& layout = module.vertex[i];
-        if (layout.format == RT_VERTEX_NONE || !vbo || vbo[i].handle == 0)
+        if (rt_to_vk_vertex_stride(module.vertex[i]) == 0 || !vbo || vbo[i].handle == 0)
             continue;
         auto* native = vk_buffer_native(vbo[i]);
         if (!native)
             continue;
         vk_transition_buffer(*native, VK_PIPELINE_STAGE_VERTEX_INPUT_BIT, VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT);
         buffers[bindCount] = native->handle;
-        slots[bindCount] = layout.location;
+        slots[bindCount] = i;
         bindCount++;
     }
     vk_begin_rendering();
@@ -3044,20 +3068,26 @@ void vk_draw_mesh(rt_mesh_t& mesh)
     for (uint32_t i = 0; i < std::size(module.vertex); ++i)
     {
         rt_vertex_t const& layout = module.vertex[i];
-        if (layout.format == RT_VERTEX_NONE) continue;
-        for (uint32_t k = 0; k < std::size(mesh.vertex); ++k)
+        uint32_t stride = rt_to_vk_vertex_stride(layout);
+        if (stride == 0) continue;
+        bool bound = false;
+        for (uint32_t k = 0; k < std::size(mesh.vertex) && !bound; ++k)
         {
-            if (mesh.vertex[k].handle == 0 || mesh.location[k] != layout.location) continue;
-            auto* native = vk_buffer_native(mesh.vertex[k]);
-            if (!native) break;
-            vk_transition_buffer(*native, VK_PIPELINE_STAGE_VERTEX_INPUT_BIT, VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT);
-            vertexBuffers[vertexBindCount] = native->handle;
-            vertexBindings[vertexBindCount] = layout.location;
-            vertexBindCount++;
-            uint32_t stride = rt_to_vk_vertex_size(layout.format);
-            if (vertex_count == 0 && stride)
-                vertex_count = (uint32_t)(mesh.vertex[k].size / stride);
-            break;
+            if (mesh.vertex[k].handle == 0) continue;
+            for (auto& attrib : layout.attrib)
+            {
+                if (attrib.format == RT_VERTEX_NONE || mesh.location[k] != attrib.location) continue;
+                auto* native = vk_buffer_native(mesh.vertex[k]);
+                if (!native) break;
+                vk_transition_buffer(*native, VK_PIPELINE_STAGE_VERTEX_INPUT_BIT, VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT);
+                vertexBuffers[vertexBindCount] = native->handle;
+                vertexBindings[vertexBindCount] = i;
+                vertexBindCount++;
+                if (vertex_count == 0)
+                    vertex_count = (uint32_t)(mesh.vertex[k].size / stride);
+                bound = true;
+                break;
+            }
         }
     }
     vk_buffer_native_t* indexNative = nullptr;
@@ -3130,16 +3160,18 @@ void vk_draw_meshlet(rt_meshlet_t& meshlet)
     uint32_t index_binding = 0;
     for (uint32_t i = 0; i < std::size(module.vertex); ++i)
     {
-        rt_vertex_t const& layout = module.vertex[i];
-        if (layout.format == RT_VERTEX_NONE) continue;
-        for (uint32_t k = 0; k < std::size(meshlet.vertex); ++k)
+        for (auto& attrib : module.vertex[i].attrib)
         {
-            if (meshlet.vertex[k].handle == 0 || meshlet.location[k] != layout.location) continue;
-            vk_bind_buffer(meshlet.vertex[k], {.binding = layout.location});
-            break;
+            if (attrib.format == RT_VERTEX_NONE) continue;
+            for (uint32_t k = 0; k < std::size(meshlet.vertex); ++k)
+            {
+                if (meshlet.vertex[k].handle == 0 || meshlet.location[k] != attrib.location) continue;
+                vk_bind_buffer(meshlet.vertex[k], {.binding = attrib.location});
+                break;
+            }
+            if (attrib.location + 1 > index_binding)
+                index_binding = attrib.location + 1;
         }
-        if (layout.location + 1 > index_binding)
-            index_binding = layout.location + 1;
     }
     if (meshlet.index.handle)
         vk_bind_buffer(meshlet.index, {.binding = index_binding});
