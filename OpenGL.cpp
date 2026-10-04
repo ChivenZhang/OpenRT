@@ -539,6 +539,8 @@ struct OpenGL
         rt_pass_compute_t* currentComputePass;
         rt_pass_transfer_t* currentTransferPass;
     };
+    rt_module_render_t* currentRenderModule = nullptr;
+    rt_module_compute_t* currentComputeModule = nullptr;
 } static thread_local opengl;
 
 static gl_buffer_native_t* gl_buffer_native(rt_buffer_t const& buffer)
@@ -569,12 +571,22 @@ static gl_module_native_t* gl_module_native(uint32_t handle, void* native)
     return it == opengl.modules.end() ? nullptr : &it->second;
 }
 
+static rt_module_render_t const& gl_current_render_module()
+{
+    if (opengl.currentRenderModule == nullptr)
+    {
+        fprintf(stderr, "Pipeline module not bound\n");
+        abort();
+    }
+    return *opengl.currentRenderModule;
+}
+
 static gl_module_native_t* gl_current_module_native()
 {
-    if (opengl.currentPassType == RT_MODULE_COMPUTE && opengl.currentComputePass)
-        return gl_module_native(opengl.currentComputePass->module.handle, opengl.currentComputePass->module.native);
-    if (opengl.currentPassType == RT_MODULE_RENDER && opengl.currentRenderPass)
-        return gl_module_native(opengl.currentRenderPass->module.handle, opengl.currentRenderPass->module.native);
+    if (opengl.currentPassType == RT_MODULE_COMPUTE && opengl.currentComputeModule)
+        return gl_module_native(opengl.currentComputeModule->handle, opengl.currentComputeModule->native);
+    if (opengl.currentPassType == RT_MODULE_RENDER && opengl.currentRenderModule)
+        return gl_module_native(opengl.currentRenderModule->handle, opengl.currentRenderModule->native);
     return nullptr;
 }
 
@@ -660,15 +672,16 @@ void gl_load_library()
     rt_bind_sampler = gl_bind_sampler;
     rt_create_module_compute = gl_create_module_compute;
     rt_create_module_render = gl_create_module_render;
-    rt_create_module_meshlet = gl_create_module_meshlet;
     rt_destroy_module_render = gl_destroy_module_render;
     rt_destroy_module_compute = gl_destroy_module_compute;
     rt_begin_compute = gl_begin_compute;
     rt_end_compute = gl_end_compute;
+    rt_bind_module_compute = gl_bind_module_compute;
     rt_dispatch_compute = gl_dispatch_compute;
     rt_dispatch_compute_indirect = gl_dispatch_compute_indirect;
     rt_begin_render = gl_begin_render;
     rt_end_render = gl_end_render;
+    rt_bind_module_render = gl_bind_module_render;
     rt_set_viewport = gl_set_viewport;
     rt_set_scissor = gl_set_scissor;
     rt_draw_array = gl_draw_array;
@@ -779,15 +792,16 @@ void gl_unload_library()
     if(rt_bind_sampler == gl_bind_sampler) rt_bind_sampler = nullptr;
     if(rt_create_module_compute == gl_create_module_compute) rt_create_module_compute = nullptr;
     if(rt_create_module_render == gl_create_module_render) rt_create_module_render = nullptr;
-    if(rt_create_module_meshlet == gl_create_module_meshlet) rt_create_module_meshlet = nullptr;
     if(rt_destroy_module_render == gl_destroy_module_render) rt_destroy_module_render = nullptr;
     if(rt_destroy_module_compute == gl_destroy_module_compute) rt_destroy_module_compute = nullptr;
     if(rt_begin_compute == gl_begin_compute) rt_begin_compute = nullptr;
     if(rt_end_compute == gl_end_compute) rt_end_compute = nullptr;
+    if (rt_bind_module_compute == gl_bind_module_compute) rt_bind_module_compute = nullptr;
     if(rt_dispatch_compute == gl_dispatch_compute) rt_dispatch_compute = nullptr;
     if(rt_dispatch_compute_indirect == gl_dispatch_compute_indirect) rt_dispatch_compute_indirect = nullptr;
     if(rt_begin_render == gl_begin_render) rt_begin_render = nullptr;
     if(rt_end_render == gl_end_render) rt_end_render = nullptr;
+    if (rt_bind_module_render == gl_bind_module_render) rt_bind_module_render = nullptr;
     if(rt_set_viewport == gl_set_viewport) rt_set_viewport = nullptr;
     if(rt_set_scissor == gl_set_scissor) rt_set_scissor = nullptr;
     if(rt_draw_array == gl_draw_array) rt_draw_array = nullptr;
@@ -1355,10 +1369,10 @@ rt_module_render_t gl_create_module_render(rt_module_render_info_t const& info)
 {
     rt_module_render_t result = {};
 
-    // ---- Vertex Shader ----
-    GLuint vs = 0;
+    GLuint vs = 0, ts = 0, ms = 0, fs = 0;
     if (info.vshader.code)
     {
+        // ---- Vertex Shader ----
         vs = glCreateShader(GL_VERTEX_SHADER);
         GLint vlength = (GLint)info.vshader.size;
         glShaderSource(vs, 1, &info.vshader.code, info.vshader.size ? &vlength : nullptr);
@@ -1373,9 +1387,48 @@ rt_module_render_t gl_create_module_render(rt_module_render_info_t const& info)
             abort();
         }
     }
+    else if (info.mshader.code)
+    {
+        // ---- Task Shader（可选）----
+        if (info.tshader.code)
+        {
+            ts = glCreateShader(GL_TASK_SHADER_NV);
+            GLint tlength = (GLint)info.tshader.size;
+            glShaderSource(ts, 1, &info.tshader.code, info.tshader.size ? &tlength : nullptr);
+            glCompileShader(ts);
+            GLint success = 0;
+            glGetShaderiv(ts, GL_COMPILE_STATUS, &success);
+            if (!success)
+            {
+                char log[1024];
+                glGetShaderInfoLog(ts, sizeof(log), nullptr, log);
+                fprintf(stderr, "Task shader compile error:\n%s\n", log);
+                abort();
+            }
+        }
+
+        // ---- Mesh Shader ----
+        ms = glCreateShader(GL_MESH_SHADER_NV);
+        GLint mlength = (GLint)info.mshader.size;
+        glShaderSource(ms, 1, &info.mshader.code, info.mshader.size ? &mlength : nullptr);
+        glCompileShader(ms);
+        GLint success = 0;
+        glGetShaderiv(ms, GL_COMPILE_STATUS, &success);
+        if (!success)
+        {
+            char log[1024];
+            glGetShaderInfoLog(ms, sizeof(log), nullptr, log);
+            fprintf(stderr, "Mesh shader compile error:\n%s\n", log);
+            abort();
+        }
+    }
+    else
+    {
+        fprintf(stderr, "Render module requires a vertex shader or a mesh shader\n");
+        abort();
+    }
 
     // ---- Fragment Shader ----
-    GLuint fs = 0;
     if (info.fshader.code)
     {
         fs = glCreateShader(GL_FRAGMENT_SHADER);
@@ -1399,6 +1452,10 @@ rt_module_render_t gl_create_module_render(rt_module_render_info_t const& info)
     native.program = glCreateProgram();
     if (vs)
         glAttachShader(native.program, vs);
+    if (ts)
+        glAttachShader(native.program, ts);
+    if (ms)
+        glAttachShader(native.program, ms);
     if (fs)
         glAttachShader(native.program, fs);
     glLinkProgram(native.program);
@@ -1413,8 +1470,10 @@ rt_module_render_t gl_create_module_render(rt_module_render_info_t const& info)
         abort();
     }
 
-    glDeleteShader(vs);
-    glDeleteShader(fs);
+    if (vs) glDeleteShader(vs);
+    if (ts) glDeleteShader(ts);
+    if (ms) glDeleteShader(ms);
+    if (fs) glDeleteShader(fs);
 
     glGenVertexArrays(1, &native.vao);
     glBindVertexArray(native.vao);
@@ -1430,140 +1489,6 @@ rt_module_render_t gl_create_module_render(rt_module_render_info_t const& info)
         glVertexBindingDivisor(i, vertex.instance ? 1 : 0);
     }
     glBindVertexArray(0);
-
-    for (size_t i = 0; i < std::size(info.colors); ++i)
-    {
-        result.colors[i].format = info.colors[i].format;
-        result.colors[i].color.func = info.colors[i].color.func;
-        result.colors[i].color.src = info.colors[i].color.src;
-        result.colors[i].color.dst = info.colors[i].color.dst;
-        result.colors[i].alpha.func = info.colors[i].alpha.func;
-        result.colors[i].alpha.src = info.colors[i].alpha.src;
-        result.colors[i].alpha.dst = info.colors[i].alpha.dst;
-    }
-    result.depth.write = info.depth.write;
-    result.depth.bias = info.depth.bias;
-    result.depth.biasSlope = info.depth.biasSlope;
-    result.depth.biasClamp = info.depth.biasClamp;
-    result.depth.func = info.depth.func;
-    result.stencil.read = info.stencil.read;
-    result.stencil.write = info.stencil.write;
-    result.stencil.back.func = info.stencil.back.func;
-    result.stencil.back.sfail = info.stencil.back.sfail;
-    result.stencil.back.zfail = info.stencil.back.zfail;
-    result.stencil.back.zpass = info.stencil.back.zpass;
-    result.stencil.front.func = info.stencil.front.func;
-    result.stencil.front.sfail = info.stencil.front.sfail;
-    result.stencil.front.zfail = info.stencil.front.zfail;
-    result.stencil.front.zpass = info.stencil.front.zpass;
-    result.index_type = info.index_type;
-    for (size_t i = 0; i < std::size(info.vertex); ++i)
-    {
-        result.vertex[i].location = info.vertex[i].location;
-        result.vertex[i].format = info.vertex[i].format;
-        result.vertex[i].instance = info.vertex[i].instance;
-    }
-    for (size_t i = 0; i < std::size(info.binding); ++i)
-    {
-        result.binding[i].binding = info.binding[i].binding;
-        result.binding[i].type = info.binding[i].type;
-        native.bindings[i] = info.binding[i];
-    }
-    result.cull_mode = info.cull_mode;
-    result.wind_mode = info.wind_mode;
-    result.fill_mode = info.fill_mode;
-    result.primitive = info.primitive;
-    opengl.moduleID = handle;
-    result.handle = handle;
-    result.native = &native;
-    return result;
-}
-
-rt_module_render_t gl_create_module_meshlet(rt_module_render_info_t const& info)
-{
-    rt_module_render_t result = {};
-
-    // ---- Task Shader（可选）----
-    GLuint ts = 0;
-    if (info.tshader.code)
-    {
-        ts = glCreateShader(GL_TASK_SHADER_NV);
-        GLint tlength = (GLint)info.tshader.size;
-        glShaderSource(ts, 1, &info.tshader.code, info.tshader.size ? &tlength : nullptr);
-        glCompileShader(ts);
-        GLint success = 0;
-        glGetShaderiv(ts, GL_COMPILE_STATUS, &success);
-        if (!success)
-        {
-            char log[1024];
-            glGetShaderInfoLog(ts, sizeof(log), nullptr, log);
-            fprintf(stderr, "Task shader compile error:\n%s\n", log);
-            abort();
-        }
-    }
-
-    // ---- Mesh Shader ----
-    if (!info.mshader.code)
-    {
-        fprintf(stderr, "Mesh shader source is empty\n");
-        abort();
-    }
-    GLuint ms = glCreateShader(GL_MESH_SHADER_NV);
-    GLint mlength = (GLint)info.mshader.size;
-    glShaderSource(ms, 1, &info.mshader.code, info.mshader.size ? &mlength : nullptr);
-    glCompileShader(ms);
-    GLint success = 0;
-    glGetShaderiv(ms, GL_COMPILE_STATUS, &success);
-    if (!success)
-    {
-        char log[1024];
-        glGetShaderInfoLog(ms, sizeof(log), nullptr, log);
-        fprintf(stderr, "Mesh shader compile error:\n%s\n", log);
-        abort();
-    }
-
-    // ---- Fragment Shader ----
-    GLuint fs = 0;
-    if (info.fshader.code)
-    {
-        fs = glCreateShader(GL_FRAGMENT_SHADER);
-        GLint flength = (GLint)info.fshader.size;
-        glShaderSource(fs, 1, &info.fshader.code, info.fshader.size ? &flength : nullptr);
-        glCompileShader(fs);
-        glGetShaderiv(fs, GL_COMPILE_STATUS, &success);
-        if (!success)
-        {
-            char log[1024];
-            glGetShaderInfoLog(fs, sizeof(log), nullptr, log);
-            fprintf(stderr, "Fragment shader compile error:\n%s\n", log);
-            abort();
-        }
-    }
-
-    // ---- Program ----
-    auto handle = opengl.moduleID + 1;
-    auto& native = opengl.modules[handle];
-    native.program = glCreateProgram();
-    if (ts)
-        glAttachShader(native.program, ts);
-    glAttachShader(native.program, ms);
-    if (fs)
-        glAttachShader(native.program, fs);
-    glLinkProgram(native.program);
-
-    glGetProgramiv(native.program, GL_LINK_STATUS, &success);
-    if (!success)
-    {
-        char log[1024];
-        glGetProgramInfoLog(native.program, sizeof(log), nullptr, log);
-        fprintf(stderr, "Mesh program link error:\n%s\n", log);
-        abort();
-    }
-
-    if (ts)
-        glDeleteShader(ts);
-    glDeleteShader(ms);
-    glDeleteShader(fs);
 
     for (size_t i = 0; i < std::size(info.colors); ++i)
     {
@@ -1637,6 +1562,661 @@ void gl_destroy_module_compute(rt_module_compute_t& module)
     }
     module.handle = 0;
     module.native = nullptr;
+}
+
+// ====================================================================
+
+void gl_begin_compute(rt_pass_compute_t& pass)
+{
+    if (opengl.currentPipeline != nullptr)
+    {
+        fprintf(stderr, "Pipeline not end\n");
+        abort();
+    }
+    auto handle = opengl.passID + 1;
+    auto& native = opengl.computePasses[handle];
+    pass.handle = handle;
+    pass.native = &native;
+    opengl.currentComputePass = &pass;
+    opengl.currentPassType = RT_MODULE_COMPUTE;
+    opengl.currentComputeModule = nullptr;
+    opengl.passID = handle;
+}
+
+void gl_end_compute(rt_pass_compute_t& pass)
+{
+    if (opengl.currentComputePass != &pass)
+    {
+        fprintf(stderr, "Pipeline not end\n");
+        abort();
+    }
+    opengl.computePasses.erase(pass.handle);
+    pass.handle = 0;
+    pass.native = nullptr;
+    opengl.currentPassType = RT_MODULE_NONE;
+    opengl.currentComputePass = nullptr;
+    opengl.currentComputeModule = nullptr;
+
+    glUseProgram(0);
+}
+
+void gl_bind_module_compute(rt_module_compute_t& module)
+{
+    if (opengl.currentPipeline == nullptr || opengl.currentPassType != RT_MODULE_COMPUTE)
+    {
+        fprintf(stderr, "Pipeline not begin\n");
+        abort();
+    }
+    auto* moduleNative = gl_module_native(module.handle, module.native);
+    if (module.handle == 0 || !moduleNative)
+    {
+        fprintf(stderr, "Pipeline module is not created\n");
+        abort();
+    }
+    opengl.currentComputeModule = &module;
+    glUseProgram(moduleNative->program);
+}
+
+void gl_dispatch_compute(uint32_t groupX, uint32_t groupY, uint32_t groupZ)
+{
+    if (opengl.currentPipeline == nullptr)
+    {
+        fprintf(stderr, "Pipeline not begin\n");
+        abort();
+    }
+    if (opengl.currentPassType != RT_MODULE_COMPUTE)
+    {
+        fprintf(stderr, "Pipeline not begin\n");
+        abort();
+    }
+    if (opengl.currentComputeModule == nullptr)
+    {
+        fprintf(stderr, "Pipeline module not bound\n");
+        abort();
+    }
+
+    glDispatchCompute(std::max(1U, groupX), std::max(1U, groupY), std::max(1U, groupZ));
+}
+
+void gl_dispatch_compute_indirect(rt_buffer_t& indirect, size_t offset)
+{
+    if (opengl.currentPipeline == nullptr)
+    {
+        fprintf(stderr, "Pipeline not begin\n");
+        abort();
+    }
+    if (opengl.currentPassType != RT_MODULE_COMPUTE)
+    {
+        fprintf(stderr, "Pipeline not begin\n");
+        abort();
+    }
+    if (opengl.currentComputeModule == nullptr)
+    {
+        fprintf(stderr, "Pipeline module not bound\n");
+        abort();
+    }
+
+    glBindBuffer(GL_DISPATCH_INDIRECT_BUFFER, gl_buffer_name(indirect));
+    glDispatchComputeIndirect((GLintptr)offset);
+}
+
+// ====================================================================
+
+static GLsizei rt_to_gl_vertex_size(rt_vertex_format_t format)
+{
+    switch (format)
+    {
+        case RT_VERTEX_NONE: return 0;
+        case RT_VERTEX_UINT8: return 1;
+        case RT_VERTEX_UINT8X2: return 2;
+        case RT_VERTEX_UINT8X4: return 4;
+        case RT_VERTEX_SINT8: return 1;
+        case RT_VERTEX_SINT8X2: return 2;
+        case RT_VERTEX_SINT8X4: return 4;
+        case RT_VERTEX_UNORM8: return 1;
+        case RT_VERTEX_UNORM8X2: return 2;
+        case RT_VERTEX_UNORM8X4: return 4;
+        case RT_VERTEX_SNORM8: return 1;
+        case RT_VERTEX_SNORM8X2: return 2;
+        case RT_VERTEX_SNORM8X4: return 4;
+        case RT_VERTEX_UINT16: return 2;
+        case RT_VERTEX_UINT16X2: return 4;
+        case RT_VERTEX_UINT16X4: return 8;
+        case RT_VERTEX_SINT16: return 2;
+        case RT_VERTEX_SINT16X2: return 4;
+        case RT_VERTEX_SINT16X4: return 8;
+        case RT_VERTEX_UNORM16: return 2;
+        case RT_VERTEX_UNORM16X2: return 4;
+        case RT_VERTEX_UNORM16X4: return 8;
+        case RT_VERTEX_SNORM16: return 2;
+        case RT_VERTEX_SNORM16X2: return 4;
+        case RT_VERTEX_SNORM16X4: return 8;
+        case RT_VERTEX_FLOAT16: return 2;
+        case RT_VERTEX_FLOAT16X2: return 4;
+        case RT_VERTEX_FLOAT16X4: return 8;
+        case RT_VERTEX_FLOAT32: return 4;
+        case RT_VERTEX_FLOAT32X2: return 8;
+        case RT_VERTEX_FLOAT32X3: return 12;
+        case RT_VERTEX_FLOAT32X4: return 16;
+        case RT_VERTEX_UINT32: return 4;
+        case RT_VERTEX_UINT32X2: return 8;
+        case RT_VERTEX_UINT32X3: return 12;
+        case RT_VERTEX_UINT32X4: return 16;
+        case RT_VERTEX_SINT32: return 4;
+        case RT_VERTEX_SINT32X2: return 8;
+        case RT_VERTEX_SINT32X3: return 12;
+        case RT_VERTEX_SINT32X4: return 16;
+        default: return 0;
+    }
+}
+
+static GLenum rt_to_gl_index_type(rt_index_type_t type)
+{
+    switch (type)
+    {
+    case RT_INDEX_UINT16: return GL_UNSIGNED_SHORT;
+    case RT_INDEX_UINT32: return GL_UNSIGNED_INT;
+    default: return GL_UNSIGNED_INT;
+    }
+}
+
+void gl_begin_render(rt_pass_render_t& pass)
+{
+    if (opengl.currentPipeline != nullptr)
+    {
+        fprintf(stderr, "Pipeline not end\n");
+        abort();
+    }
+    opengl.currentPassType = RT_MODULE_RENDER;
+    opengl.currentRenderPass = &pass;
+    opengl.currentRenderModule = nullptr;
+
+    glDisable(GL_SCISSOR_TEST);
+
+    bool offscreen = pass.depth.texture_view.handle;
+    for (size_t i = 0; i < std::size(pass.colors) && !offscreen; ++i)
+    {
+        if (pass.colors[i].texture_view.handle)
+            offscreen = true;
+    }
+    if (offscreen)
+    {
+        glGenFramebuffers(1, &opengl.framebuffer);
+        glBindFramebuffer(GL_FRAMEBUFFER, opengl.framebuffer);
+
+        // Render State
+
+        int32_t colorCount = 0;
+        uint32_t width = 0, height = 0;
+        GLenum colorAttachments[RT_MAX_COLOR_TEXTURE_NUM] = {};
+        for (size_t i = 0; i < std::size(pass.colors); ++i)
+        {
+            if (pass.colors[i].texture_view.handle == 0 || pass.colors[i].texture_view.format == RT_TEXTURE_NONE)
+                continue;
+            GLuint name = gl_texture_view_name(pass.colors[i].texture_view);
+            GLenum target = rt_to_gl_texture_target(pass.colors[i].texture_view.target);
+            glBindTexture(target, name);
+            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + (GLenum)i, target, name, 0);
+            colorAttachments[i] = GL_COLOR_ATTACHMENT0 + (GLenum)i;
+            GLint texWidth = 0, texHeight = 0;
+            glGetTextureLevelParameteriv(name, 0, GL_TEXTURE_WIDTH, &texWidth);
+            glGetTextureLevelParameteriv(name, 0, GL_TEXTURE_HEIGHT, &texHeight);
+            width = std::max(width, (uint32_t)std::max(0, texWidth));
+            height = std::max(height, (uint32_t)std::max(0, texHeight));
+            colorCount = (int32_t)i + 1;
+        }
+        if (colorCount) glDrawBuffers(colorCount, colorAttachments);
+
+        if (pass.depth.texture_view.handle)
+        {
+            GLuint name = gl_texture_view_name(pass.depth.texture_view);
+            GLenum target = rt_to_gl_texture_target(pass.depth.texture_view.target);
+            glBindTexture(target, name);
+            if (rt_texture_has_depth(pass.depth.texture_view.format) && rt_texture_has_stencil(pass.depth.texture_view.format))
+            {
+                glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, target, name, 0);
+            }
+            else if (rt_texture_has_depth(pass.depth.texture_view.format))
+            {
+                glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, target, name, 0);
+            }
+            else if (rt_texture_has_stencil(pass.depth.texture_view.format))
+            {
+                glFramebufferTexture2D(GL_FRAMEBUFFER, GL_STENCIL_ATTACHMENT, target, name, 0);
+            }
+            else
+            {
+                fprintf(stderr, "Invalid depth attachment\n");
+                abort();
+            }
+            GLint texWidth = 0, texHeight = 0;
+            glGetTextureLevelParameteriv(name, 0, GL_TEXTURE_WIDTH, &texWidth);
+            glGetTextureLevelParameteriv(name, 0, GL_TEXTURE_HEIGHT, &texHeight);
+            width = std::max(width, (uint32_t)std::max(0, texWidth));
+            height = std::max(height, (uint32_t)std::max(0, texHeight));
+        }
+
+        if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+        {
+            fprintf(stderr, "Framebuffer not complete\n");
+            abort();
+        }
+        gl_set_viewport(0, 0, (int32_t)width, (int32_t)height);
+
+        glDisable(GL_BLEND);
+        glDepthMask(GL_TRUE);
+        glStencilMask(0xFFFFFFFF);
+        for (size_t i = 0; i < std::size(pass.colors); ++i)
+        {
+            if (pass.colors[i].texture_view.handle == 0 || pass.colors[i].texture_view.format == RT_TEXTURE_NONE)
+                continue;
+
+            if (pass.colors[i].clear)
+            {
+                glColorMask(true, true, true, true);
+                glClearBufferfv(GL_COLOR, (int32_t)i, &pass.colors[i].value.r);
+            }
+        }
+
+        if (pass.depth.texture_view.handle &&
+            (rt_texture_has_depth(pass.depth.texture_view.format) || rt_texture_has_stencil(pass.depth.texture_view.format)))
+        {
+            if (pass.depth.clear && rt_texture_has_depth(pass.depth.texture_view.format))
+            {
+                glClearBufferfv(GL_DEPTH, 0, &pass.depth.value);
+            }
+            if (pass.stencil.clear && rt_texture_has_stencil(pass.depth.texture_view.format))
+            {
+                glClearBufferiv(GL_STENCIL, 0, &pass.stencil.value);
+            }
+        }
+    }
+    else
+    {
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+        if (pass.screen.color.clear)
+        {
+            glClearBufferfv(GL_COLOR, 0, &pass.screen.color.value.r);
+        }
+        if (pass.screen.depth.clear)
+        {
+            glClearBufferfv(GL_DEPTH, 0, &pass.screen.depth.value);
+        }
+        if (pass.screen.stencil.clear)
+        {
+            glClearBufferiv(GL_STENCIL, 0, &pass.screen.stencil.value);
+        }
+
+        // Render State
+
+        if (pass.screen.color.blend.func != RT_FUNC_ADD || pass.screen.color.blend.src != RT_BLEND_ONE ||
+            pass.screen.color.blend.dst != RT_BLEND_ZERO)
+        {
+            glEnable(GL_BLEND);
+        }
+        else
+        {
+            glDisable(GL_BLEND);
+        }
+        glBlendEquation(rt_to_gl_blend_op(pass.screen.color.blend.func));
+        glBlendFunc(rt_to_gl_blend_factor(pass.screen.color.blend.src), rt_to_gl_blend_factor(pass.screen.color.blend.dst));
+
+        // Depth State
+
+        if (pass.screen.depth.func == RT_ALWAYS && pass.screen.depth.write == false)
+        {
+            glDisable(GL_DEPTH_TEST);
+            glDepthMask(GL_TRUE);
+        }
+        else
+        {
+            glEnable(GL_DEPTH_TEST);
+            glDepthMask(pass.screen.depth.write);
+        }
+        glDepthFunc(rt_to_gl_compare(pass.screen.depth.func));
+
+        if (pass.screen.depth.bias == 0 && pass.screen.depth.biasSlope == 0)
+        {
+            glDisable(GL_POLYGON_OFFSET_FILL);
+        }
+        else
+        {
+            glEnable(GL_POLYGON_OFFSET_FILL);
+            glPolygonOffsetClamp(pass.screen.depth.biasSlope, pass.screen.depth.bias, pass.screen.depth.biasClamp);
+        }
+
+        // Stencil State
+
+        if (pass.screen.stencil.func != RT_ALWAYS || pass.screen.stencil.sfail != RT_STENCIL_KEEP ||
+            pass.screen.stencil.zfail != RT_STENCIL_KEEP || pass.screen.stencil.zpass != RT_STENCIL_KEEP)
+        {
+            glEnable(GL_STENCIL_TEST);
+        }
+        else
+        {
+            glDisable(GL_STENCIL_TEST);
+        }
+        glStencilMask(pass.screen.stencil.write);
+        glStencilFunc(rt_to_gl_compare(pass.screen.stencil.func), pass.screen.stencil.refer, pass.screen.stencil.read);
+        glStencilOp(rt_to_gl_stencil_op(pass.screen.stencil.sfail), rt_to_gl_stencil_op(pass.screen.stencil.zfail), rt_to_gl_stencil_op(pass.screen.stencil.zpass));
+    }
+}
+
+void gl_end_render(rt_pass_render_t& pass)
+{
+    if (opengl.currentRenderPass != &pass)
+    {
+        fprintf(stderr, "Pipeline not end\n");
+        abort();
+    }
+    opengl.currentPassType = RT_MODULE_NONE;
+    opengl.currentRenderPass = nullptr;
+    opengl.currentRenderModule = nullptr;
+
+    bool offscreen = pass.depth.texture_view.handle;
+    for (size_t i = 0; i < std::size(pass.colors) && !offscreen; ++i)
+    {
+        if (pass.colors[i].texture_view.handle)
+            offscreen = true;
+    }
+    if (offscreen)
+    {
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        if (opengl.framebuffer)
+        {
+            glDeleteFramebuffers(1, &opengl.framebuffer);
+            opengl.framebuffer = 0;
+        }
+    }
+    pass.handle = 0;
+    pass.native = nullptr;
+
+    glUseProgram(0);
+}
+
+void gl_bind_module_render(rt_module_render_t& module)
+{
+    if (opengl.currentPipeline == nullptr || opengl.currentPassType != RT_MODULE_RENDER)
+    {
+        fprintf(stderr, "Pipeline not begin\n");
+        abort();
+    }
+    auto* moduleNative = gl_module_native(module.handle, module.native);
+    if (module.handle == 0 || !moduleNative)
+    {
+        fprintf(stderr, "Pipeline module is not created\n");
+        abort();
+    }
+    rt_pass_render_t const& pass = *opengl.currentRenderPass;
+    opengl.currentRenderModule = &module;
+
+    glUseProgram(moduleNative->program);
+    glBindVertexArray(moduleNative->vao);
+
+    if (opengl.framebuffer)
+    {
+        // Blend State
+
+        glDisable(GL_BLEND);
+        for (size_t i = 0; i < std::size(pass.colors); ++i)
+        {
+            if (pass.colors[i].texture_view.handle == 0 || pass.colors[i].texture_view.format == RT_TEXTURE_NONE)
+                continue;
+
+            if (module.colors[i].color.func != RT_FUNC_ADD || module.colors[i].color.src != RT_BLEND_ONE ||
+                module.colors[i].color.dst != RT_BLEND_ZERO || module.colors[i].alpha.func != RT_FUNC_ADD ||
+                module.colors[i].alpha.src != RT_BLEND_ONE || module.colors[i].alpha.dst != RT_BLEND_ZERO)
+            {
+                glEnable(GL_BLEND);
+            }
+
+            glBlendEquationSeparatei(i, rt_to_gl_blend_op(module.colors[i].color.func), rt_to_gl_blend_op(module.colors[i].alpha.func));
+            glBlendFuncSeparatei(i, rt_to_gl_blend_factor(module.colors[i].color.src), rt_to_gl_blend_factor(module.colors[i].color.dst), rt_to_gl_blend_factor(module.colors[i].alpha.src), rt_to_gl_blend_factor(module.colors[i].alpha.dst));
+        }
+
+        // Depth State
+
+        if (module.depth.func == RT_ALWAYS && module.depth.write == false)
+        {
+            glDisable(GL_DEPTH_TEST);
+            glDepthMask(GL_TRUE);
+        }
+        else
+        {
+            glEnable(GL_DEPTH_TEST);
+            glDepthMask(module.depth.write);
+        }
+        glDepthFunc(rt_to_gl_compare(module.depth.func));
+
+        if (module.depth.bias == 0 && module.depth.biasSlope == 0)
+        {
+            glDisable(GL_POLYGON_OFFSET_FILL);
+        }
+        else
+        {
+            glEnable(GL_POLYGON_OFFSET_FILL);
+            glPolygonOffsetClamp(module.depth.biasSlope, module.depth.bias, module.depth.biasClamp);
+        }
+
+        // Stencil State
+
+        if (module.stencil.back.func != RT_ALWAYS || module.stencil.back.sfail != RT_STENCIL_KEEP ||
+            module.stencil.back.zfail != RT_STENCIL_KEEP || module.stencil.back.zpass != RT_STENCIL_KEEP ||
+            module.stencil.front.func != RT_ALWAYS || module.stencil.front.sfail != RT_STENCIL_KEEP ||
+            module.stencil.front.zfail != RT_STENCIL_KEEP || module.stencil.front.zpass != RT_STENCIL_KEEP)
+        {
+            glEnable(GL_STENCIL_TEST);
+        }
+        else
+        {
+            glDisable(GL_STENCIL_TEST);
+        }
+        glStencilMask(module.stencil.write);
+        glStencilFuncSeparate(GL_BACK, rt_to_gl_compare(module.stencil.back.func), pass.stencil.refer, module.stencil.read);
+        glStencilFuncSeparate(GL_FRONT, rt_to_gl_compare(module.stencil.front.func), pass.stencil.refer, module.stencil.read);
+        glStencilOpSeparate(GL_BACK, rt_to_gl_stencil_op(module.stencil.back.sfail), rt_to_gl_stencil_op(module.stencil.back.zfail), rt_to_gl_stencil_op(module.stencil.back.zpass));
+        glStencilOpSeparate(GL_FRONT, rt_to_gl_stencil_op(module.stencil.front.sfail), rt_to_gl_stencil_op(module.stencil.front.zfail), rt_to_gl_stencil_op(module.stencil.front.zpass));
+    }
+
+    // Primitive State
+
+    glFrontFace(rt_to_gl_wind_mode(module.wind_mode));
+    if (module.cull_mode)
+    {
+        glCullFace(rt_to_gl_cull(module.cull_mode));
+        glEnable(GL_CULL_FACE);
+    }
+    else
+    {
+        glDisable(GL_CULL_FACE);
+    }
+
+    glPolygonMode(GL_FRONT_AND_BACK, rt_to_gl_fill(module.fill_mode));
+}
+
+void gl_set_viewport(int32_t x, int32_t y, int32_t width, int32_t height)
+{
+    if (opengl.currentPipeline == nullptr)
+    {
+        fprintf(stderr, "Pipeline not begin\n");
+        abort();
+    }
+    if (opengl.currentPassType != RT_MODULE_RENDER)
+    {
+        fprintf(stderr, "Pipeline not begin\n");
+        abort();
+    }
+
+    glViewport(x, y, width, height);
+}
+
+void gl_set_scissor(int32_t x, int32_t y, int32_t width, int32_t height)
+{
+    if (opengl.currentPipeline == nullptr)
+    {
+        fprintf(stderr, "Pipeline not begin\n");
+        abort();
+    }
+    if (opengl.currentPassType != RT_MODULE_RENDER)
+    {
+        fprintf(stderr, "Pipeline not begin\n");
+        abort();
+    }
+
+    glEnable(GL_SCISSOR_TEST);
+    glScissor(x, y, width, height);
+}
+
+void gl_draw_array(rt_buffer_t vbo[], uint32_t vbo_num, uint32_t vertex_num, uint32_t instance_num, uint32_t vertex_start, uint32_t instance_start)
+{
+    if (opengl.currentPipeline == nullptr)
+    {
+        fprintf(stderr, "Pipeline not begin\n");
+        abort();
+    }
+    if (opengl.currentPassType != RT_MODULE_RENDER)
+    {
+        fprintf(stderr, "Pipeline not begin\n");
+        abort();
+    }
+
+    rt_module_render_t const& module = gl_current_render_module();
+    uint32_t count = vbo_num;
+    if (count > std::size(module.vertex))
+        count = (uint32_t)std::size(module.vertex);
+    for (uint32_t i = 0; i < count; ++i)
+    {
+        rt_vertex_t const& layout = module.vertex[i];
+        if (layout.format == RT_VERTEX_NONE || !vbo || vbo[i].handle == 0)
+            continue;
+        GLsizei stride = rt_to_gl_vertex_size(layout.format);
+        glBindVertexBuffer(i, gl_buffer_name(vbo[i]), 0, stride);
+    }
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+    glDrawArraysInstancedBaseInstance(rt_to_gl_primitive(module.primitive), (GLint)vertex_start, (GLsizei)vertex_num, (GLsizei)instance_num, instance_start);
+}
+
+void gl_draw_index(rt_buffer_t vbo[], uint32_t vbo_num, rt_buffer_t& ebo, uint32_t vertex_num, uint32_t instance_num, uint32_t vertex_start, uint32_t instance_start)
+{
+    if (opengl.currentPipeline == nullptr)
+    {
+        fprintf(stderr, "Pipeline not begin\n");
+        abort();
+    }
+    if (opengl.currentPassType != RT_MODULE_RENDER)
+    {
+        fprintf(stderr, "Pipeline not begin\n");
+        abort();
+    }
+
+    rt_module_render_t const& module = gl_current_render_module();
+    uint32_t count = vbo_num;
+    if (count > std::size(module.vertex))
+        count = (uint32_t)std::size(module.vertex);
+    for (uint32_t i = 0; i < count; ++i)
+    {
+        rt_vertex_t const& layout = module.vertex[i];
+        if (layout.format == RT_VERTEX_NONE || !vbo || vbo[i].handle == 0)
+            continue;
+        GLsizei stride = rt_to_gl_vertex_size(layout.format);
+        glBindVertexBuffer(i, gl_buffer_name(vbo[i]), 0, stride);
+    }
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, gl_buffer_name(ebo));
+    glDrawElementsInstancedBaseVertexBaseInstance(rt_to_gl_primitive(module.primitive), (GLsizei)vertex_num, rt_to_gl_index_type(module.index_type), (void*)0, (GLsizei)instance_num, (GLint)vertex_start, instance_start);
+}
+
+void gl_draw_array_indirect(rt_buffer_t vbo[], uint32_t vbo_num, rt_buffer_t& indirect, size_t offset)
+{
+    if (opengl.currentPipeline == nullptr)
+    {
+        fprintf(stderr, "Pipeline not begin\n");
+        abort();
+    }
+    if (opengl.currentPassType != RT_MODULE_RENDER)
+    {
+        fprintf(stderr, "Pipeline not begin\n");
+        abort();
+    }
+
+    rt_module_render_t const& module = gl_current_render_module();
+    uint32_t count = vbo_num;
+    if (count > std::size(module.vertex))
+        count = (uint32_t)std::size(module.vertex);
+    for (uint32_t i = 0; i < count; ++i)
+    {
+        rt_vertex_t const& layout = module.vertex[i];
+        if (layout.format == RT_VERTEX_NONE || !vbo || vbo[i].handle == 0)
+            continue;
+        GLsizei stride = rt_to_gl_vertex_size(layout.format);
+        glBindVertexBuffer(i, gl_buffer_name(vbo[i]), 0, stride);
+    }
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+    glBindBuffer(GL_DRAW_INDIRECT_BUFFER, gl_buffer_name(indirect));
+    glDrawArraysIndirect(rt_to_gl_primitive(module.primitive), (void*)offset);
+}
+
+void gl_draw_index_indirect(rt_buffer_t vbo[], uint32_t vbo_num, rt_buffer_t& ebo, rt_buffer_t& indirect, size_t offset)
+{
+    if (opengl.currentPipeline == nullptr)
+    {
+        fprintf(stderr, "Pipeline not begin\n");
+        abort();
+    }
+    if (opengl.currentPassType != RT_MODULE_RENDER)
+    {
+        fprintf(stderr, "Pipeline not begin\n");
+        abort();
+    }
+
+    rt_module_render_t const& module = gl_current_render_module();
+    uint32_t count = vbo_num;
+    if (count > std::size(module.vertex))
+        count = (uint32_t)std::size(module.vertex);
+    for (uint32_t i = 0; i < count; ++i)
+    {
+        rt_vertex_t const& layout = module.vertex[i];
+        if (layout.format == RT_VERTEX_NONE || !vbo || vbo[i].handle == 0)
+            continue;
+        GLsizei stride = rt_to_gl_vertex_size(layout.format);
+        glBindVertexBuffer(i, gl_buffer_name(vbo[i]), 0, stride);
+    }
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, gl_buffer_name(ebo));
+    glBindBuffer(GL_DRAW_INDIRECT_BUFFER, gl_buffer_name(indirect));
+    glDrawElementsIndirect(rt_to_gl_primitive(module.primitive), rt_to_gl_index_type(module.index_type), (void*)offset);
+}
+
+void gl_draw_mesh_task(uint32_t groupX, uint32_t groupY, uint32_t groupZ)
+{
+    if (opengl.currentPipeline == nullptr)
+    {
+        fprintf(stderr, "Pipeline not begin\n");
+        abort();
+    }
+    if (opengl.currentPassType != RT_MODULE_RENDER)
+    {
+        fprintf(stderr, "Pipeline not begin\n");
+        abort();
+    }
+
+    glDrawMeshTasksNV(0, std::max(1U, groupX) * std::max(1U, groupY) * std::max(1U, groupZ));
+}
+
+void gl_draw_mesh_task_indirect(rt_buffer_t& indirect, size_t offset, uint32_t draw_count, uint32_t draw_stride)
+{
+    if (opengl.currentPipeline == nullptr)
+    {
+        fprintf(stderr, "Pipeline not begin\n");
+        abort();
+    }
+    if (opengl.currentPassType != RT_MODULE_RENDER)
+    {
+        fprintf(stderr, "Pipeline not begin\n");
+        abort();
+    }
+
+    glBindBuffer(GL_DRAW_INDIRECT_BUFFER, gl_buffer_name(indirect));
+    glMultiDrawMeshTasksIndirectNV((GLintptr)offset, (GLsizei)draw_count, (GLsizei)draw_stride);
 }
 
 void gl_push_constant(uint8_t const* buffer, size_t length)
@@ -1721,447 +2301,6 @@ void gl_push_const_mat4(const char* name, const float* value)
     GLint location = glGetUniformLocation(program, name);
     if (location >= 0)
         glUniformMatrix4fv(location, 1, GL_FALSE, value);
-}
-
-// ====================================================================
-
-void gl_begin_compute(rt_pass_compute_t& pass)
-{
-    if (opengl.currentPipeline != nullptr)
-    {
-        fprintf(stderr, "Pipeline not end\n");
-        abort();
-    }
-    if (pass.module.handle == 0 || !gl_module_native(pass.module.handle, pass.module.native))
-    {
-        fprintf(stderr, "Pipeline module is not created\n");
-        abort();
-    }
-    auto handle = opengl.passID + 1;
-    auto& native = opengl.computePasses[handle];
-    pass.handle = handle;
-    pass.native = &native;
-    opengl.currentComputePass = &pass;
-    opengl.currentPassType = RT_MODULE_COMPUTE;
-
-    glUseProgram(gl_module_native(pass.module.handle, pass.module.native)->program);
-    opengl.passID = handle;
-}
-
-void gl_end_compute(rt_pass_compute_t& pass)
-{
-    if (pass.module.handle == 0)
-    {
-        fprintf(stderr, "Pipeline module is not created\n");
-        abort();
-    }
-    if (opengl.currentComputePass != &pass)
-    {
-        fprintf(stderr, "Pipeline not end\n");
-        abort();
-    }
-    opengl.computePasses.erase(pass.handle);
-    pass.handle = 0;
-    pass.native = nullptr;
-    opengl.currentPassType = RT_MODULE_NONE;
-    opengl.currentComputePass = nullptr;
-
-    glUseProgram(0);
-}
-
-void gl_dispatch_compute(uint32_t groupX, uint32_t groupY, uint32_t groupZ)
-{
-    if (opengl.currentPipeline == nullptr)
-    {
-        fprintf(stderr, "Pipeline not begin\n");
-        abort();
-    }
-    if (opengl.currentPassType != RT_MODULE_COMPUTE)
-    {
-        fprintf(stderr, "Pipeline not begin\n");
-        abort();
-    }
-
-    glDispatchCompute(std::max(1U, groupX), std::max(1U, groupY), std::max(1U, groupZ));
-}
-
-void gl_dispatch_compute_indirect(rt_buffer_t& indirect, size_t offset)
-{
-    if (opengl.currentPipeline == nullptr)
-    {
-        fprintf(stderr, "Pipeline not begin\n");
-        abort();
-    }
-    if (opengl.currentPassType != RT_MODULE_COMPUTE)
-    {
-        fprintf(stderr, "Pipeline not begin\n");
-        abort();
-    }
-
-    glBindBuffer(GL_DISPATCH_INDIRECT_BUFFER, gl_buffer_name(indirect));
-    glDispatchComputeIndirect((GLintptr)offset);
-}
-
-void gl_begin_render(rt_pass_render_t& pass)
-{
-    if (opengl.currentPipeline != nullptr)
-    {
-        fprintf(stderr, "Pipeline not end\n");
-        abort();
-    }
-    if (pass.module.handle == 0 || !gl_module_native(pass.module.handle, pass.module.native))
-    {
-        fprintf(stderr, "Pipeline module is not created\n");
-        abort();
-    }
-    opengl.currentPassType = RT_MODULE_RENDER;
-    opengl.currentRenderPass = &pass;
-
-    auto* moduleNative = gl_module_native(pass.module.handle, pass.module.native);
-    glUseProgram(moduleNative->program);
-    glBindVertexArray(moduleNative->vao);
-
-    glDisable(GL_SCISSOR_TEST);
-
-    bool offscreen = pass.depth.texture_view.handle;
-    for (size_t i = 0; i < std::size(pass.colors) && !offscreen; ++i)
-    {
-        if (pass.colors[i].texture_view.handle)
-            offscreen = true;
-    }
-    if (offscreen)
-    {
-        glGenFramebuffers(1, &opengl.framebuffer);
-        glBindFramebuffer(GL_FRAMEBUFFER, opengl.framebuffer);
-
-        // Render State
-
-        int32_t colorCount = 0;
-        uint32_t width = 0, height = 0;
-        GLenum colorAttachments[RT_MAX_COLOR_TEXTURE_NUM] = {};
-        for (size_t i = 0; i < std::size(pass.colors); ++i)
-        {
-            if (pass.colors[i].texture_view.handle == 0 || pass.colors[i].texture_view.format == RT_TEXTURE_NONE)
-                continue;
-            GLuint name = gl_texture_view_name(pass.colors[i].texture_view);
-            GLenum target = rt_to_gl_texture_target(pass.colors[i].texture_view.target);
-            glBindTexture(target, name);
-            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + (GLenum)i, target, name, 0);
-            colorAttachments[i] = GL_COLOR_ATTACHMENT0 + (GLenum)i;
-            GLint texWidth = 0, texHeight = 0;
-            glGetTextureLevelParameteriv(name, 0, GL_TEXTURE_WIDTH, &texWidth);
-            glGetTextureLevelParameteriv(name, 0, GL_TEXTURE_HEIGHT, &texHeight);
-            width = std::max(width, (uint32_t)std::max(0, texWidth));
-            height = std::max(height, (uint32_t)std::max(0, texHeight));
-            colorCount = (int32_t)i + 1;
-        }
-        if (colorCount) glDrawBuffers(colorCount, colorAttachments);
-
-        if (pass.depth.texture_view.handle)
-        {
-            GLuint name = gl_texture_view_name(pass.depth.texture_view);
-            GLenum target = rt_to_gl_texture_target(pass.depth.texture_view.target);
-            glBindTexture(target, name);
-            if (rt_texture_has_depth(pass.depth.texture_view.format) && rt_texture_has_stencil(pass.depth.texture_view.format))
-            {
-                glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, target, name, 0);
-            }
-            else if (rt_texture_has_depth(pass.depth.texture_view.format))
-            {
-                glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, target, name, 0);
-            }
-            else if (rt_texture_has_stencil(pass.depth.texture_view.format))
-            {
-                glFramebufferTexture2D(GL_FRAMEBUFFER, GL_STENCIL_ATTACHMENT, target, name, 0);
-            }
-            else
-            {
-                fprintf(stderr, "Invalid depth attachment\n");
-                abort();
-            }
-            GLint texWidth = 0, texHeight = 0;
-            glGetTextureLevelParameteriv(name, 0, GL_TEXTURE_WIDTH, &texWidth);
-            glGetTextureLevelParameteriv(name, 0, GL_TEXTURE_HEIGHT, &texHeight);
-            width = std::max(width, (uint32_t)std::max(0, texWidth));
-            height = std::max(height, (uint32_t)std::max(0, texHeight));
-        }
-
-        if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
-        {
-            fprintf(stderr, "Framebuffer not complete\n");
-            abort();
-        }
-        gl_set_viewport(0, 0, (int32_t)width, (int32_t)height);
-
-        glDisable(GL_BLEND);
-        for (size_t i = 0; i < std::size(pass.colors); ++i)
-        {
-            if (pass.colors[i].texture_view.handle == 0 || pass.colors[i].texture_view.format == RT_TEXTURE_NONE)
-                continue;
-
-            if (pass.colors[i].clear)
-            {
-                glColorMask(true, true, true, true);
-                glClearBufferfv(GL_COLOR, (int32_t)i, &pass.colors[i].value.r);
-            }
-
-            if (pass.module.colors[i].color.func != RT_FUNC_ADD || pass.module.colors[i].color.src != RT_BLEND_ONE ||
-                pass.module.colors[i].color.dst != RT_BLEND_ZERO || pass.module.colors[i].alpha.func != RT_FUNC_ADD ||
-                pass.module.colors[i].alpha.src != RT_BLEND_ONE || pass.module.colors[i].alpha.dst != RT_BLEND_ZERO)
-            {
-                glEnable(GL_BLEND);
-            }
-
-            glBlendEquationSeparatei(i, rt_to_gl_blend_op(pass.module.colors[i].color.func), rt_to_gl_blend_op(pass.module.colors[i].alpha.func));
-            glBlendFuncSeparatei(i, rt_to_gl_blend_factor(pass.module.colors[i].color.src), rt_to_gl_blend_factor(pass.module.colors[i].color.dst), rt_to_gl_blend_factor(pass.module.colors[i].alpha.src), rt_to_gl_blend_factor(pass.module.colors[i].alpha.dst));
-        }
-
-        if (pass.depth.texture_view.handle &&
-            (rt_texture_has_depth(pass.depth.texture_view.format) || rt_texture_has_stencil(pass.depth.texture_view.format)))
-        {
-            if (pass.depth.clear && rt_texture_has_depth(pass.depth.texture_view.format))
-            {
-                glClearBufferfv(GL_DEPTH, 0, &pass.depth.value);
-            }
-            if (pass.stencil.clear && rt_texture_has_stencil(pass.depth.texture_view.format))
-            {
-                glClearBufferiv(GL_STENCIL, 0, &pass.stencil.value);
-            }
-        }
-
-        // Depth State
-
-        if (pass.module.depth.func == RT_ALWAYS && pass.module.depth.write == false)
-        {
-            glDisable(GL_DEPTH_TEST);
-            glDepthMask(GL_TRUE);
-        }
-        else
-        {
-            glEnable(GL_DEPTH_TEST);
-            glDepthMask(pass.module.depth.write);
-        }
-        glDepthFunc(rt_to_gl_compare(pass.module.depth.func));
-
-        if (pass.module.depth.bias == 0 && pass.module.depth.biasSlope == 0)
-        {
-            glDisable(GL_POLYGON_OFFSET_FILL);
-        }
-        else
-        {
-            glEnable(GL_POLYGON_OFFSET_FILL);
-            glPolygonOffsetClamp(pass.module.depth.biasSlope, pass.module.depth.bias, pass.module.depth.biasClamp);
-        }
-
-        // Stencil State
-
-        if (pass.module.stencil.back.func != RT_ALWAYS || pass.module.stencil.back.sfail != RT_STENCIL_KEEP ||
-            pass.module.stencil.back.zfail != RT_STENCIL_KEEP || pass.module.stencil.back.zpass != RT_STENCIL_KEEP ||
-            pass.module.stencil.front.func != RT_ALWAYS || pass.module.stencil.front.sfail != RT_STENCIL_KEEP ||
-            pass.module.stencil.front.zfail != RT_STENCIL_KEEP || pass.module.stencil.front.zpass != RT_STENCIL_KEEP)
-        {
-            glEnable(GL_STENCIL_TEST);
-        }
-        else
-        {
-            glDisable(GL_STENCIL_TEST);
-        }
-        glStencilMask(pass.module.stencil.write);
-        glStencilFuncSeparate(GL_BACK, rt_to_gl_compare(pass.module.stencil.back.func), pass.stencil.refer, pass.module.stencil.read);
-        glStencilFuncSeparate(GL_FRONT, rt_to_gl_compare(pass.module.stencil.front.func), pass.stencil.refer, pass.module.stencil.read);
-        glStencilOpSeparate(GL_BACK, rt_to_gl_stencil_op(pass.module.stencil.back.sfail), rt_to_gl_stencil_op(pass.module.stencil.back.zfail), rt_to_gl_stencil_op(pass.module.stencil.back.zpass));
-        glStencilOpSeparate(GL_FRONT, rt_to_gl_stencil_op(pass.module.stencil.front.sfail), rt_to_gl_stencil_op(pass.module.stencil.front.zfail), rt_to_gl_stencil_op(pass.module.stencil.front.zpass));
-    }
-    else
-    {
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
-
-        if (pass.screen.color.clear)
-        {
-            glClearBufferfv(GL_COLOR, 0, &pass.screen.color.value.r);
-        }
-        if (pass.screen.depth.clear)
-        {
-            glClearBufferfv(GL_DEPTH, 0, &pass.screen.depth.value);
-        }
-        if (pass.screen.stencil.clear)
-        {
-            glClearBufferiv(GL_STENCIL, 0, &pass.screen.stencil.value);
-        }
-
-        // Render State
-
-        if (pass.screen.color.blend.func != RT_FUNC_ADD || pass.screen.color.blend.src != RT_BLEND_ONE ||
-            pass.screen.color.blend.dst != RT_BLEND_ZERO)
-        {
-            glEnable(GL_BLEND);
-        }
-        else
-        {
-            glDisable(GL_BLEND);
-        }
-        glBlendEquation(rt_to_gl_blend_op(pass.screen.color.blend.func));
-        glBlendFunc(rt_to_gl_blend_factor(pass.screen.color.blend.src), rt_to_gl_blend_factor(pass.screen.color.blend.dst));
-
-        // Depth State
-
-        if (pass.screen.depth.func == RT_ALWAYS && pass.screen.depth.write == false)
-        {
-            glDisable(GL_DEPTH_TEST);
-            glDepthMask(GL_TRUE);
-        }
-        else
-        {
-            glEnable(GL_DEPTH_TEST);
-            glDepthMask(pass.screen.depth.write);
-        }
-        glDepthFunc(rt_to_gl_compare(pass.screen.depth.func));
-
-        if (pass.screen.depth.bias == 0 && pass.screen.depth.biasSlope == 0)
-        {
-            glDisable(GL_POLYGON_OFFSET_FILL);
-        }
-        else
-        {
-            glEnable(GL_POLYGON_OFFSET_FILL);
-            glPolygonOffsetClamp(pass.screen.depth.biasSlope, pass.screen.depth.bias, pass.screen.depth.biasClamp);
-        }
-
-        // Stencil State
-
-        if (pass.screen.stencil.func != RT_ALWAYS || pass.screen.stencil.sfail != RT_STENCIL_KEEP ||
-            pass.screen.stencil.zfail != RT_STENCIL_KEEP || pass.screen.stencil.zpass != RT_STENCIL_KEEP)
-        {
-            glEnable(GL_STENCIL_TEST);
-        }
-        else
-        {
-            glDisable(GL_STENCIL_TEST);
-        }
-        glStencilMask(pass.screen.stencil.write);
-        glStencilFunc(rt_to_gl_compare(pass.screen.stencil.func), pass.screen.stencil.refer, pass.screen.stencil.read);
-        glStencilOp(rt_to_gl_stencil_op(pass.screen.stencil.sfail), rt_to_gl_stencil_op(pass.screen.stencil.zfail), rt_to_gl_stencil_op(pass.screen.stencil.zpass));
-    }
-
-    // Primitive State
-
-    glFrontFace(rt_to_gl_wind_mode(pass.module.wind_mode));
-    if (pass.module.cull_mode)
-    {
-        glCullFace(rt_to_gl_cull(pass.module.cull_mode));
-    }
-    if (pass.module.cull_mode)
-    {
-        glEnable(GL_CULL_FACE);
-    }
-    else
-    {
-        glDisable(GL_CULL_FACE);
-    }
-
-    glPolygonMode(GL_FRONT_AND_BACK, rt_to_gl_fill(pass.module.fill_mode));
-}
-
-void gl_end_render(rt_pass_render_t& pass)
-{
-    if (pass.module.handle == 0)
-    {
-        fprintf(stderr, "Pipeline module is not created\n");
-        abort();
-    }
-    if (opengl.currentRenderPass != &pass)
-    {
-        fprintf(stderr, "Pipeline not end\n");
-        abort();
-    }
-    opengl.currentPassType = RT_MODULE_NONE;
-    opengl.currentRenderPass = nullptr;
-
-    bool offscreen = pass.depth.texture_view.handle;
-    for (size_t i = 0; i < std::size(pass.colors) && !offscreen; ++i)
-    {
-        if (pass.colors[i].texture_view.handle)
-            offscreen = true;
-    }
-    if (offscreen)
-    {
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
-        if (opengl.framebuffer)
-        {
-            glDeleteFramebuffers(1, &opengl.framebuffer);
-            opengl.framebuffer = 0;
-        }
-    }
-    pass.handle = 0;
-    pass.native = nullptr;
-
-    glUseProgram(0);
-}
-
-void gl_set_viewport(int32_t x, int32_t y, int32_t width, int32_t height)
-{
-    if (opengl.currentPipeline == nullptr)
-    {
-        fprintf(stderr, "Pipeline not begin\n");
-        abort();
-    }
-    if (opengl.currentPassType != RT_MODULE_RENDER)
-    {
-        fprintf(stderr, "Pipeline not begin\n");
-        abort();
-    }
-
-    glViewport(x, y, width, height);
-}
-
-void gl_set_scissor(int32_t x, int32_t y, int32_t width, int32_t height)
-{
-    if (opengl.currentPipeline == nullptr)
-    {
-        fprintf(stderr, "Pipeline not begin\n");
-        abort();
-    }
-    if (opengl.currentPassType != RT_MODULE_RENDER)
-    {
-        fprintf(stderr, "Pipeline not begin\n");
-        abort();
-    }
-
-    glEnable(GL_SCISSOR_TEST);
-    glScissor(x, y, width, height);
-}
-
-void gl_draw_mesh_task(uint32_t groupX, uint32_t groupY, uint32_t groupZ)
-{
-    if (opengl.currentPipeline == nullptr)
-    {
-        fprintf(stderr, "Pipeline not begin\n");
-        abort();
-    }
-    if (opengl.currentPassType != RT_MODULE_RENDER)
-    {
-        fprintf(stderr, "Pipeline not begin\n");
-        abort();
-    }
-
-    glDrawMeshTasksNV(0, std::max(1U, groupX) * std::max(1U, groupY) * std::max(1U, groupZ));
-}
-
-void gl_draw_mesh_task_indirect(rt_buffer_t& indirect, size_t offset, uint32_t draw_count, uint32_t draw_stride)
-{
-    if (opengl.currentPipeline == nullptr)
-    {
-        fprintf(stderr, "Pipeline not begin\n");
-        abort();
-    }
-    if (opengl.currentPassType != RT_MODULE_RENDER)
-    {
-        fprintf(stderr, "Pipeline not begin\n");
-        abort();
-    }
-
-    glBindBuffer(GL_DRAW_INDIRECT_BUFFER, gl_buffer_name(indirect));
-    glMultiDrawMeshTasksIndirectNV((GLintptr)offset, (GLsizei)draw_count, (GLsizei)draw_stride);
 }
 
 // ====================================================================
@@ -2656,66 +2795,6 @@ void gl_copy_texture_buffer(rt_buffer_texel_t source, rt_texture_copy_t destinat
     glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
 }
 
-// ====================================================================
-
-static GLsizei rt_to_gl_vertex_size(rt_vertex_format_t format)
-{
-    switch (format)
-    {
-        case RT_VERTEX_NONE: return 0;
-        case RT_VERTEX_UINT8: return 1;
-        case RT_VERTEX_UINT8X2: return 2;
-        case RT_VERTEX_UINT8X4: return 4;
-        case RT_VERTEX_SINT8: return 1;
-        case RT_VERTEX_SINT8X2: return 2;
-        case RT_VERTEX_SINT8X4: return 4;
-        case RT_VERTEX_UNORM8: return 1;
-        case RT_VERTEX_UNORM8X2: return 2;
-        case RT_VERTEX_UNORM8X4: return 4;
-        case RT_VERTEX_SNORM8: return 1;
-        case RT_VERTEX_SNORM8X2: return 2;
-        case RT_VERTEX_SNORM8X4: return 4;
-        case RT_VERTEX_UINT16: return 2;
-        case RT_VERTEX_UINT16X2: return 4;
-        case RT_VERTEX_UINT16X4: return 8;
-        case RT_VERTEX_SINT16: return 2;
-        case RT_VERTEX_SINT16X2: return 4;
-        case RT_VERTEX_SINT16X4: return 8;
-        case RT_VERTEX_UNORM16: return 2;
-        case RT_VERTEX_UNORM16X2: return 4;
-        case RT_VERTEX_UNORM16X4: return 8;
-        case RT_VERTEX_SNORM16: return 2;
-        case RT_VERTEX_SNORM16X2: return 4;
-        case RT_VERTEX_SNORM16X4: return 8;
-        case RT_VERTEX_FLOAT16: return 2;
-        case RT_VERTEX_FLOAT16X2: return 4;
-        case RT_VERTEX_FLOAT16X4: return 8;
-        case RT_VERTEX_FLOAT32: return 4;
-        case RT_VERTEX_FLOAT32X2: return 8;
-        case RT_VERTEX_FLOAT32X3: return 12;
-        case RT_VERTEX_FLOAT32X4: return 16;
-        case RT_VERTEX_UINT32: return 4;
-        case RT_VERTEX_UINT32X2: return 8;
-        case RT_VERTEX_UINT32X3: return 12;
-        case RT_VERTEX_UINT32X4: return 16;
-        case RT_VERTEX_SINT32: return 4;
-        case RT_VERTEX_SINT32X2: return 8;
-        case RT_VERTEX_SINT32X3: return 12;
-        case RT_VERTEX_SINT32X4: return 16;
-        default: return 0;
-    }
-}
-
-static GLenum rt_to_gl_index_type(rt_index_type_t type)
-{
-    switch (type)
-    {
-    case RT_INDEX_UINT16: return GL_UNSIGNED_SHORT;
-    case RT_INDEX_UINT32: return GL_UNSIGNED_INT;
-    default: return GL_UNSIGNED_INT;
-    }
-}
-
 static GLsizei rt_index_size(rt_index_type_t type)
 {
     switch (type)
@@ -2766,124 +2845,6 @@ void gl_destroy_mesh(rt_mesh_t& mesh)
     mesh.native = nullptr;
 }
 
-void gl_draw_array(rt_buffer_t vbo[], uint32_t vbo_num, uint32_t vertex_num, uint32_t instance_num, uint32_t vertex_start, uint32_t instance_start)
-{
-    if (opengl.currentPipeline == nullptr)
-    {
-        fprintf(stderr, "Pipeline not begin\n");
-        abort();
-    }
-    if (opengl.currentPassType != RT_MODULE_RENDER)
-    {
-        fprintf(stderr, "Pipeline not begin\n");
-        abort();
-    }
-
-    rt_module_render_t const& module = opengl.currentRenderPass->module;
-    uint32_t count = vbo_num;
-    if (count > std::size(module.vertex))
-        count = (uint32_t)std::size(module.vertex);
-    for (uint32_t i = 0; i < count; ++i)
-    {
-        rt_vertex_t const& layout = module.vertex[i];
-        if (layout.format == RT_VERTEX_NONE || !vbo || vbo[i].handle == 0)
-            continue;
-        GLsizei stride = rt_to_gl_vertex_size(layout.format);
-        glBindVertexBuffer(i, gl_buffer_name(vbo[i]), 0, stride);
-    }
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
-    glDrawArraysInstancedBaseInstance(rt_to_gl_primitive(module.primitive), (GLint)vertex_start, (GLsizei)vertex_num, (GLsizei)instance_num, instance_start);
-}
-
-void gl_draw_index(rt_buffer_t vbo[], uint32_t vbo_num, rt_buffer_t& ebo, uint32_t vertex_num, uint32_t instance_num, uint32_t vertex_start, uint32_t instance_start)
-{
-    if (opengl.currentPipeline == nullptr)
-    {
-        fprintf(stderr, "Pipeline not begin\n");
-        abort();
-    }
-    if (opengl.currentPassType != RT_MODULE_RENDER)
-    {
-        fprintf(stderr, "Pipeline not begin\n");
-        abort();
-    }
-
-    rt_module_render_t const& module = opengl.currentRenderPass->module;
-    uint32_t count = vbo_num;
-    if (count > std::size(module.vertex))
-        count = (uint32_t)std::size(module.vertex);
-    for (uint32_t i = 0; i < count; ++i)
-    {
-        rt_vertex_t const& layout = module.vertex[i];
-        if (layout.format == RT_VERTEX_NONE || !vbo || vbo[i].handle == 0)
-            continue;
-        GLsizei stride = rt_to_gl_vertex_size(layout.format);
-        glBindVertexBuffer(i, gl_buffer_name(vbo[i]), 0, stride);
-    }
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, gl_buffer_name(ebo));
-    glDrawElementsInstancedBaseVertexBaseInstance(rt_to_gl_primitive(module.primitive), (GLsizei)vertex_num, rt_to_gl_index_type(module.index_type), (void*)0, (GLsizei)instance_num, (GLint)vertex_start, instance_start);
-}
-
-void gl_draw_array_indirect(rt_buffer_t vbo[], uint32_t vbo_num, rt_buffer_t& indirect, size_t offset)
-{
-    if (opengl.currentPipeline == nullptr)
-    {
-        fprintf(stderr, "Pipeline not begin\n");
-        abort();
-    }
-    if (opengl.currentPassType != RT_MODULE_RENDER)
-    {
-        fprintf(stderr, "Pipeline not begin\n");
-        abort();
-    }
-
-    rt_module_render_t const& module = opengl.currentRenderPass->module;
-    uint32_t count = vbo_num;
-    if (count > std::size(module.vertex))
-        count = (uint32_t)std::size(module.vertex);
-    for (uint32_t i = 0; i < count; ++i)
-    {
-        rt_vertex_t const& layout = module.vertex[i];
-        if (layout.format == RT_VERTEX_NONE || !vbo || vbo[i].handle == 0)
-            continue;
-        GLsizei stride = rt_to_gl_vertex_size(layout.format);
-        glBindVertexBuffer(i, gl_buffer_name(vbo[i]), 0, stride);
-    }
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
-    glBindBuffer(GL_DRAW_INDIRECT_BUFFER, gl_buffer_name(indirect));
-    glDrawArraysIndirect(rt_to_gl_primitive(module.primitive), (void*)offset);
-}
-
-void gl_draw_index_indirect(rt_buffer_t vbo[], uint32_t vbo_num, rt_buffer_t& ebo, rt_buffer_t& indirect, size_t offset)
-{
-    if (opengl.currentPipeline == nullptr)
-    {
-        fprintf(stderr, "Pipeline not begin\n");
-        abort();
-    }
-    if (opengl.currentPassType != RT_MODULE_RENDER)
-    {
-        fprintf(stderr, "Pipeline not begin\n");
-        abort();
-    }
-
-    rt_module_render_t const& module = opengl.currentRenderPass->module;
-    uint32_t count = vbo_num;
-    if (count > std::size(module.vertex))
-        count = (uint32_t)std::size(module.vertex);
-    for (uint32_t i = 0; i < count; ++i)
-    {
-        rt_vertex_t const& layout = module.vertex[i];
-        if (layout.format == RT_VERTEX_NONE || !vbo || vbo[i].handle == 0)
-            continue;
-        GLsizei stride = rt_to_gl_vertex_size(layout.format);
-        glBindVertexBuffer(i, gl_buffer_name(vbo[i]), 0, stride);
-    }
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, gl_buffer_name(ebo));
-    glBindBuffer(GL_DRAW_INDIRECT_BUFFER, gl_buffer_name(indirect));
-    glDrawElementsIndirect(rt_to_gl_primitive(module.primitive), rt_to_gl_index_type(module.index_type), (void*)offset);
-}
-
 void gl_draw_mesh(rt_mesh_t& mesh)
 {
     if (opengl.currentPipeline == nullptr)
@@ -2897,7 +2858,7 @@ void gl_draw_mesh(rt_mesh_t& mesh)
         abort();
     }
 
-    rt_module_render_t const& module = opengl.currentRenderPass->module;
+    rt_module_render_t const& module = gl_current_render_module();
 
     GLsizei vertex_count = 0;
     for (uint32_t i = 0; i < std::size(module.vertex); ++i)
@@ -2947,7 +2908,7 @@ void gl_draw_mesh_multi(rt_mesh_t& mesh, uint32_t count)
         abort();
     }
 
-    rt_module_render_t const& module = opengl.currentRenderPass->module;
+    rt_module_render_t const& module = gl_current_render_module();
 
     GLsizei vertex_count = 0;
     for (uint32_t i = 0; i < std::size(module.vertex); ++i)
@@ -3039,7 +3000,7 @@ void gl_draw_meshlet(rt_meshlet_t& meshlet)
         abort();
     }
 
-    rt_module_render_t const& module = opengl.currentRenderPass->module;
+    rt_module_render_t const& module = gl_current_render_module();
 
     uint32_t index_binding = 0;
     for (uint32_t i = 0; i < std::size(module.vertex); ++i)
@@ -3121,8 +3082,9 @@ void gl_draw_screen(int width, int height, rt_color_t clear, rt_texture_t& textu
         }
     )";
     static auto module = gl_create_module_render({.vshader = {.code = VS}, .fshader = {.code = FS}, .vertex = {rt_vertex_vertex, {}, rt_vertex_uv,},});
-    rt_pass_render_t pass = {.module = module, .screen = {.color = { .clear = true, .value = clear,}}};
+    rt_pass_render_t pass = {.screen = {.color = { .clear = true, .value = clear,}}};
     gl_begin_render(pass);
+    gl_bind_module_render(module);
     gl_set_viewport(0, 0, width, height);
     gl_bind_texture(texture, {.binding = 0,});
     if (texture.handle)

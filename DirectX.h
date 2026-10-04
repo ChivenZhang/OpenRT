@@ -37,9 +37,26 @@ void dx_bind_sampler(rt_sampler_t& sampler, rt_sampler_bind_t bind = {});
 
 rt_module_compute_t dx_create_module_compute(rt_module_compute_info_t const& info);
 rt_module_render_t dx_create_module_render(rt_module_render_info_t const& info);
-rt_module_render_t dx_create_module_meshlet(rt_module_render_info_t const& info);
 void dx_destroy_module_render(rt_module_render_t& module);
 void dx_destroy_module_compute(rt_module_compute_t& module);
+
+void dx_begin_compute(rt_pass_compute_t& pass);
+void dx_end_compute(rt_pass_compute_t& pass);
+void dx_bind_module_compute(rt_module_compute_t& module);
+void dx_dispatch_compute(uint32_t groupX, uint32_t groupY, uint32_t groupZ);
+void dx_dispatch_compute_indirect(rt_buffer_t& indirect, size_t offset);
+
+void dx_begin_render(rt_pass_render_t& pass);
+void dx_end_render(rt_pass_render_t& pass);
+void dx_bind_module_render(rt_module_render_t& module);
+void dx_set_viewport(int32_t x, int32_t y, int32_t width, int32_t height);
+void dx_set_scissor(int32_t x, int32_t y, int32_t width, int32_t height);
+void dx_draw_array(rt_buffer_t vbo[], uint32_t vbo_num, uint32_t vertex_num, uint32_t instance_num, uint32_t vertex_start, uint32_t instance_start);
+void dx_draw_index(rt_buffer_t vbo[], uint32_t vbo_num, rt_buffer_t& ebo, uint32_t vertex_num, uint32_t instance_num, uint32_t vertex_start, uint32_t instance_start);
+void dx_draw_array_indirect(rt_buffer_t vbo[], uint32_t vbo_num, rt_buffer_t& indirect, size_t offset);
+void dx_draw_index_indirect(rt_buffer_t vbo[], uint32_t vbo_num, rt_buffer_t& ebo, rt_buffer_t& indirect, size_t offset);
+void dx_draw_mesh_task(uint32_t groupX, uint32_t groupY = 1, uint32_t groupZ = 1);
+void dx_draw_mesh_task_indirect(rt_buffer_t& indirect, size_t offset, uint32_t draw_count, uint32_t draw_stride);
 
 void dx_push_constant(uint8_t const* buffer, size_t length);
 void dx_push_const_int(const char* name, int32_t value);
@@ -50,18 +67,6 @@ void dx_push_const_vec3(const char* name, const float* value);
 void dx_push_const_vec4(const char* name, const float* value);
 void dx_push_const_mat3(const char* name, const float* value);
 void dx_push_const_mat4(const char* name, const float* value);
-
-void dx_begin_compute(rt_pass_compute_t& pass);
-void dx_end_compute(rt_pass_compute_t& pass);
-void dx_dispatch_compute(uint32_t groupX, uint32_t groupY, uint32_t groupZ);
-void dx_dispatch_compute_indirect(rt_buffer_t& indirect, size_t offset);
-
-void dx_begin_render(rt_pass_render_t& pass);
-void dx_end_render(rt_pass_render_t& pass);
-void dx_set_viewport(int32_t x, int32_t y, int32_t width, int32_t height);
-void dx_set_scissor(int32_t x, int32_t y, int32_t width, int32_t height);
-void dx_draw_mesh_task(uint32_t groupX, uint32_t groupY = 1, uint32_t groupZ = 1);
-void dx_draw_mesh_task_indirect(rt_buffer_t& indirect, size_t offset, uint32_t draw_count, uint32_t draw_stride);
 
 void dx_begin_transfer(rt_pass_transfer_t& pass);
 void dx_end_transfer(rt_pass_transfer_t& pass);
@@ -75,10 +80,6 @@ void dx_copy_texture_buffer(rt_buffer_texel_t source, rt_texture_copy_t destinat
 rt_mesh_t dx_create_mesh(const float* vertices, const float* normals, const float* uvs, size_t vertex_count, const unsigned int* indices, size_t index_count);
 void dx_destroy_mesh(rt_mesh_t& mesh);
 void dx_draw_mesh(rt_mesh_t& mesh);
-void dx_draw_array(rt_buffer_t vbo[], uint32_t vbo_num, uint32_t vertex_num, uint32_t instance_num, uint32_t vertex_start, uint32_t instance_start);
-void dx_draw_index(rt_buffer_t vbo[], uint32_t vbo_num, rt_buffer_t& ebo, uint32_t vertex_num, uint32_t instance_num, uint32_t vertex_start, uint32_t instance_start);
-void dx_draw_array_indirect(rt_buffer_t vbo[], uint32_t vbo_num, rt_buffer_t& indirect, size_t offset);
-void dx_draw_index_indirect(rt_buffer_t vbo[], uint32_t vbo_num, rt_buffer_t& ebo, rt_buffer_t& indirect, size_t offset);
 void dx_draw_mesh_multi(rt_mesh_t& mesh, uint32_t count);
 
 rt_meshlet_t dx_create_meshlet(const float* vertices, const float* normals, const float* uvs, size_t vertex_count, const unsigned int* indices, size_t index_count);

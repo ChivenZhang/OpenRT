@@ -662,7 +662,6 @@ struct rt_module_render_t
 struct rt_pass_compute_t
 {
     uint32_t handle = 0;
-    rt_module_compute_t& module;
     void* native = nullptr;
 };
 
@@ -674,7 +673,6 @@ struct rt_color_t
 struct rt_pass_render_t
 {
     uint32_t handle = 0;
-    rt_module_render_t& module;
 
     struct
     {
@@ -834,17 +832,18 @@ OPENRT_API void (*rt_bind_sampler)(rt_sampler_t& sampler, rt_sampler_bind_t bind
 
 OPENRT_API rt_module_compute_t (*rt_create_module_compute)(rt_module_compute_info_t const& info);
 OPENRT_API rt_module_render_t (*rt_create_module_render)(rt_module_render_info_t const& info);
-OPENRT_API rt_module_render_t (*rt_create_module_meshlet)(rt_module_render_info_t const& info);
 OPENRT_API void (*rt_destroy_module_render)(rt_module_render_t& module);
 OPENRT_API void (*rt_destroy_module_compute)(rt_module_compute_t& module);
 
 OPENRT_API void (*rt_begin_compute)(rt_pass_compute_t& pass);
 OPENRT_API void (*rt_end_compute)(rt_pass_compute_t& pass);
+OPENRT_API void (*rt_bind_module_compute)(rt_module_compute_t& module);
 OPENRT_API void (*rt_dispatch_compute)(uint32_t groupX, uint32_t groupY, uint32_t groupZ);
 OPENRT_API void (*rt_dispatch_compute_indirect)(rt_buffer_t& indirect, size_t offset);
 
 OPENRT_API void (*rt_begin_render)(rt_pass_render_t& pass);
 OPENRT_API void (*rt_end_render)(rt_pass_render_t& pass);
+OPENRT_API void (*rt_bind_module_render)(rt_module_render_t& module);
 OPENRT_API void (*rt_set_viewport)(int32_t x, int32_t y, int32_t width, int32_t height);
 OPENRT_API void (*rt_set_scissor)(int32_t x, int32_t y, int32_t width, int32_t height);
 OPENRT_API void (*rt_draw_array)(rt_buffer_t vbo[], uint32_t vbo_num, uint32_t vertex_num, uint32_t instance_num, uint32_t vertex_start, uint32_t instance_start);

@@ -142,8 +142,9 @@ void frame(int width, int height)
         .mipmaps = 1,
     });
     {
-        rt_pass_render_t pass = {.module = module, .colors = {{.texture_view = pass_color.default_view, .clear = true,}},};
+        rt_pass_render_t pass = {.colors = {{.texture_view = pass_color.default_view, .clear = true,}},};
         rt_begin_render(pass);
+        rt_bind_module_render(module);
 
         static auto mesh = rt_create_mesh_triangle(1);
         rt_draw_mesh(mesh);

@@ -710,6 +710,8 @@ struct vk_native_t
         rt_pass_compute_t* currentComputePass;
         rt_pass_transfer_t* currentTransferPass;
     };
+    rt_module_render_t* currentRenderModule = nullptr;
+    rt_module_compute_t* currentComputeModule = nullptr;
 
 } static vulkan;
 
@@ -910,7 +912,7 @@ static void vk_begin_rendering()
     auto& pass = *vulkan.currentRenderPass;
     for (uint32_t i = 0; i < RT_MAX_COLOR_TEXTURE_NUM; ++i)
     {
-        if (pass.module.colors[i].format == RT_TEXTURE_NONE || pass.colors[i].texture_view.format == RT_TEXTURE_NONE)
+        if (pass.colors[i].texture_view.format == RT_TEXTURE_NONE)
             continue;
         if (auto* view = vk_texture_view_native(pass.colors[i].texture_view.handle))
         {
@@ -954,11 +956,21 @@ static vk_sampler_native_t* vk_sampler_native(rt_sampler_t const& sampler)
 
 static vk_module_native_t* vk_current_module_native()
 {
-    if (vulkan.currentPassType == RT_MODULE_COMPUTE && vulkan.currentComputePass)
-        return (vk_module_native_t*)vulkan.currentComputePass->module.native;
-    if (vulkan.currentPassType == RT_MODULE_RENDER && vulkan.currentRenderPass)
-        return (vk_module_native_t*)vulkan.currentRenderPass->module.native;
+    if (vulkan.currentPassType == RT_MODULE_COMPUTE && vulkan.currentComputeModule)
+        return (vk_module_native_t*)vulkan.currentComputeModule->native;
+    if (vulkan.currentPassType == RT_MODULE_RENDER && vulkan.currentRenderModule)
+        return (vk_module_native_t*)vulkan.currentRenderModule->native;
     return nullptr;
+}
+
+static rt_module_render_t const& vk_current_render_module()
+{
+    if (vulkan.currentRenderModule == nullptr)
+    {
+        fprintf(stderr, "Pipeline module not bound\n");
+        abort();
+    }
+    return *vulkan.currentRenderModule;
 }
 
 static VkShaderModule vk_create_shader_module(const char* spirv, uint32_t length)
@@ -1181,15 +1193,16 @@ void vk_load_library(VkInstance instance, VkPhysicalDevice physical, VkDevice de
     rt_bind_sampler = vk_bind_sampler;
     rt_create_module_compute = vk_create_module_compute;
     rt_create_module_render = vk_create_module_render;
-    rt_create_module_meshlet = vk_create_module_meshlet;
     rt_destroy_module_render = vk_destroy_module_render;
     rt_destroy_module_compute = vk_destroy_module_compute;
     rt_begin_compute = vk_begin_compute;
     rt_end_compute = vk_end_compute;
+    rt_bind_module_compute = vk_bind_module_compute;
     rt_dispatch_compute = vk_dispatch_compute;
     rt_dispatch_compute_indirect = vk_dispatch_compute_indirect;
     rt_begin_render = vk_begin_render;
     rt_end_render = vk_end_render;
+    rt_bind_module_render = vk_bind_module_render;
     rt_set_viewport = vk_set_viewport;
     rt_set_scissor = vk_set_scissor;
     rt_draw_mesh_task = vk_draw_mesh_task;
@@ -1321,15 +1334,16 @@ void vk_unload_library()
     if (rt_bind_sampler == vk_bind_sampler) rt_bind_sampler = nullptr;
     if (rt_create_module_compute == vk_create_module_compute) rt_create_module_compute = nullptr;
     if (rt_create_module_render == vk_create_module_render) rt_create_module_render = nullptr;
-    if (rt_create_module_meshlet == vk_create_module_meshlet) rt_create_module_meshlet = nullptr;
     if (rt_destroy_module_render == vk_destroy_module_render) rt_destroy_module_render = nullptr;
     if (rt_destroy_module_compute == vk_destroy_module_compute) rt_destroy_module_compute = nullptr;
     if (rt_begin_compute == vk_begin_compute) rt_begin_compute = nullptr;
     if (rt_end_compute == vk_end_compute) rt_end_compute = nullptr;
+    if (rt_bind_module_compute == vk_bind_module_compute) rt_bind_module_compute = nullptr;
     if (rt_dispatch_compute == vk_dispatch_compute) rt_dispatch_compute = nullptr;
     if (rt_dispatch_compute_indirect == vk_dispatch_compute_indirect) rt_dispatch_compute_indirect = nullptr;
     if (rt_begin_render == vk_begin_render) rt_begin_render = nullptr;
     if (rt_end_render == vk_end_render) rt_end_render = nullptr;
+    if (rt_bind_module_render == vk_bind_module_render) rt_bind_module_render = nullptr;
     if (rt_set_viewport == vk_set_viewport) rt_set_viewport = nullptr;
     if (rt_set_scissor == vk_set_scissor) rt_set_scissor = nullptr;
     if (rt_draw_mesh_task == vk_draw_mesh_task) rt_draw_mesh_task = nullptr;
@@ -1956,11 +1970,34 @@ rt_module_render_t vk_create_module_render(rt_module_render_info_t const& info)
     if (!vulkan.device) return result;
     uint32_t handle = vulkan.moduleID + 1;
     auto& native = vulkan.modules[handle];
-    native.shaderStages = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
     if (info.vshader.code)
     {
+        native.shaderStages = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
         native.vshader = vk_create_shader_module(info.vshader.code, info.vshader.size);
         if (!native.vshader) { vulkan.modules.erase(handle); return {}; }
+    }
+    else if (info.mshader.code)
+    {
+        native.shaderStages = VK_SHADER_STAGE_MESH_BIT_NV | VK_SHADER_STAGE_FRAGMENT_BIT;
+        if (info.tshader.code)
+        {
+            native.shaderStages |= VK_SHADER_STAGE_TASK_BIT_NV;
+            native.tshader = vk_create_shader_module(info.tshader.code, info.tshader.size);
+            if (!native.tshader) { vulkan.modules.erase(handle); return {}; }
+        }
+        native.mshader = vk_create_shader_module(info.mshader.code, info.mshader.size);
+        if (!native.mshader)
+        {
+            result.native = &native;
+            vk_destroy_module_native(handle, result.native);
+            return {};
+        }
+    }
+    else
+    {
+        vulkan.modules.erase(handle);
+        fprintf(stderr, "Render module requires a vertex shader or a mesh shader\n");
+        abort();
     }
     if (info.fshader.code)
     {
@@ -2026,7 +2063,7 @@ rt_module_render_t vk_create_module_render(rt_module_render_info_t const& info)
         return {};
     }
 
-    VkPipelineShaderStageCreateInfo stages[2] = {};
+    VkPipelineShaderStageCreateInfo stages[3] = {};
     uint32_t shaderCount = 0;
     if (native.vshader)
     {
@@ -2034,6 +2071,22 @@ rt_module_render_t vk_create_module_render(rt_module_render_info_t const& info)
         stages[shaderCount].stage = VK_SHADER_STAGE_VERTEX_BIT;
         stages[shaderCount].module = native.vshader;
         stages[shaderCount].pName = (info.vshader.entry && info.vshader.entry[0]) ? info.vshader.entry : "main";
+        shaderCount++;
+    }
+    if (native.tshader)
+    {
+        stages[shaderCount].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+        stages[shaderCount].stage = VK_SHADER_STAGE_TASK_BIT_NV;
+        stages[shaderCount].module = native.tshader;
+        stages[shaderCount].pName = (info.tshader.entry && info.tshader.entry[0]) ? info.tshader.entry : "main";
+        shaderCount++;
+    }
+    if (native.mshader)
+    {
+        stages[shaderCount].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+        stages[shaderCount].stage = VK_SHADER_STAGE_MESH_BIT_NV;
+        stages[shaderCount].module = native.mshader;
+        stages[shaderCount].pName = (info.mshader.entry && info.mshader.entry[0]) ? info.mshader.entry : "main";
         shaderCount++;
     }
     if (native.fshader)
@@ -2170,272 +2223,8 @@ rt_module_render_t vk_create_module_render(rt_module_render_info_t const& info)
     pipelineInfo.pNext = &renderingInfo;
     pipelineInfo.stageCount = shaderCount;
     pipelineInfo.pStages = stages;
-    pipelineInfo.pVertexInputState = &vertexInput;
-    pipelineInfo.pInputAssemblyState = &inputAssembly;
-    pipelineInfo.pViewportState = &viewportState;
-    pipelineInfo.pRasterizationState = &rasterizer;
-    pipelineInfo.pMultisampleState = &multisampling;
-    pipelineInfo.pDepthStencilState = &depthStencil;
-    pipelineInfo.pColorBlendState = &colorBlending;
-    pipelineInfo.pDynamicState = &dynamicState;
-    pipelineInfo.layout = native.pipelineLayout;
-    if (vkCreateGraphicsPipelines(vulkan.device, vulkan.pipelineCache, 1, &pipelineInfo, vulkan.allocator, &native.pipeline) != VK_SUCCESS)
-    {
-        result.native = &native;
-        vk_destroy_module_native(handle, result.native);
-        return {};
-    }
-    vulkan.moduleID = handle;
-    result.handle = handle;
-    result.native = &native;
-
-    for (size_t i = 0; i < std::size(info.colors); ++i)
-    {
-        result.colors[i].format = info.colors[i].format;
-        result.colors[i].color.func = info.colors[i].color.func;
-        result.colors[i].color.src = info.colors[i].color.src;
-        result.colors[i].color.dst = info.colors[i].color.dst;
-        result.colors[i].alpha.func = info.colors[i].alpha.func;
-        result.colors[i].alpha.src = info.colors[i].alpha.src;
-        result.colors[i].alpha.dst = info.colors[i].alpha.dst;
-    }
-    result.depth.write = info.depth.write;
-    result.depth.bias = info.depth.bias;
-    result.depth.biasSlope = info.depth.biasSlope;
-    result.depth.biasClamp = info.depth.biasClamp;
-    result.depth.func = info.depth.func;
-    result.stencil.read = info.stencil.read;
-    result.stencil.write = info.stencil.write;
-    result.stencil.back.func = info.stencil.back.func;
-    result.stencil.back.sfail = info.stencil.back.sfail;
-    result.stencil.back.zfail = info.stencil.back.zfail;
-    result.stencil.back.zpass = info.stencil.back.zpass;
-    result.stencil.front.func = info.stencil.front.func;
-    result.stencil.front.sfail = info.stencil.front.sfail;
-    result.stencil.front.zfail = info.stencil.front.zfail;
-    result.stencil.front.zpass = info.stencil.front.zpass;
-    result.index_type = info.index_type;
-    for (size_t i = 0; i < std::size(info.vertex); ++i)
-        result.vertex[i] = info.vertex[i];
-    for (size_t i = 0; i < std::size(info.binding); ++i)
-        result.binding[i] = info.binding[i];
-    result.cull_mode = info.cull_mode;
-    result.wind_mode = info.wind_mode;
-    result.fill_mode = info.fill_mode;
-    result.primitive = info.primitive;
-    return result;
-}
-
-rt_module_render_t vk_create_module_meshlet(rt_module_render_info_t const& info)
-{
-    rt_module_render_t result = {};
-    if (!info.mshader.code || !info.mshader.size || !vulkan.device) return result;
-    uint32_t handle = vulkan.moduleID + 1;
-    auto& native = vulkan.modules[handle];
-    native.shaderStages = VK_SHADER_STAGE_MESH_BIT_NV | VK_SHADER_STAGE_FRAGMENT_BIT;
-    if (info.tshader.code)
-    {
-        native.shaderStages |= VK_SHADER_STAGE_TASK_BIT_NV;
-        native.tshader = vk_create_shader_module(info.tshader.code, info.tshader.size);
-        if (!native.tshader) { vulkan.modules.erase(handle); return {}; }
-    }
-    native.mshader = vk_create_shader_module(info.mshader.code, info.mshader.size);
-    if (!native.mshader)
-    {
-        result.native = &native;
-        vk_destroy_module_native(handle, result.native);
-        return {};
-    }
-    if (info.fshader.code)
-    {
-        native.fshader = vk_create_shader_module(info.fshader.code, info.fshader.size);
-        if (!native.fshader)
-        {
-            result.native = &native;
-            vk_destroy_module_native(handle, result.native);
-            return {};
-        }
-    }
-    VkDescriptorSetLayoutBinding layoutBindings[RT_MAX_BINDING_HANDLE_NUM] = {};
-    native.descriptorCount = 0;
-    for (uint32_t i = 0; i < RT_MAX_BINDING_HANDLE_NUM; ++i)
-    {
-        if (info.binding[i].type == RT_BINDING_NONE)
-            continue;
-        auto& item = layoutBindings[native.descriptorCount];
-        item.binding = info.binding[i].binding;
-        item.descriptorType = rt_to_vk_descriptor(info.binding[i].type);
-        item.descriptorCount = 1;
-        item.stageFlags = native.shaderStages;
-        native.descriptorBindings[native.descriptorCount] = info.binding[i].binding;
-        native.descriptorTypes[native.descriptorCount] = item.descriptorType;
-        native.descriptorCount++;
-    }
-
-    VkDescriptorSetLayoutCreateInfo setLayoutInfo = {};
-    setLayoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-    setLayoutInfo.bindingCount = native.descriptorCount;
-    setLayoutInfo.pBindings = native.descriptorCount ? layoutBindings : nullptr;
-    if (vkCreateDescriptorSetLayout(vulkan.device, &setLayoutInfo, vulkan.allocator, &native.descriptorSetLayout) != VK_SUCCESS)
-    {
-        result.native = &native;
-        vk_destroy_module_native(handle, result.native);
-        return {};
-    }
-
-    if (native.descriptorCount > 0)
-    {
-        VkDescriptorSetAllocateInfo alloc = {};
-        alloc.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-        alloc.descriptorPool = vulkan.descriptorPool;
-        alloc.descriptorSetCount = 1;
-        alloc.pSetLayouts = &native.descriptorSetLayout;
-        if (vkAllocateDescriptorSets(vulkan.device, &alloc, &native.descriptorSet) != VK_SUCCESS)
-            native.descriptorSet = nullptr;
-    }
-    VkPushConstantRange push = {};
-    push.stageFlags = native.shaderStages;
-    push.offset = 0;
-    push.size = 128;
-    VkPipelineLayoutCreateInfo layoutInfo = {};
-    layoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-    layoutInfo.pushConstantRangeCount = 1;
-    layoutInfo.pPushConstantRanges = &push;
-    layoutInfo.setLayoutCount = native.descriptorSetLayout ? 1 : 0;
-    layoutInfo.pSetLayouts = native.descriptorSetLayout ? &native.descriptorSetLayout : nullptr;
-    if (vkCreatePipelineLayout(vulkan.device, &layoutInfo, vulkan.allocator, &native.pipelineLayout) != VK_SUCCESS)
-    {
-        result.native = &native;
-        vk_destroy_module_native(handle, result.native);
-        return {};
-    }
-
-    VkPipelineShaderStageCreateInfo stages[3] = {};
-    uint32_t shaderCount = 0;
-    if (native.tshader)
-    {
-        stages[shaderCount].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-        stages[shaderCount].stage = VK_SHADER_STAGE_TASK_BIT_NV;
-        stages[shaderCount].module = native.tshader;
-        stages[shaderCount].pName = (info.tshader.entry && info.tshader.entry[0]) ? info.tshader.entry : "main";
-        shaderCount++;
-    }
-    if (native.mshader)
-    {
-        stages[shaderCount].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-        stages[shaderCount].stage = VK_SHADER_STAGE_MESH_BIT_NV;
-        stages[shaderCount].module = native.mshader;
-        stages[shaderCount].pName = (info.mshader.entry && info.mshader.entry[0]) ? info.mshader.entry : "main";
-        shaderCount++;
-    }
-    if (native.fshader)
-    {
-        stages[shaderCount].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-        stages[shaderCount].stage = VK_SHADER_STAGE_FRAGMENT_BIT;
-        stages[shaderCount].module = native.fshader;
-        stages[shaderCount].pName = (info.fshader.entry && info.fshader.entry[0]) ? info.fshader.entry : "main";
-        shaderCount++;
-    }
-
-    VkPipelineViewportStateCreateInfo viewportState = {};
-    viewportState.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
-    viewportState.viewportCount = 1;
-    viewportState.scissorCount = 1;
-
-    VkPipelineRasterizationStateCreateInfo rasterizer = {};
-    rasterizer.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
-    rasterizer.polygonMode = rt_to_vk_fill(info.fill_mode);
-    rasterizer.cullMode = rt_to_vk_cull(info.cull_mode);
-    rasterizer.frontFace = rt_to_vk_wind_mode(info.wind_mode);
-    rasterizer.depthBiasEnable = (info.depth.bias != 0.0f || info.depth.biasSlope != 0.0f) ? VK_TRUE : VK_FALSE;
-    rasterizer.depthBiasConstantFactor = info.depth.bias;
-    rasterizer.depthBiasClamp = info.depth.biasClamp;
-    rasterizer.depthBiasSlopeFactor = info.depth.biasSlope;
-    rasterizer.lineWidth = 1.0f;
-
-    VkPipelineMultisampleStateCreateInfo multisampling = {};
-    multisampling.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
-    multisampling.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
-
-    const bool depthEnabled = (info.depth.func != RT_ALWAYS || info.depth.write);
-    const bool stencilEnabled =
-        (info.stencil.back.func != RT_ALWAYS || info.stencil.back.sfail != RT_STENCIL_KEEP ||
-         info.stencil.back.zfail != RT_STENCIL_KEEP || info.stencil.back.zpass != RT_STENCIL_KEEP ||
-         info.stencil.front.func != RT_ALWAYS || info.stencil.front.sfail != RT_STENCIL_KEEP ||
-         info.stencil.front.zfail != RT_STENCIL_KEEP || info.stencil.front.zpass != RT_STENCIL_KEEP);
-
-    VkPipelineDepthStencilStateCreateInfo depthStencil = {};
-    depthStencil.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
-    depthStencil.depthTestEnable = depthEnabled ? VK_TRUE : VK_FALSE;
-    depthStencil.depthWriteEnable = info.depth.write ? VK_TRUE : VK_FALSE;
-    depthStencil.depthCompareOp = rt_to_vk_compare(info.depth.func);
-    depthStencil.stencilTestEnable = stencilEnabled ? VK_TRUE : VK_FALSE;
-    depthStencil.front.failOp = rt_to_vk_stencil_op(info.stencil.front.sfail);
-    depthStencil.front.passOp = rt_to_vk_stencil_op(info.stencil.front.zpass);
-    depthStencil.front.depthFailOp = rt_to_vk_stencil_op(info.stencil.front.zfail);
-    depthStencil.front.compareOp = rt_to_vk_compare(info.stencil.front.func);
-    depthStencil.front.compareMask = info.stencil.read;
-    depthStencil.front.writeMask = info.stencil.write;
-    depthStencil.back.failOp = rt_to_vk_stencil_op(info.stencil.back.sfail);
-    depthStencil.back.passOp = rt_to_vk_stencil_op(info.stencil.back.zpass);
-    depthStencil.back.depthFailOp = rt_to_vk_stencil_op(info.stencil.back.zfail);
-    depthStencil.back.compareOp = rt_to_vk_compare(info.stencil.back.func);
-    depthStencil.back.compareMask = info.stencil.read;
-    depthStencil.back.writeMask = info.stencil.write;
-
-    uint32_t colorCount = 0;
-    VkPipelineColorBlendAttachmentState colorBlendAttachments[RT_MAX_COLOR_TEXTURE_NUM] = {};
-    VkFormat colorFormats[RT_MAX_COLOR_TEXTURE_NUM] = {};
-    for (uint32_t i = 0; i < RT_MAX_COLOR_TEXTURE_NUM; ++i)
-    {
-        colorFormats[i] = rt_to_vk_texture_format(info.colors[i].format);
-        if (info.colors[i].format == RT_TEXTURE_NONE)
-            continue;
-        colorCount = i + 1;
-        bool blendEnabled =
-            (info.colors[i].color.func != RT_FUNC_ADD || info.colors[i].color.src != RT_BLEND_ONE ||
-             info.colors[i].color.dst != RT_BLEND_ZERO || info.colors[i].alpha.func != RT_FUNC_ADD ||
-             info.colors[i].alpha.src != RT_BLEND_ONE || info.colors[i].alpha.dst != RT_BLEND_ZERO);
-        colorBlendAttachments[i].blendEnable = blendEnabled ? VK_TRUE : VK_FALSE;
-        colorBlendAttachments[i].srcColorBlendFactor = rt_to_vk_blend_factor(info.colors[i].color.src);
-        colorBlendAttachments[i].dstColorBlendFactor = rt_to_vk_blend_factor(info.colors[i].color.dst);
-        colorBlendAttachments[i].colorBlendOp = rt_to_vk_blend_op(info.colors[i].color.func);
-        colorBlendAttachments[i].srcAlphaBlendFactor = rt_to_vk_blend_factor(info.colors[i].alpha.src);
-        colorBlendAttachments[i].dstAlphaBlendFactor = rt_to_vk_blend_factor(info.colors[i].alpha.dst);
-        colorBlendAttachments[i].alphaBlendOp = rt_to_vk_blend_op(info.colors[i].alpha.func);
-        colorBlendAttachments[i].colorWriteMask =
-            VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
-    }
-
-    VkPipelineColorBlendStateCreateInfo colorBlending = {};
-    colorBlending.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
-    colorBlending.attachmentCount = colorCount;
-    colorBlending.pAttachments = colorCount ? colorBlendAttachments : nullptr;
-
-    VkDynamicState dynamicStates[] = {VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR};
-    VkPipelineDynamicStateCreateInfo dynamicState = {};
-    dynamicState.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
-    dynamicState.dynamicStateCount = 2;
-    dynamicState.pDynamicStates = dynamicStates;
-
-    VkFormat depthStencilFormat = VK_FORMAT_UNDEFINED;
-    if (stencilEnabled) depthStencilFormat = VK_FORMAT_D24_UNORM_S8_UINT;
-    else if (depthEnabled) depthStencilFormat = VK_FORMAT_D32_SFLOAT;
-
-    VkPipelineRenderingCreateInfo renderingInfo = {};
-    renderingInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO;
-    renderingInfo.colorAttachmentCount = colorCount;
-    renderingInfo.pColorAttachmentFormats = colorCount ? colorFormats : nullptr;
-    renderingInfo.depthAttachmentFormat = depthStencilFormat;
-    renderingInfo.stencilAttachmentFormat = stencilEnabled ? depthStencilFormat : VK_FORMAT_UNDEFINED;
-
-    VkGraphicsPipelineCreateInfo pipelineInfo = {};
-    pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
-    pipelineInfo.pNext = &renderingInfo;
-    pipelineInfo.stageCount = shaderCount;
-    pipelineInfo.pStages = stages;
-    pipelineInfo.pVertexInputState = nullptr;
-    pipelineInfo.pInputAssemblyState = nullptr;
+    pipelineInfo.pVertexInputState = native.vshader ? &vertexInput : nullptr;
+    pipelineInfo.pInputAssemblyState = native.vshader ? &inputAssembly : nullptr;
     pipelineInfo.pViewportState = &viewportState;
     pipelineInfo.pRasterizationState = &rasterizer;
     pipelineInfo.pMultisampleState = &multisampling;
@@ -2502,37 +2291,11 @@ void vk_destroy_module_compute(rt_module_compute_t& module)
     module.handle = 0;
 }
 
-void vk_push_constant(uint8_t const* buffer, size_t length)
-{
-    if (vulkan.currentPipeline == nullptr)
-    {
-        fprintf(stderr, "Pipeline not begin");
-        abort();
-    }
-    auto* mod = vk_current_module_native();
-    if (!buffer || length == 0 || !mod || !mod->pipelineLayout) return;
-    vkCmdPushConstants(vulkan.cmdBuffer, mod->pipelineLayout, mod->shaderStages, 0, (uint32_t)length, buffer);
-}
-
-void vk_push_const_int(const char*, int32_t) {}
-void vk_push_const_uint(const char*, uint32_t) {}
-void vk_push_const_float(const char*, float) {}
-void vk_push_const_vec2(const char*, const float*) {}
-void vk_push_const_vec3(const char*, const float*) {}
-void vk_push_const_vec4(const char*, const float*) {}
-void vk_push_const_mat3(const char*, const float*) {}
-void vk_push_const_mat4(const char*, const float*) {}
-
 void vk_begin_compute(rt_pass_compute_t& pass)
 {
     if (vulkan.currentPipeline)
     {
         fprintf(stderr, "Pipeline not end");
-        abort();
-    }
-    if (pass.module.handle == 0 || !pass.module.native)
-    {
-        fprintf(stderr, "Pipeline module is not created\n");
         abort();
     }
     VkCommandBufferBeginInfo beginInfo = {};
@@ -2552,9 +2315,7 @@ void vk_begin_compute(rt_pass_compute_t& pass)
     pass.native = &native;
     vulkan.currentPassType = RT_MODULE_COMPUTE;
     vulkan.currentComputePass = &pass;
-    auto* mod = (vk_module_native_t*)pass.module.native;
-    if (mod && mod->pipeline)
-        vkCmdBindPipeline(vulkan.cmdBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, mod->pipeline);
+    vulkan.currentComputeModule = nullptr;
     vulkan.passID = handle;
 }
 
@@ -2570,6 +2331,7 @@ void vk_end_compute(rt_pass_compute_t& pass)
     pass.native = nullptr;
     vulkan.currentPassType = RT_MODULE_NONE;
     vulkan.currentPipeline = nullptr;
+    vulkan.currentComputeModule = nullptr;
     for (auto& binding : vulkan.currentBinding)
         binding = {};
     if (vkEndCommandBuffer(vulkan.cmdBuffer) != VK_SUCCESS)
@@ -2577,6 +2339,23 @@ void vk_end_compute(rt_pass_compute_t& pass)
         fprintf(stderr, "Vulkan: failed to end command buffer\n");
         abort();
     }
+}
+
+void vk_bind_module_compute(rt_module_compute_t& module)
+{
+    if (vulkan.currentPipeline == nullptr || vulkan.currentPassType != RT_MODULE_COMPUTE)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    auto* mod = (vk_module_native_t*)module.native;
+    if (module.handle == 0 || !mod || !mod->pipeline)
+    {
+        fprintf(stderr, "Pipeline module is not created\n");
+        abort();
+    }
+    vulkan.currentComputeModule = &module;
+    vkCmdBindPipeline(vulkan.cmdBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, mod->pipeline);
 }
 
 void vk_dispatch_compute(uint32_t groupX, uint32_t groupY, uint32_t groupZ)
@@ -2591,13 +2370,43 @@ void vk_dispatch_compute(uint32_t groupX, uint32_t groupY, uint32_t groupZ)
         fprintf(stderr, "Pipeline not begin");
         abort();
     }
+    if (vulkan.currentComputeModule == nullptr)
+    {
+        fprintf(stderr, "Pipeline module not bound\n");
+        abort();
+    }
     vk_flush_descriptors();
     vkCmdDispatch(vulkan.cmdBuffer, std::max(1u, groupX), std::max(1u, groupY), std::max(1u, groupZ));
 }
 
+void vk_dispatch_compute_indirect(rt_buffer_t& indirect, size_t offset)
+{
+    if (vulkan.currentPipeline == nullptr)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    if (vulkan.currentPassType != RT_MODULE_COMPUTE)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    if (vulkan.currentComputeModule == nullptr)
+    {
+        fprintf(stderr, "Pipeline module not bound\n");
+        abort();
+    }
+    auto* native = vk_buffer_native(indirect);
+    if (!native)
+        return;
+    vk_flush_descriptors();
+    vk_transition_buffer(*native, VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT, VK_ACCESS_INDIRECT_COMMAND_READ_BIT);
+    vkCmdDispatchIndirect(vulkan.cmdBuffer, native->handle, (VkDeviceSize)offset);
+}
+
 static void vk_bind_draw_vbos(rt_buffer_t vbo[], uint32_t vbo_num)
 {
-    rt_module_render_t const& module = vulkan.currentRenderPass->module;
+    rt_module_render_t const& module = vk_current_render_module();
     uint32_t count = vbo_num;
     if (count > (uint32_t)std::size(module.vertex))
         count = (uint32_t)std::size(module.vertex);
@@ -2626,36 +2435,11 @@ static void vk_bind_draw_vbos(rt_buffer_t vbo[], uint32_t vbo_num)
     }
 }
 
-void vk_dispatch_compute_indirect(rt_buffer_t& indirect, size_t offset)
-{
-    if (vulkan.currentPipeline == nullptr)
-    {
-        fprintf(stderr, "Pipeline not begin");
-        abort();
-    }
-    if (vulkan.currentPassType != RT_MODULE_COMPUTE)
-    {
-        fprintf(stderr, "Pipeline not begin");
-        abort();
-    }
-    auto* native = vk_buffer_native(indirect);
-    if (!native)
-        return;
-    vk_flush_descriptors();
-    vk_transition_buffer(*native, VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT, VK_ACCESS_INDIRECT_COMMAND_READ_BIT);
-    vkCmdDispatchIndirect(vulkan.cmdBuffer, native->handle, (VkDeviceSize)offset);
-}
-
 void vk_begin_render(rt_pass_render_t& pass)
 {
     if (vulkan.currentPipeline)
     {
         fprintf(stderr, "Pipeline not end");
-        abort();
-    }
-    if (pass.module.handle == 0 || !pass.module.native)
-    {
-        fprintf(stderr, "Pipeline module is not created\n");
         abort();
     }
     VkCommandBufferBeginInfo beginInfo = {};
@@ -2673,17 +2457,14 @@ void vk_begin_render(rt_pass_render_t& pass)
     pass.native = &native;
     vulkan.currentPassType = RT_MODULE_RENDER;
     vulkan.currentRenderPass = &pass;
-
-    auto* mod = (vk_module_native_t*)pass.module.native;
-    if (mod && mod->pipeline)
-        vkCmdBindPipeline(vulkan.cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, mod->pipeline);
+    vulkan.currentRenderModule = nullptr;
 
     uint32_t colorCount = 0;
     uint32_t width = 0, height = 0;
     VkRenderingAttachmentInfo colorAttachments[RT_MAX_COLOR_TEXTURE_NUM] = {};
     for (uint32_t i = 0; i < RT_MAX_COLOR_TEXTURE_NUM; ++i)
     {
-        if (pass.module.colors[i].format == RT_TEXTURE_NONE || pass.colors[i].texture_view.format == RT_TEXTURE_NONE)
+        if (pass.colors[i].texture_view.format == RT_TEXTURE_NONE)
             continue;
         colorAttachments[i].sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
         colorAttachments[i].imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
@@ -2760,6 +2541,7 @@ void vk_end_render(rt_pass_render_t& pass)
     vulkan.renderPass = {};
     vulkan.currentPassType = RT_MODULE_NONE;
     vulkan.currentPipeline = nullptr;
+    vulkan.currentRenderModule = nullptr;
     for (auto& binding : vulkan.currentBinding)
         binding = {};
     if (vkEndCommandBuffer(vulkan.cmdBuffer) != VK_SUCCESS)
@@ -2767,6 +2549,23 @@ void vk_end_render(rt_pass_render_t& pass)
         fprintf(stderr, "Vulkan: failed to end command buffer\n");
         abort();
     }
+}
+
+void vk_bind_module_render(rt_module_render_t& module)
+{
+    if (vulkan.currentPipeline == nullptr || vulkan.currentPassType != RT_MODULE_RENDER)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    auto* mod = (vk_module_native_t*)module.native;
+    if (module.handle == 0 || !mod || !mod->pipeline)
+    {
+        fprintf(stderr, "Pipeline module is not created\n");
+        abort();
+    }
+    vulkan.currentRenderModule = &module;
+    vkCmdBindPipeline(vulkan.cmdBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, mod->pipeline);
 }
 
 void vk_set_viewport(int32_t x, int32_t y, int32_t width, int32_t height)
@@ -2806,6 +2605,92 @@ void vk_set_scissor(int32_t x, int32_t y, int32_t width, int32_t height)
     vkCmdSetScissor(vulkan.cmdBuffer, 0, 1, &scissor);
 }
 
+void vk_draw_array(rt_buffer_t vbo[], uint32_t vbo_num, uint32_t vertex_num, uint32_t instance_num, uint32_t vertex_start, uint32_t instance_start)
+{
+    if (vulkan.currentPipeline == nullptr)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    if (vulkan.currentPassType != RT_MODULE_RENDER)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    vk_flush_descriptors();
+    vk_bind_draw_vbos(vbo, vbo_num);
+    vkCmdDraw(vulkan.cmdBuffer, vertex_num, instance_num, vertex_start, instance_start);
+}
+
+void vk_draw_index(rt_buffer_t vbo[], uint32_t vbo_num, rt_buffer_t& ebo, uint32_t vertex_num, uint32_t instance_num, uint32_t vertex_start, uint32_t instance_start)
+{
+    if (vulkan.currentPipeline == nullptr)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    if (vulkan.currentPassType != RT_MODULE_RENDER)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    auto* indexNative = vk_buffer_native(ebo);
+    if (!indexNative)
+        return;
+    vk_flush_descriptors();
+    vk_transition_buffer(*indexNative, VK_PIPELINE_STAGE_VERTEX_INPUT_BIT, VK_ACCESS_INDEX_READ_BIT);
+    vk_bind_draw_vbos(vbo, vbo_num);
+    rt_module_render_t const& module = vk_current_render_module();
+    vkCmdBindIndexBuffer(vulkan.cmdBuffer, indexNative->handle, 0, rt_to_vk_index_type(module.index_type));
+    vkCmdDrawIndexed(vulkan.cmdBuffer, vertex_num, instance_num, 0, (int32_t)vertex_start, instance_start);
+}
+
+void vk_draw_array_indirect(rt_buffer_t vbo[], uint32_t vbo_num, rt_buffer_t& indirect, size_t offset)
+{
+    if (vulkan.currentPipeline == nullptr)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    if (vulkan.currentPassType != RT_MODULE_RENDER)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    auto* indirectNative = vk_buffer_native(indirect);
+    if (!indirectNative)
+        return;
+    vk_flush_descriptors();
+    vk_transition_buffer(*indirectNative, VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT, VK_ACCESS_INDIRECT_COMMAND_READ_BIT);
+    vk_bind_draw_vbos(vbo, vbo_num);
+    vkCmdDrawIndirect(vulkan.cmdBuffer, indirectNative->handle, (VkDeviceSize)offset, 1, sizeof(VkDrawIndirectCommand));
+}
+
+void vk_draw_index_indirect(rt_buffer_t vbo[], uint32_t vbo_num, rt_buffer_t& ebo, rt_buffer_t& indirect, size_t offset)
+{
+    if (vulkan.currentPipeline == nullptr)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    if (vulkan.currentPassType != RT_MODULE_RENDER)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    auto* indexNative = vk_buffer_native(ebo);
+    auto* indirectNative = vk_buffer_native(indirect);
+    if (!indexNative || !indirectNative)
+        return;
+    vk_flush_descriptors();
+    vk_transition_buffer(*indexNative, VK_PIPELINE_STAGE_VERTEX_INPUT_BIT, VK_ACCESS_INDEX_READ_BIT);
+    vk_transition_buffer(*indirectNative, VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT, VK_ACCESS_INDIRECT_COMMAND_READ_BIT);
+    vk_bind_draw_vbos(vbo, vbo_num);
+    rt_module_render_t const& module = vk_current_render_module();
+    vkCmdBindIndexBuffer(vulkan.cmdBuffer, indexNative->handle, 0, rt_to_vk_index_type(module.index_type));
+    vkCmdDrawIndexedIndirect(vulkan.cmdBuffer, indirectNative->handle, (VkDeviceSize)offset, 1, sizeof(VkDrawIndexedIndirectCommand));
+}
+
 void vk_draw_mesh_task(uint32_t groupX, uint32_t groupY, uint32_t groupZ)
 {
     if (vulkan.currentPipeline == nullptr)
@@ -2818,6 +2703,7 @@ void vk_draw_mesh_task(uint32_t groupX, uint32_t groupY, uint32_t groupZ)
         fprintf(stderr, "Pipeline not begin");
         abort();
     }
+    (void)vk_current_render_module();
     vk_flush_descriptors();
     vk_begin_rendering();
     if (vulkan.fnDrawMeshTasksNV)
@@ -2836,6 +2722,7 @@ void vk_draw_mesh_task_indirect(rt_buffer_t& indirect, size_t offset, uint32_t d
         fprintf(stderr, "Pipeline not begin");
         abort();
     }
+    (void)vk_current_render_module();
     auto* native = vk_buffer_native(indirect);
     if (!native)
         return;
@@ -2845,6 +2732,34 @@ void vk_draw_mesh_task_indirect(rt_buffer_t& indirect, size_t offset, uint32_t d
     if (vulkan.fnDrawMeshTasksIndirectEXT)
         vulkan.fnDrawMeshTasksIndirectEXT(vulkan.cmdBuffer, native->handle, (VkDeviceSize)offset, draw_count, draw_stride);
 }
+
+void vk_push_constant(uint8_t const* buffer, size_t length)
+{
+    if (vulkan.currentPipeline == nullptr)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    auto* mod = vk_current_module_native();
+    if (!buffer || length == 0 || !mod || !mod->pipelineLayout) return;
+    vkCmdPushConstants(vulkan.cmdBuffer, mod->pipelineLayout, mod->shaderStages, 0, (uint32_t)length, buffer);
+}
+
+void vk_push_const_int(const char*, int32_t) {}
+
+void vk_push_const_uint(const char*, uint32_t) {}
+
+void vk_push_const_float(const char*, float) {}
+
+void vk_push_const_vec2(const char*, const float*) {}
+
+void vk_push_const_vec3(const char*, const float*) {}
+
+void vk_push_const_vec4(const char*, const float*) {}
+
+void vk_push_const_mat3(const char*, const float*) {}
+
+void vk_push_const_mat4(const char*, const float*) {}
 
 void vk_begin_transfer(rt_pass_transfer_t& pass)
 {
@@ -3121,7 +3036,7 @@ void vk_draw_mesh(rt_mesh_t& mesh)
         abort();
     }
     vk_flush_descriptors();
-    rt_module_render_t const& module = vulkan.currentRenderPass->module;
+    rt_module_render_t const& module = vk_current_render_module();
     uint32_t vertex_count = 0;
     VkBuffer vertexBuffers[RT_MAX_VERTEX_BUFFER_NUM] = {};
     uint32_t vertexBindings[RT_MAX_VERTEX_BUFFER_NUM] = {};
@@ -3164,92 +3079,6 @@ void vk_draw_mesh(rt_mesh_t& mesh)
     }
     else
         vkCmdDraw(vulkan.cmdBuffer, vertex_count, 1, 0, 0);
-}
-
-void vk_draw_array(rt_buffer_t vbo[], uint32_t vbo_num, uint32_t vertex_num, uint32_t instance_num, uint32_t vertex_start, uint32_t instance_start)
-{
-    if (vulkan.currentPipeline == nullptr)
-    {
-        fprintf(stderr, "Pipeline not begin");
-        abort();
-    }
-    if (vulkan.currentPassType != RT_MODULE_RENDER)
-    {
-        fprintf(stderr, "Pipeline not begin");
-        abort();
-    }
-    vk_flush_descriptors();
-    vk_bind_draw_vbos(vbo, vbo_num);
-    vkCmdDraw(vulkan.cmdBuffer, vertex_num, instance_num, vertex_start, instance_start);
-}
-
-void vk_draw_index(rt_buffer_t vbo[], uint32_t vbo_num, rt_buffer_t& ebo, uint32_t vertex_num, uint32_t instance_num, uint32_t vertex_start, uint32_t instance_start)
-{
-    if (vulkan.currentPipeline == nullptr)
-    {
-        fprintf(stderr, "Pipeline not begin");
-        abort();
-    }
-    if (vulkan.currentPassType != RT_MODULE_RENDER)
-    {
-        fprintf(stderr, "Pipeline not begin");
-        abort();
-    }
-    auto* indexNative = vk_buffer_native(ebo);
-    if (!indexNative)
-        return;
-    vk_flush_descriptors();
-    vk_transition_buffer(*indexNative, VK_PIPELINE_STAGE_VERTEX_INPUT_BIT, VK_ACCESS_INDEX_READ_BIT);
-    vk_bind_draw_vbos(vbo, vbo_num);
-    rt_module_render_t const& module = vulkan.currentRenderPass->module;
-    vkCmdBindIndexBuffer(vulkan.cmdBuffer, indexNative->handle, 0, rt_to_vk_index_type(module.index_type));
-    vkCmdDrawIndexed(vulkan.cmdBuffer, vertex_num, instance_num, 0, (int32_t)vertex_start, instance_start);
-}
-
-void vk_draw_array_indirect(rt_buffer_t vbo[], uint32_t vbo_num, rt_buffer_t& indirect, size_t offset)
-{
-    if (vulkan.currentPipeline == nullptr)
-    {
-        fprintf(stderr, "Pipeline not begin");
-        abort();
-    }
-    if (vulkan.currentPassType != RT_MODULE_RENDER)
-    {
-        fprintf(stderr, "Pipeline not begin");
-        abort();
-    }
-    auto* indirectNative = vk_buffer_native(indirect);
-    if (!indirectNative)
-        return;
-    vk_flush_descriptors();
-    vk_transition_buffer(*indirectNative, VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT, VK_ACCESS_INDIRECT_COMMAND_READ_BIT);
-    vk_bind_draw_vbos(vbo, vbo_num);
-    vkCmdDrawIndirect(vulkan.cmdBuffer, indirectNative->handle, (VkDeviceSize)offset, 1, sizeof(VkDrawIndirectCommand));
-}
-
-void vk_draw_index_indirect(rt_buffer_t vbo[], uint32_t vbo_num, rt_buffer_t& ebo, rt_buffer_t& indirect, size_t offset)
-{
-    if (vulkan.currentPipeline == nullptr)
-    {
-        fprintf(stderr, "Pipeline not begin");
-        abort();
-    }
-    if (vulkan.currentPassType != RT_MODULE_RENDER)
-    {
-        fprintf(stderr, "Pipeline not begin");
-        abort();
-    }
-    auto* indexNative = vk_buffer_native(ebo);
-    auto* indirectNative = vk_buffer_native(indirect);
-    if (!indexNative || !indirectNative)
-        return;
-    vk_flush_descriptors();
-    vk_transition_buffer(*indexNative, VK_PIPELINE_STAGE_VERTEX_INPUT_BIT, VK_ACCESS_INDEX_READ_BIT);
-    vk_transition_buffer(*indirectNative, VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT, VK_ACCESS_INDIRECT_COMMAND_READ_BIT);
-    vk_bind_draw_vbos(vbo, vbo_num);
-    rt_module_render_t const& module = vulkan.currentRenderPass->module;
-    vkCmdBindIndexBuffer(vulkan.cmdBuffer, indexNative->handle, 0, rt_to_vk_index_type(module.index_type));
-    vkCmdDrawIndexedIndirect(vulkan.cmdBuffer, indirectNative->handle, (VkDeviceSize)offset, 1, sizeof(VkDrawIndexedIndirectCommand));
 }
 
 rt_meshlet_t vk_create_meshlet(const float* vertices, const float* normals, const float* uvs, size_t vertex_count, const unsigned int* indices, size_t index_count)
@@ -3297,7 +3126,7 @@ void vk_draw_meshlet(rt_meshlet_t& meshlet)
         fprintf(stderr, "Pipeline not begin");
         abort();
     }
-    rt_module_render_t const& module = vulkan.currentRenderPass->module;
+    rt_module_render_t const& module = vk_current_render_module();
     uint32_t index_binding = 0;
     for (uint32_t i = 0; i < std::size(module.vertex); ++i)
     {

@@ -617,6 +617,8 @@ struct dx_native_t
         rt_pass_compute_t* currentComputePass;
         rt_pass_transfer_t* currentTransferPass;
     };
+    rt_module_render_t* currentRenderModule = nullptr;
+    rt_module_compute_t* currentComputeModule = nullptr;
 } static direct;
 
 static void dx_wait_gpu()
@@ -716,11 +718,21 @@ static dx_sampler_native_t* dx_sampler_native(rt_sampler_t const& sampler)
 
 static dx_module_native_t* dx_current_module_native()
 {
-    if (direct.currentPassType == RT_MODULE_COMPUTE && direct.currentComputePass)
-        return (dx_module_native_t*)direct.currentComputePass->module.native;
-    if (direct.currentPassType == RT_MODULE_RENDER && direct.currentRenderPass)
-        return (dx_module_native_t*)direct.currentRenderPass->module.native;
+    if (direct.currentPassType == RT_MODULE_COMPUTE && direct.currentComputeModule)
+        return (dx_module_native_t*)direct.currentComputeModule->native;
+    if (direct.currentPassType == RT_MODULE_RENDER && direct.currentRenderModule)
+        return (dx_module_native_t*)direct.currentRenderModule->native;
     return nullptr;
+}
+
+static rt_module_render_t const& dx_current_render_module()
+{
+    if (direct.currentRenderModule == nullptr)
+    {
+        fprintf(stderr, "Pipeline module not bound\n");
+        abort();
+    }
+    return *direct.currentRenderModule;
 }
 
 static void dx_destroy_module_native(uint32_t handle, void*& native)
@@ -922,15 +934,16 @@ void dx_load_library(ID3D12Device* device, ID3D12CommandQueue* queue)
     rt_bind_sampler = dx_bind_sampler;
     rt_create_module_compute = dx_create_module_compute;
     rt_create_module_render = dx_create_module_render;
-    rt_create_module_meshlet = dx_create_module_meshlet;
     rt_destroy_module_render = dx_destroy_module_render;
     rt_destroy_module_compute = dx_destroy_module_compute;
     rt_begin_compute = dx_begin_compute;
     rt_end_compute = dx_end_compute;
+    rt_bind_module_compute = dx_bind_module_compute;
     rt_dispatch_compute = dx_dispatch_compute;
     rt_dispatch_compute_indirect = dx_dispatch_compute_indirect;
     rt_begin_render = dx_begin_render;
     rt_end_render = dx_end_render;
+    rt_bind_module_render = dx_bind_module_render;
     rt_set_viewport = dx_set_viewport;
     rt_set_scissor = dx_set_scissor;
     rt_draw_mesh_task = dx_draw_mesh_task;
@@ -1040,15 +1053,16 @@ void dx_unload_library()
     if (rt_bind_sampler == dx_bind_sampler) rt_bind_sampler = nullptr;
     if (rt_create_module_compute == dx_create_module_compute) rt_create_module_compute = nullptr;
     if (rt_create_module_render == dx_create_module_render) rt_create_module_render = nullptr;
-    if (rt_create_module_meshlet == dx_create_module_meshlet) rt_create_module_meshlet = nullptr;
     if (rt_destroy_module_render == dx_destroy_module_render) rt_destroy_module_render = nullptr;
     if (rt_destroy_module_compute == dx_destroy_module_compute) rt_destroy_module_compute = nullptr;
     if (rt_begin_compute == dx_begin_compute) rt_begin_compute = nullptr;
     if (rt_end_compute == dx_end_compute) rt_end_compute = nullptr;
+    if (rt_bind_module_compute == dx_bind_module_compute) rt_bind_module_compute = nullptr;
     if (rt_dispatch_compute == dx_dispatch_compute) rt_dispatch_compute = nullptr;
     if (rt_dispatch_compute_indirect == dx_dispatch_compute_indirect) rt_dispatch_compute_indirect = nullptr;
     if (rt_begin_render == dx_begin_render) rt_begin_render = nullptr;
     if (rt_end_render == dx_end_render) rt_end_render = nullptr;
+    if (rt_bind_module_render == dx_bind_module_render) rt_bind_module_render = nullptr;
     if (rt_set_viewport == dx_set_viewport) rt_set_viewport = nullptr;
     if (rt_set_scissor == dx_set_scissor) rt_set_scissor = nullptr;
     if (rt_draw_mesh_task == dx_draw_mesh_task) rt_draw_mesh_task = nullptr;
@@ -1627,6 +1641,24 @@ rt_module_render_t dx_create_module_render(rt_module_render_info_t const& info)
         native.vshader.pShaderBytecode = native.vcode.data();
         native.vshader.BytecodeLength = native.vcode.size();
     }
+    else if (info.mshader.code && info.mshader.size)
+    {
+        if (info.tshader.code && info.tshader.size)
+        {
+            native.tcode.assign((const uint8_t*)info.tshader.code, (const uint8_t*)info.tshader.code + info.tshader.size);
+            native.tshader.pShaderBytecode = native.tcode.data();
+            native.tshader.BytecodeLength = native.tcode.size();
+        }
+        native.mcode.assign((const uint8_t*)info.mshader.code, (const uint8_t*)info.mshader.code + info.mshader.size);
+        native.mshader.pShaderBytecode = native.mcode.data();
+        native.mshader.BytecodeLength = native.mcode.size();
+    }
+    else
+    {
+        direct.modules.erase(handle);
+        fprintf(stderr, "Render module requires a vertex shader or a mesh shader\n");
+        abort();
+    }
     if (info.fshader.code && info.fshader.size)
     {
         native.fcode.assign((const uint8_t*)info.fshader.code, (const uint8_t*)info.fshader.code + info.fshader.size);
@@ -1780,206 +1812,65 @@ rt_module_render_t dx_create_module_render(rt_module_render_info_t const& info)
     if (stencilEnabled) pso.DSVFormat = DXGI_FORMAT_D24_UNORM_S8_UINT;
     else if (depthEnabled) pso.DSVFormat = DXGI_FORMAT_D32_FLOAT;
     native.topology = rt_to_dx_topology(info.primitive);
-    if (FAILED(direct.device->CreateGraphicsPipelineState(&pso, IID_PPV_ARGS(&native.pipeline))))
+    HRESULT hr = E_FAIL;
+    if (native.vshader.pShaderBytecode)
     {
-        result.native = &native;
-        dx_destroy_module_native(handle, result.native);
-        return {};
+        hr = direct.device->CreateGraphicsPipelineState(&pso, IID_PPV_ARGS(&native.pipeline));
     }
-    direct.moduleID = handle;
-    result.handle = handle;
-    result.native = &native;
-    for (size_t i = 0; i < std::size(info.colors); ++i)
+    else
     {
-        result.colors[i].format = info.colors[i].format;
-        result.colors[i].color.func = info.colors[i].color.func;
-        result.colors[i].color.src = info.colors[i].color.src;
-        result.colors[i].color.dst = info.colors[i].color.dst;
-        result.colors[i].alpha.func = info.colors[i].alpha.func;
-        result.colors[i].alpha.src = info.colors[i].alpha.src;
-        result.colors[i].alpha.dst = info.colors[i].alpha.dst;
-    }
-    result.depth.write = info.depth.write;
-    result.depth.bias = info.depth.bias;
-    result.depth.biasSlope = info.depth.biasSlope;
-    result.depth.biasClamp = info.depth.biasClamp;
-    result.depth.func = info.depth.func;
-    result.stencil.read = info.stencil.read;
-    result.stencil.write = info.stencil.write;
-    result.stencil.back.func = info.stencil.back.func;
-    result.stencil.back.sfail = info.stencil.back.sfail;
-    result.stencil.back.zfail = info.stencil.back.zfail;
-    result.stencil.back.zpass = info.stencil.back.zpass;
-    result.stencil.front.func = info.stencil.front.func;
-    result.stencil.front.sfail = info.stencil.front.sfail;
-    result.stencil.front.zfail = info.stencil.front.zfail;
-    result.stencil.front.zpass = info.stencil.front.zpass;
-    result.index_type = info.index_type;
-    for (size_t i = 0; i < std::size(info.vertex); ++i)
-        result.vertex[i] = info.vertex[i];
-    for (size_t i = 0; i < std::size(info.binding); ++i)
-        result.binding[i] = info.binding[i];
-    result.cull_mode = info.cull_mode;
-    result.wind_mode = info.wind_mode;
-    result.fill_mode = info.fill_mode;
-    result.primitive = info.primitive;
-    return result;
-}
-
-rt_module_render_t dx_create_module_meshlet(rt_module_render_info_t const& info)
-{
-    rt_module_render_t result = {};
-    if (!info.mshader.code || !info.mshader.size || !direct.device) return result;
-    uint32_t handle = direct.moduleID + 1;
-    auto& native = direct.modules[handle];
-    if (info.tshader.code && info.tshader.size)
-    {
-        native.tcode.assign((const uint8_t*)info.tshader.code, (const uint8_t*)info.tshader.code + info.tshader.size);
-        native.tshader.pShaderBytecode = native.tcode.data();
-        native.tshader.BytecodeLength = native.tcode.size();
-    }
-    native.mcode.assign((const uint8_t*)info.mshader.code, (const uint8_t*)info.mshader.code + info.mshader.size);
-    native.mshader.pShaderBytecode = native.mcode.data();
-    native.mshader.BytecodeLength = native.mcode.size();
-    if (info.fshader.code && info.fshader.size)
-    {
-        native.fcode.assign((const uint8_t*)info.fshader.code, (const uint8_t*)info.fshader.code + info.fshader.size);
-        native.fshader.pShaderBytecode = native.fcode.data();
-        native.fshader.BytecodeLength = native.fcode.size();
-    }
-    native.descriptorCount = 0;
-    D3D12_DESCRIPTOR_RANGE ranges[RT_MAX_BINDING_HANDLE_NUM] = {};
-    D3D12_ROOT_PARAMETER params[1 + RT_MAX_BINDING_HANDLE_NUM] = {};
-    params[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
-    params[0].Constants.ShaderRegister = 16;
-    params[0].Constants.RegisterSpace = 0;
-    params[0].Constants.Num32BitValues = 32;
-    params[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
-    uint32_t paramCount = 1;
-    for (uint32_t i = 0; i < RT_MAX_BINDING_HANDLE_NUM; ++i)
-    {
-        dx_binding_kind_t kind = DX_KIND_NONE;
-        D3D12_DESCRIPTOR_RANGE_TYPE rangeType = D3D12_DESCRIPTOR_RANGE_TYPE_CBV;
-        if (info.binding[i].type == RT_BINDING_UNIFORM_BUFFER)
+        // 网格着色器管线需要通过 pipeline state stream 创建
+        struct alignas(void*) dx_mesh_stream_t
         {
-            kind = DX_KIND_CBV;
-            rangeType = D3D12_DESCRIPTOR_RANGE_TYPE_CBV;
-        }
-        else if (info.binding[i].type == RT_BINDING_STORAGE_BUFFER)
-        {
-            kind = DX_KIND_STORAGE;
-            rangeType = D3D12_DESCRIPTOR_RANGE_TYPE_UAV;
-        }
-        else if (info.binding[i].type == RT_BINDING_TEXTURE)
-        {
-            kind = DX_KIND_SRV;
-            rangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
-        }
-        else if (info.binding[i].type == RT_BINDING_STORAGE_TEXTURE)
-        {
-            kind = DX_KIND_UAV;
-            rangeType = D3D12_DESCRIPTOR_RANGE_TYPE_UAV;
-        }
-        else if (info.binding[i].type == RT_BINDING_SAMPLER)
-        {
-            kind = DX_KIND_SAMPLER;
-            rangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SAMPLER;
-        }
-        else continue;
-        native.kinds[native.descriptorCount] = kind;
-        native.descriptorBindings[native.descriptorCount] = info.binding[i].binding;
-        ranges[native.descriptorCount].RangeType = rangeType;
-        ranges[native.descriptorCount].NumDescriptors = 1;
-        ranges[native.descriptorCount].BaseShaderRegister = info.binding[i].binding;
-        ranges[native.descriptorCount].RegisterSpace = 0;
-        ranges[native.descriptorCount].OffsetInDescriptorsFromTableStart = 0;
-        params[paramCount].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
-        params[paramCount].DescriptorTable.NumDescriptorRanges = 1;
-        params[paramCount].DescriptorTable.pDescriptorRanges = &ranges[native.descriptorCount];
-        params[paramCount].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
-        native.descriptorCount++;
-        paramCount++;
+            D3D12_PIPELINE_STATE_SUBOBJECT_TYPE rootType = D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_ROOT_SIGNATURE;
+            ID3D12RootSignature* root = nullptr;
+            alignas(void*) D3D12_PIPELINE_STATE_SUBOBJECT_TYPE asType = D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_AS;
+            D3D12_SHADER_BYTECODE as = {};
+            alignas(void*) D3D12_PIPELINE_STATE_SUBOBJECT_TYPE msType = D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_MS;
+            D3D12_SHADER_BYTECODE ms = {};
+            alignas(void*) D3D12_PIPELINE_STATE_SUBOBJECT_TYPE psType = D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_PS;
+            D3D12_SHADER_BYTECODE ps = {};
+            alignas(void*) D3D12_PIPELINE_STATE_SUBOBJECT_TYPE blendType = D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_BLEND;
+            D3D12_BLEND_DESC blend = {};
+            alignas(void*) D3D12_PIPELINE_STATE_SUBOBJECT_TYPE sampleMaskType = D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_SAMPLE_MASK;
+            UINT sampleMask = UINT_MAX;
+            alignas(void*) D3D12_PIPELINE_STATE_SUBOBJECT_TYPE rasterizerType = D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_RASTERIZER;
+            D3D12_RASTERIZER_DESC rasterizer = {};
+            alignas(void*) D3D12_PIPELINE_STATE_SUBOBJECT_TYPE depthStencilType = D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_DEPTH_STENCIL;
+            D3D12_DEPTH_STENCIL_DESC depthStencil = {};
+            alignas(void*) D3D12_PIPELINE_STATE_SUBOBJECT_TYPE topologyType = D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_PRIMITIVE_TOPOLOGY;
+            D3D12_PRIMITIVE_TOPOLOGY_TYPE topology = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+            alignas(void*) D3D12_PIPELINE_STATE_SUBOBJECT_TYPE rtvType = D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_RENDER_TARGET_FORMATS;
+            D3D12_RT_FORMAT_ARRAY rtv = {};
+            alignas(void*) D3D12_PIPELINE_STATE_SUBOBJECT_TYPE dsvType = D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_DEPTH_STENCIL_FORMAT;
+            DXGI_FORMAT dsv = DXGI_FORMAT_UNKNOWN;
+            alignas(void*) D3D12_PIPELINE_STATE_SUBOBJECT_TYPE sampleDescType = D3D12_PIPELINE_STATE_SUBOBJECT_TYPE_SAMPLE_DESC;
+            DXGI_SAMPLE_DESC sampleDesc = {1, 0};
+        } stream;
+        stream.root = pso.pRootSignature;
+        stream.as = native.tshader;
+        stream.ms = native.mshader;
+        stream.ps = native.fshader;
+        stream.blend = pso.BlendState;
+        stream.sampleMask = pso.SampleMask;
+        stream.rasterizer = pso.RasterizerState;
+        stream.depthStencil = pso.DepthStencilState;
+        stream.topology = pso.PrimitiveTopologyType;
+        stream.rtv.NumRenderTargets = pso.NumRenderTargets;
+        for (uint32_t i = 0; i < RT_MAX_COLOR_TEXTURE_NUM; ++i)
+            stream.rtv.RTFormats[i] = pso.RTVFormats[i];
+        stream.dsv = pso.DSVFormat;
+        stream.sampleDesc = pso.SampleDesc;
+        D3D12_PIPELINE_STATE_STREAM_DESC streamDesc = {};
+        streamDesc.SizeInBytes = sizeof(stream);
+        streamDesc.pPipelineStateSubobjectStream = &stream;
+        ComPtr<ID3D12Device2> device2;
+        if (SUCCEEDED(direct.device.As(&device2)))
+            hr = device2->CreatePipelineState(&streamDesc, IID_PPV_ARGS(&native.pipeline));
+        else
+            fprintf(stderr, "Mesh shader pipeline requires ID3D12Device2\n");
     }
-    D3D12_ROOT_SIGNATURE_DESC desc = {};
-    desc.NumParameters = paramCount;
-    desc.pParameters = params;
-    desc.Flags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
-    ComPtr<ID3DBlob> blob, error;
-    if (FAILED(D3D12SerializeRootSignature(&desc, D3D_ROOT_SIGNATURE_VERSION_1, &blob, &error)) ||
-        FAILED(direct.device->CreateRootSignature(0, blob->GetBufferPointer(), blob->GetBufferSize(),
-            IID_PPV_ARGS(&native.rootSignature))))
-    {
-        result.native = &native;
-        dx_destroy_module_native(handle, result.native);
-        return {};
-    }
-    const bool depthEnabled = (info.depth.func != RT_ALWAYS || info.depth.write);
-    const bool stencilEnabled =
-        (info.stencil.back.func != RT_ALWAYS || info.stencil.back.sfail != RT_STENCIL_KEEP ||
-         info.stencil.back.zfail != RT_STENCIL_KEEP || info.stencil.back.zpass != RT_STENCIL_KEEP ||
-         info.stencil.front.func != RT_ALWAYS || info.stencil.front.sfail != RT_STENCIL_KEEP ||
-         info.stencil.front.zfail != RT_STENCIL_KEEP || info.stencil.front.zpass != RT_STENCIL_KEEP);
-    D3D12_GRAPHICS_PIPELINE_STATE_DESC pso = {};
-    pso.pRootSignature = native.rootSignature.Get();
-    pso.VS = native.vshader;
-    pso.PS = native.fshader;
-    pso.InputLayout = {nullptr, 0};
-    pso.PrimitiveTopologyType = rt_to_dx_topology_type(info.primitive);
-    pso.RasterizerState.FillMode = rt_to_dx_fill(info.fill_mode);
-    pso.RasterizerState.CullMode = rt_to_dx_cull(info.cull_mode);
-    pso.RasterizerState.FrontCounterClockwise = (info.wind_mode != RT_CW);
-    pso.RasterizerState.DepthBias = (INT)info.depth.bias;
-    pso.RasterizerState.DepthBiasClamp = info.depth.biasClamp;
-    pso.RasterizerState.SlopeScaledDepthBias = info.depth.biasSlope;
-    pso.RasterizerState.DepthClipEnable = TRUE;
-    pso.BlendState.AlphaToCoverageEnable = FALSE;
-    pso.BlendState.IndependentBlendEnable = TRUE;
-    uint32_t colorCount = 0;
-    for (uint32_t i = 0; i < RT_MAX_COLOR_TEXTURE_NUM; ++i)
-    {
-        if (info.colors[i].format == RT_TEXTURE_NONE)
-        {
-            pso.RTVFormats[i] = DXGI_FORMAT_UNKNOWN;
-            continue;
-        }
-        colorCount = i + 1;
-        auto& rt = pso.BlendState.RenderTarget[i];
-        bool blend =
-            (info.colors[i].color.func != RT_FUNC_ADD || info.colors[i].color.src != RT_BLEND_ONE ||
-             info.colors[i].color.dst != RT_BLEND_ZERO || info.colors[i].alpha.func != RT_FUNC_ADD ||
-             info.colors[i].alpha.src != RT_BLEND_ONE || info.colors[i].alpha.dst != RT_BLEND_ZERO);
-        rt.BlendEnable = blend;
-        rt.SrcBlend = rt_to_dx_blend(info.colors[i].color.src);
-        rt.DestBlend = rt_to_dx_blend(info.colors[i].color.dst);
-        rt.BlendOp = rt_to_dx_blend_op(info.colors[i].color.func);
-        rt.SrcBlendAlpha = rt_to_dx_blend(info.colors[i].alpha.src);
-        rt.DestBlendAlpha = rt_to_dx_blend(info.colors[i].alpha.dst);
-        rt.BlendOpAlpha = rt_to_dx_blend_op(info.colors[i].alpha.func);
-        rt.RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
-        pso.RTVFormats[i] = rt_to_dx_texture_format(info.colors[i].format);
-    }
-    native.colorCount = colorCount;
-    pso.NumRenderTargets = colorCount;
-    pso.SampleMask = UINT_MAX;
-    pso.SampleDesc.Count = 1;
-    pso.DepthStencilState.DepthEnable = depthEnabled;
-    pso.DepthStencilState.DepthWriteMask = info.depth.write ? D3D12_DEPTH_WRITE_MASK_ALL : D3D12_DEPTH_WRITE_MASK_ZERO;
-    pso.DepthStencilState.DepthFunc = rt_to_dx_compare(info.depth.func);
-    pso.DepthStencilState.StencilEnable = stencilEnabled;
-    pso.DepthStencilState.StencilReadMask = (UINT8)info.stencil.read;
-    pso.DepthStencilState.StencilWriteMask = (UINT8)info.stencil.write;
-    pso.DepthStencilState.FrontFace.StencilFailOp = rt_to_dx_stencil_op(info.stencil.front.sfail);
-    pso.DepthStencilState.FrontFace.StencilDepthFailOp = rt_to_dx_stencil_op(info.stencil.front.zfail);
-    pso.DepthStencilState.FrontFace.StencilPassOp = rt_to_dx_stencil_op(info.stencil.front.zpass);
-    pso.DepthStencilState.FrontFace.StencilFunc = rt_to_dx_compare(info.stencil.front.func);
-    pso.DepthStencilState.BackFace.StencilFailOp = rt_to_dx_stencil_op(info.stencil.back.sfail);
-    pso.DepthStencilState.BackFace.StencilDepthFailOp = rt_to_dx_stencil_op(info.stencil.back.zfail);
-    pso.DepthStencilState.BackFace.StencilPassOp = rt_to_dx_stencil_op(info.stencil.back.zpass);
-    pso.DepthStencilState.BackFace.StencilFunc = rt_to_dx_compare(info.stencil.back.func);
-    if (stencilEnabled) pso.DSVFormat = DXGI_FORMAT_D24_UNORM_S8_UINT;
-    else if (depthEnabled) pso.DSVFormat = DXGI_FORMAT_D32_FLOAT;
-    native.topology = rt_to_dx_topology(info.primitive);
-    if (FAILED(direct.device->CreateGraphicsPipelineState(&pso, IID_PPV_ARGS(&native.pipeline))))
+    if (FAILED(hr))
     {
         result.native = &native;
         dx_destroy_module_native(handle, result.native);
@@ -2037,96 +1928,6 @@ void dx_destroy_module_compute(rt_module_compute_t& module)
     module.handle = 0;
 }
 
-void dx_push_constant(uint8_t const* buffer, size_t length)
-{
-    if (direct.currentPipeline == nullptr)
-    {
-        fprintf(stderr, "Pipeline not begin");
-        abort();
-    }
-    auto* mod = dx_current_module_native();
-    if (!buffer || length == 0 || !mod) return;
-    uint32_t count = (uint32_t)((length + 3) / 4);
-    if (count > 32) count = 32;
-    std::memcpy(direct.pushData, buffer, (size_t)count * 4);
-    direct.pushCount = count;
-    if (mod->cshader.BytecodeLength)
-        direct.cmd->SetComputeRoot32BitConstants(0, count, direct.pushData, 0);
-    else
-        direct.cmd->SetGraphicsRoot32BitConstants(0, count, direct.pushData, 0);
-}
-
-void dx_push_const_int(const char*, int32_t) {}
-void dx_push_const_uint(const char*, uint32_t) {}
-void dx_push_const_float(const char*, float) {}
-void dx_push_const_vec2(const char*, const float*) {}
-void dx_push_const_vec3(const char*, const float*) {}
-void dx_push_const_vec4(const char*, const float*) {}
-void dx_push_const_mat3(const char*, const float*) {}
-void dx_push_const_mat4(const char*, const float*) {}
-
-void dx_begin_compute(rt_pass_compute_t& pass)
-{
-    if (direct.currentPipeline)
-    {
-        fprintf(stderr, "Pipeline not end");
-        abort();
-    }
-    if (pass.module.handle == 0 || !pass.module.native)
-    {
-        fprintf(stderr, "Pipeline module is not created\n");
-        abort();
-    }
-    for (auto& binding : direct.currentBinding)
-        binding = {};
-    direct.pushCount = 0;
-    auto handle = direct.passID + 1;
-    auto& native = direct.computePasses[handle];
-    pass.handle = handle;
-    pass.native = &native;
-    direct.currentPassType = RT_MODULE_COMPUTE;
-    direct.currentComputePass = &pass;
-    auto* mod = (dx_module_native_t*)pass.module.native;
-    if (mod && mod->pipeline)
-        direct.cmd->SetPipelineState(mod->pipeline.Get());
-    if (mod && mod->rootSignature)
-        direct.cmd->SetComputeRootSignature(mod->rootSignature.Get());
-    direct.passID = handle;
-}
-
-void dx_end_compute(rt_pass_compute_t& pass)
-{
-    if (direct.currentComputePass != &pass)
-    {
-        fprintf(stderr, "Pipeline not begin");
-        abort();
-    }
-    direct.computePasses.erase(pass.handle);
-    pass.handle = 0;
-    pass.native = nullptr;
-    direct.currentPassType = RT_MODULE_NONE;
-    direct.currentPipeline = nullptr;
-    for (auto& binding : direct.currentBinding)
-        binding = {};
-    direct.pushCount = 0;
-}
-
-void dx_dispatch_compute(uint32_t groupX, uint32_t groupY, uint32_t groupZ)
-{
-    if (direct.currentPipeline == nullptr)
-    {
-        fprintf(stderr, "Pipeline not begin");
-        abort();
-    }
-    if (direct.currentPassType != RT_MODULE_COMPUTE)
-    {
-        fprintf(stderr, "Pipeline not begin");
-        abort();
-    }
-    dx_flush_descriptors();
-    direct.cmd->Dispatch(max(1u, groupX), max(1u, groupY), max(1u, groupZ));
-}
-
 static ID3D12CommandSignature* dx_indirect_signature(D3D12_INDIRECT_ARGUMENT_TYPE type, UINT stride)
 {
     ComPtr<ID3D12CommandSignature>* slot = &direct.dispatchSignature;
@@ -2159,9 +1960,114 @@ static ID3D12CommandSignature* dx_indirect_signature(D3D12_INDIRECT_ARGUMENT_TYP
     return slot->Get();
 }
 
+void dx_begin_compute(rt_pass_compute_t& pass)
+{
+    if (direct.currentPipeline)
+    {
+        fprintf(stderr, "Pipeline not end");
+        abort();
+    }
+    for (auto& binding : direct.currentBinding)
+        binding = {};
+    direct.pushCount = 0;
+    auto handle = direct.passID + 1;
+    auto& native = direct.computePasses[handle];
+    pass.handle = handle;
+    pass.native = &native;
+    direct.currentPassType = RT_MODULE_COMPUTE;
+    direct.currentComputePass = &pass;
+    direct.currentComputeModule = nullptr;
+    direct.passID = handle;
+}
+
+void dx_end_compute(rt_pass_compute_t& pass)
+{
+    if (direct.currentComputePass != &pass)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    direct.computePasses.erase(pass.handle);
+    pass.handle = 0;
+    pass.native = nullptr;
+    direct.currentPassType = RT_MODULE_NONE;
+    direct.currentPipeline = nullptr;
+    direct.currentComputeModule = nullptr;
+    for (auto& binding : direct.currentBinding)
+        binding = {};
+    direct.pushCount = 0;
+}
+
+void dx_bind_module_compute(rt_module_compute_t& module)
+{
+    if (direct.currentPipeline == nullptr || direct.currentPassType != RT_MODULE_COMPUTE)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    auto* mod = (dx_module_native_t*)module.native;
+    if (module.handle == 0 || !mod || !mod->pipeline)
+    {
+        fprintf(stderr, "Pipeline module is not created\n");
+        abort();
+    }
+    direct.currentComputeModule = &module;
+    direct.cmd->SetPipelineState(mod->pipeline.Get());
+    if (mod->rootSignature)
+        direct.cmd->SetComputeRootSignature(mod->rootSignature.Get());
+}
+
+void dx_dispatch_compute(uint32_t groupX, uint32_t groupY, uint32_t groupZ)
+{
+    if (direct.currentPipeline == nullptr)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    if (direct.currentPassType != RT_MODULE_COMPUTE)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    if (direct.currentComputeModule == nullptr)
+    {
+        fprintf(stderr, "Pipeline module not bound\n");
+        abort();
+    }
+    dx_flush_descriptors();
+    direct.cmd->Dispatch(max(1u, groupX), max(1u, groupY), max(1u, groupZ));
+}
+
+void dx_dispatch_compute_indirect(rt_buffer_t& indirect, size_t offset)
+{
+    if (direct.currentPipeline == nullptr)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    if (direct.currentPassType != RT_MODULE_COMPUTE)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    if (direct.currentComputeModule == nullptr)
+    {
+        fprintf(stderr, "Pipeline module not bound\n");
+        abort();
+    }
+    auto* native = dx_buffer_native(indirect);
+    if (!native || !native->handle)
+        return;
+    dx_flush_descriptors();
+    if (native->heap != D3D12_HEAP_TYPE_UPLOAD)
+        dx_transition_buffer(*native, D3D12_RESOURCE_STATE_INDIRECT_ARGUMENT);
+    auto* signature = dx_indirect_signature(D3D12_INDIRECT_ARGUMENT_TYPE_DISPATCH, sizeof(D3D12_DISPATCH_ARGUMENTS));
+    direct.cmd->ExecuteIndirect(signature, 1, native->handle.Get(), (UINT64)offset, nullptr, 0);
+}
+
 static void dx_bind_draw_vbos(rt_buffer_t vbo[], uint32_t vbo_num)
 {
-    rt_module_render_t const& module = direct.currentRenderPass->module;
+    rt_module_render_t const& module = dx_current_render_module();
     uint32_t count = vbo_num;
     if (count > (uint32_t)std::size(module.vertex))
         count = (uint32_t)std::size(module.vertex);
@@ -2182,28 +2088,6 @@ static void dx_bind_draw_vbos(rt_buffer_t vbo[], uint32_t vbo_num)
     }
 }
 
-void dx_dispatch_compute_indirect(rt_buffer_t& indirect, size_t offset)
-{
-    if (direct.currentPipeline == nullptr)
-    {
-        fprintf(stderr, "Pipeline not begin");
-        abort();
-    }
-    if (direct.currentPassType != RT_MODULE_COMPUTE)
-    {
-        fprintf(stderr, "Pipeline not begin");
-        abort();
-    }
-    auto* native = dx_buffer_native(indirect);
-    if (!native || !native->handle)
-        return;
-    dx_flush_descriptors();
-    if (native->heap != D3D12_HEAP_TYPE_UPLOAD)
-        dx_transition_buffer(*native, D3D12_RESOURCE_STATE_INDIRECT_ARGUMENT);
-    auto* signature = dx_indirect_signature(D3D12_INDIRECT_ARGUMENT_TYPE_DISPATCH, sizeof(D3D12_DISPATCH_ARGUMENTS));
-    direct.cmd->ExecuteIndirect(signature, 1, native->handle.Get(), (UINT64)offset, nullptr, 0);
-}
-
 void dx_begin_render(rt_pass_render_t& pass)
 {
     if (direct.currentPipeline)
@@ -2211,24 +2095,12 @@ void dx_begin_render(rt_pass_render_t& pass)
         fprintf(stderr, "Pipeline not end");
         abort();
     }
-    if (pass.module.handle == 0 || !pass.module.native)
-    {
-        fprintf(stderr, "Pipeline module is not created\n");
-        abort();
-    }
     for (auto& binding : direct.currentBinding)
         binding = {};
     direct.pushCount = 0;
     direct.currentPassType = RT_MODULE_RENDER;
     direct.currentRenderPass = &pass;
-
-    auto* mod = (dx_module_native_t*)pass.module.native;
-    if (mod && mod->pipeline)
-        direct.cmd->SetPipelineState(mod->pipeline.Get());
-    if (mod && mod->rootSignature)
-        direct.cmd->SetGraphicsRootSignature(mod->rootSignature.Get());
-    if (mod)
-        direct.cmd->IASetPrimitiveTopology(mod->topology);
+    direct.currentRenderModule = nullptr;
 
     D3D12_CPU_DESCRIPTOR_HANDLE rtvs[RT_MAX_COLOR_TEXTURE_NUM] = {};
     uint32_t colorCount = 0;
@@ -2292,8 +2164,7 @@ void dx_begin_render(rt_pass_render_t& pass)
         }
     }
 
-    uint32_t rtvCount = mod ? mod->colorCount : colorCount;
-    direct.cmd->OMSetRenderTargets(rtvCount, rtvCount ? rtvs : nullptr, FALSE, hasDepth ? &dsv : nullptr);
+    direct.cmd->OMSetRenderTargets(colorCount, colorCount ? rtvs : nullptr, FALSE, hasDepth ? &dsv : nullptr);
     dx_set_viewport(0, 0, (int32_t)width, (int32_t)height);
     dx_set_scissor(0, 0, (int32_t)width, (int32_t)height);
 }
@@ -2316,9 +2187,30 @@ void dx_end_render(rt_pass_render_t& pass)
     pass.native = nullptr;
     direct.currentPassType = RT_MODULE_NONE;
     direct.currentPipeline = nullptr;
+    direct.currentRenderModule = nullptr;
     for (auto& binding : direct.currentBinding)
         binding = {};
     direct.pushCount = 0;
+}
+
+void dx_bind_module_render(rt_module_render_t& module)
+{
+    if (direct.currentPipeline == nullptr || direct.currentPassType != RT_MODULE_RENDER)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    auto* mod = (dx_module_native_t*)module.native;
+    if (module.handle == 0 || !mod || !mod->pipeline)
+    {
+        fprintf(stderr, "Pipeline module is not created\n");
+        abort();
+    }
+    direct.currentRenderModule = &module;
+    direct.cmd->SetPipelineState(mod->pipeline.Get());
+    if (mod->rootSignature)
+        direct.cmd->SetGraphicsRootSignature(mod->rootSignature.Get());
+    direct.cmd->IASetPrimitiveTopology(mod->topology);
 }
 
 void dx_set_viewport(int32_t x, int32_t y, int32_t width, int32_t height)
@@ -2343,6 +2235,102 @@ void dx_set_scissor(int32_t x, int32_t y, int32_t width, int32_t height)
     direct.cmd->RSSetScissorRects(1, &scissor);
 }
 
+void dx_draw_array(rt_buffer_t vbo[], uint32_t vbo_num, uint32_t vertex_num, uint32_t instance_num, uint32_t vertex_start, uint32_t instance_start)
+{
+    if (direct.currentPipeline == nullptr)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    if (direct.currentPassType != RT_MODULE_RENDER)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    dx_flush_descriptors();
+    dx_bind_draw_vbos(vbo, vbo_num);
+    direct.cmd->DrawInstanced(vertex_num, instance_num, vertex_start, instance_start);
+}
+
+void dx_draw_index(rt_buffer_t vbo[], uint32_t vbo_num, rt_buffer_t& ebo, uint32_t vertex_num, uint32_t instance_num, uint32_t vertex_start, uint32_t instance_start)
+{
+    if (direct.currentPipeline == nullptr)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    if (direct.currentPassType != RT_MODULE_RENDER)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    auto* indexNative = dx_buffer_native(ebo);
+    if (!indexNative || !indexNative->handle)
+        return;
+    dx_flush_descriptors();
+    dx_bind_draw_vbos(vbo, vbo_num);
+    dx_transition_buffer(*indexNative, D3D12_RESOURCE_STATE_INDEX_BUFFER);
+    D3D12_INDEX_BUFFER_VIEW view = {};
+    view.BufferLocation = indexNative->handle->GetGPUVirtualAddress();
+    view.SizeInBytes = (UINT)ebo.size;
+    view.Format = rt_to_dx_index_type(dx_current_render_module().index_type);
+    direct.cmd->IASetIndexBuffer(&view);
+    direct.cmd->DrawIndexedInstanced(vertex_num, instance_num, 0, (INT)vertex_start, instance_start);
+}
+
+void dx_draw_array_indirect(rt_buffer_t vbo[], uint32_t vbo_num, rt_buffer_t& indirect, size_t offset)
+{
+    if (direct.currentPipeline == nullptr)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    if (direct.currentPassType != RT_MODULE_RENDER)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    auto* indirectNative = dx_buffer_native(indirect);
+    if (!indirectNative || !indirectNative->handle)
+        return;
+    dx_flush_descriptors();
+    dx_bind_draw_vbos(vbo, vbo_num);
+    if (indirectNative->heap != D3D12_HEAP_TYPE_UPLOAD)
+        dx_transition_buffer(*indirectNative, D3D12_RESOURCE_STATE_INDIRECT_ARGUMENT);
+    auto* signature = dx_indirect_signature(D3D12_INDIRECT_ARGUMENT_TYPE_DRAW, sizeof(D3D12_DRAW_ARGUMENTS));
+    direct.cmd->ExecuteIndirect(signature, 1, indirectNative->handle.Get(), (UINT64)offset, nullptr, 0);
+}
+
+void dx_draw_index_indirect(rt_buffer_t vbo[], uint32_t vbo_num, rt_buffer_t& ebo, rt_buffer_t& indirect, size_t offset)
+{
+    if (direct.currentPipeline == nullptr)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    if (direct.currentPassType != RT_MODULE_RENDER)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    auto* indexNative = dx_buffer_native(ebo);
+    auto* indirectNative = dx_buffer_native(indirect);
+    if (!indexNative || !indexNative->handle || !indirectNative || !indirectNative->handle)
+        return;
+    dx_flush_descriptors();
+    dx_bind_draw_vbos(vbo, vbo_num);
+    dx_transition_buffer(*indexNative, D3D12_RESOURCE_STATE_INDEX_BUFFER);
+    D3D12_INDEX_BUFFER_VIEW view = {};
+    view.BufferLocation = indexNative->handle->GetGPUVirtualAddress();
+    view.SizeInBytes = (UINT)ebo.size;
+    view.Format = rt_to_dx_index_type(dx_current_render_module().index_type);
+    direct.cmd->IASetIndexBuffer(&view);
+    if (indirectNative->heap != D3D12_HEAP_TYPE_UPLOAD)
+        dx_transition_buffer(*indirectNative, D3D12_RESOURCE_STATE_INDIRECT_ARGUMENT);
+    auto* signature = dx_indirect_signature(D3D12_INDIRECT_ARGUMENT_TYPE_DRAW_INDEXED, sizeof(D3D12_DRAW_INDEXED_ARGUMENTS));
+    direct.cmd->ExecuteIndirect(signature, 1, indirectNative->handle.Get(), (UINT64)offset, nullptr, 0);
+}
+
 void dx_draw_mesh_task(uint32_t groupX, uint32_t groupY, uint32_t groupZ)
 {
     if (direct.currentPipeline == nullptr)
@@ -2355,6 +2343,7 @@ void dx_draw_mesh_task(uint32_t groupX, uint32_t groupY, uint32_t groupZ)
         fprintf(stderr, "Pipeline not begin");
         abort();
     }
+    (void)dx_current_render_module();
     dx_flush_descriptors();
     if (direct.cmdMesh)
         direct.cmdMesh->DispatchMesh(max(1u, groupX), max(1u, groupY), max(1u, groupZ));
@@ -2372,6 +2361,7 @@ void dx_draw_mesh_task_indirect(rt_buffer_t& indirect, size_t offset, uint32_t d
         fprintf(stderr, "Pipeline not begin");
         abort();
     }
+    (void)dx_current_render_module();
     auto* native = dx_buffer_native(indirect);
     if (!native || !native->handle || !direct.cmdMesh)
         return;
@@ -2380,6 +2370,50 @@ void dx_draw_mesh_task_indirect(rt_buffer_t& indirect, size_t offset, uint32_t d
         dx_transition_buffer(*native, D3D12_RESOURCE_STATE_INDIRECT_ARGUMENT);
     auto* signature = dx_indirect_signature(D3D12_INDIRECT_ARGUMENT_TYPE_DISPATCH_MESH, draw_stride);
     direct.cmdMesh->ExecuteIndirect(signature, draw_count, native->handle.Get(), (UINT64)offset, nullptr, 0);
+}
+
+void dx_push_constant(uint8_t const* buffer, size_t length)
+{
+    if (direct.currentPipeline == nullptr)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    auto* mod = dx_current_module_native();
+    if (!buffer || length == 0 || !mod) return;
+    uint32_t count = (uint32_t)((length + 3) / 4);
+    if (count > 32) count = 32;
+    std::memcpy(direct.pushData, buffer, (size_t)count * 4);
+    direct.pushCount = count;
+    if (mod->cshader.BytecodeLength)
+        direct.cmd->SetComputeRoot32BitConstants(0, count, direct.pushData, 0);
+    else
+        direct.cmd->SetGraphicsRoot32BitConstants(0, count, direct.pushData, 0);
+}
+
+void dx_push_const_int(const char*, int32_t) {}
+
+void dx_push_const_uint(const char*, uint32_t) {}
+
+void dx_push_const_float(const char*, float) {}
+
+void dx_push_const_vec2(const char*, const float*) {}
+
+void dx_push_const_vec3(const char*, const float*) {}
+
+void dx_push_const_vec4(const char*, const float*) {}
+
+void dx_push_const_mat3(const char*, const float*) {}
+
+void dx_push_const_mat4(const char*, const float*) {}
+
+static void dx_fill_placed(D3D12_PLACED_SUBRESOURCE_FOOTPRINT& footprint, dx_texture_native_t& tex, uint32_t bytesPerRow, rt_size_t copySize)
+{
+    footprint.Footprint.Format = tex.format;
+    footprint.Footprint.Width = copySize.x;
+    footprint.Footprint.Height = copySize.y;
+    footprint.Footprint.Depth = copySize.z ? copySize.z : 1;
+    footprint.Footprint.RowPitch = bytesPerRow ? bytesPerRow : (copySize.x * dx_format_bytes(tex.format));
 }
 
 void dx_begin_transfer(rt_pass_transfer_t& pass)
@@ -2469,15 +2503,6 @@ void dx_copy_buffer_data(rt_buffer_data_t source, rt_buffer_copy_t destination, 
     dx_transition_buffer(*dst, D3D12_RESOURCE_STATE_COPY_DEST);
     direct.cmd->CopyBufferRegion(dst->handle.Get(), destination.offset, staging.buffer.Get(), 0, copySize);
     direct.pendingStaging.push_back(std::move(staging));
-}
-
-static void dx_fill_placed(D3D12_PLACED_SUBRESOURCE_FOOTPRINT& footprint, dx_texture_native_t& tex, uint32_t bytesPerRow, rt_size_t copySize)
-{
-    footprint.Footprint.Format = tex.format;
-    footprint.Footprint.Width = copySize.x;
-    footprint.Footprint.Height = copySize.y;
-    footprint.Footprint.Depth = copySize.z ? copySize.z : 1;
-    footprint.Footprint.RowPitch = bytesPerRow ? bytesPerRow : (copySize.x * dx_format_bytes(tex.format));
 }
 
 void dx_copy_buffer_texture(rt_texture_copy_t source, rt_buffer_texel_t destination, rt_size_t copySize)
@@ -2606,39 +2631,6 @@ void dx_copy_texture_buffer(rt_buffer_texel_t source, rt_texture_copy_t destinat
     direct.cmd->CopyTextureRegion(&dstLoc, destination.origin.x, destination.origin.y, destination.origin.z, &srcLoc, nullptr);
 }
 
-rt_mesh_t dx_create_mesh(const float* vertices, const float* normals, const float* uvs, size_t vertex_count, const unsigned int* indices, size_t index_count)
-{
-    rt_mesh_t result = {};
-    if (!vertices || vertex_count == 0) return result;
-    uint32_t handle = direct.meshID + 1;
-    auto& native = direct.meshes[handle];
-    native.vertexCount = (uint32_t)vertex_count;
-    native.indexCount = (uint32_t)index_count;
-    if (vertices)
-        result.vertex[0] = dx_create_buffer({.size = vertex_count * 3 * sizeof(float), .usage = RT_BUFFER_USAGE_VERTEX | RT_BUFFER_USAGE_COPY_DST, .data = vertices});
-    if (normals)
-        result.vertex[1] = dx_create_buffer({.size = vertex_count * 3 * sizeof(float), .usage = RT_BUFFER_USAGE_VERTEX | RT_BUFFER_USAGE_COPY_DST, .data = normals});
-    if (uvs)
-        result.vertex[2] = dx_create_buffer({.size = vertex_count * 2 * sizeof(float), .usage = RT_BUFFER_USAGE_VERTEX | RT_BUFFER_USAGE_COPY_DST, .data = uvs});
-    if (indices)
-        result.index = dx_create_buffer({.size = index_count * sizeof(uint32_t), .usage = RT_BUFFER_USAGE_INDEX | RT_BUFFER_USAGE_COPY_DST, .data = indices});
-    std::iota(result.location, result.location + std::size(result.location), 0);
-    direct.meshID = handle;
-    result.handle = handle;
-    result.native = &native;
-    return result;
-}
-
-void dx_destroy_mesh(rt_mesh_t& mesh)
-{
-    for (auto& vertex : mesh.vertex)
-        dx_destroy_buffer(vertex);
-    dx_destroy_buffer(mesh.index);
-    direct.meshes.erase(mesh.handle);
-    mesh.handle = 0;
-    mesh.native = nullptr;
-}
-
 static void dx_draw_mesh_impl(rt_mesh_t& mesh, uint32_t instanceCount)
 {
     if (direct.currentPipeline == nullptr)
@@ -2652,7 +2644,7 @@ static void dx_draw_mesh_impl(rt_mesh_t& mesh, uint32_t instanceCount)
         abort();
     }
     dx_flush_descriptors();
-    rt_module_render_t const& module = direct.currentRenderPass->module;
+    rt_module_render_t const& module = dx_current_render_module();
     uint32_t vertex_count = 0;
     for (uint32_t i = 0; i < std::size(module.vertex); ++i)
     {
@@ -2692,100 +2684,37 @@ static void dx_draw_mesh_impl(rt_mesh_t& mesh, uint32_t instanceCount)
         direct.cmd->DrawInstanced(vertex_count, instanceCount, 0, 0);
 }
 
-void dx_draw_array(rt_buffer_t vbo[], uint32_t vbo_num, uint32_t vertex_num, uint32_t instance_num, uint32_t vertex_start, uint32_t instance_start)
+rt_mesh_t dx_create_mesh(const float* vertices, const float* normals, const float* uvs, size_t vertex_count, const unsigned int* indices, size_t index_count)
 {
-    if (direct.currentPipeline == nullptr)
-    {
-        fprintf(stderr, "Pipeline not begin");
-        abort();
-    }
-    if (direct.currentPassType != RT_MODULE_RENDER)
-    {
-        fprintf(stderr, "Pipeline not begin");
-        abort();
-    }
-    dx_flush_descriptors();
-    dx_bind_draw_vbos(vbo, vbo_num);
-    direct.cmd->DrawInstanced(vertex_num, instance_num, vertex_start, instance_start);
+    rt_mesh_t result = {};
+    if (!vertices || vertex_count == 0) return result;
+    uint32_t handle = direct.meshID + 1;
+    auto& native = direct.meshes[handle];
+    native.vertexCount = (uint32_t)vertex_count;
+    native.indexCount = (uint32_t)index_count;
+    if (vertices)
+        result.vertex[0] = dx_create_buffer({.size = vertex_count * 3 * sizeof(float), .usage = RT_BUFFER_USAGE_VERTEX | RT_BUFFER_USAGE_COPY_DST, .data = vertices});
+    if (normals)
+        result.vertex[1] = dx_create_buffer({.size = vertex_count * 3 * sizeof(float), .usage = RT_BUFFER_USAGE_VERTEX | RT_BUFFER_USAGE_COPY_DST, .data = normals});
+    if (uvs)
+        result.vertex[2] = dx_create_buffer({.size = vertex_count * 2 * sizeof(float), .usage = RT_BUFFER_USAGE_VERTEX | RT_BUFFER_USAGE_COPY_DST, .data = uvs});
+    if (indices)
+        result.index = dx_create_buffer({.size = index_count * sizeof(uint32_t), .usage = RT_BUFFER_USAGE_INDEX | RT_BUFFER_USAGE_COPY_DST, .data = indices});
+    std::iota(result.location, result.location + std::size(result.location), 0);
+    direct.meshID = handle;
+    result.handle = handle;
+    result.native = &native;
+    return result;
 }
 
-void dx_draw_index(rt_buffer_t vbo[], uint32_t vbo_num, rt_buffer_t& ebo, uint32_t vertex_num, uint32_t instance_num, uint32_t vertex_start, uint32_t instance_start)
+void dx_destroy_mesh(rt_mesh_t& mesh)
 {
-    if (direct.currentPipeline == nullptr)
-    {
-        fprintf(stderr, "Pipeline not begin");
-        abort();
-    }
-    if (direct.currentPassType != RT_MODULE_RENDER)
-    {
-        fprintf(stderr, "Pipeline not begin");
-        abort();
-    }
-    auto* indexNative = dx_buffer_native(ebo);
-    if (!indexNative || !indexNative->handle)
-        return;
-    dx_flush_descriptors();
-    dx_bind_draw_vbos(vbo, vbo_num);
-    dx_transition_buffer(*indexNative, D3D12_RESOURCE_STATE_INDEX_BUFFER);
-    D3D12_INDEX_BUFFER_VIEW view = {};
-    view.BufferLocation = indexNative->handle->GetGPUVirtualAddress();
-    view.SizeInBytes = (UINT)ebo.size;
-    view.Format = rt_to_dx_index_type(direct.currentRenderPass->module.index_type);
-    direct.cmd->IASetIndexBuffer(&view);
-    direct.cmd->DrawIndexedInstanced(vertex_num, instance_num, 0, (INT)vertex_start, instance_start);
-}
-
-void dx_draw_array_indirect(rt_buffer_t vbo[], uint32_t vbo_num, rt_buffer_t& indirect, size_t offset)
-{
-    if (direct.currentPipeline == nullptr)
-    {
-        fprintf(stderr, "Pipeline not begin");
-        abort();
-    }
-    if (direct.currentPassType != RT_MODULE_RENDER)
-    {
-        fprintf(stderr, "Pipeline not begin");
-        abort();
-    }
-    auto* indirectNative = dx_buffer_native(indirect);
-    if (!indirectNative || !indirectNative->handle)
-        return;
-    dx_flush_descriptors();
-    dx_bind_draw_vbos(vbo, vbo_num);
-    if (indirectNative->heap != D3D12_HEAP_TYPE_UPLOAD)
-        dx_transition_buffer(*indirectNative, D3D12_RESOURCE_STATE_INDIRECT_ARGUMENT);
-    auto* signature = dx_indirect_signature(D3D12_INDIRECT_ARGUMENT_TYPE_DRAW, sizeof(D3D12_DRAW_ARGUMENTS));
-    direct.cmd->ExecuteIndirect(signature, 1, indirectNative->handle.Get(), (UINT64)offset, nullptr, 0);
-}
-
-void dx_draw_index_indirect(rt_buffer_t vbo[], uint32_t vbo_num, rt_buffer_t& ebo, rt_buffer_t& indirect, size_t offset)
-{
-    if (direct.currentPipeline == nullptr)
-    {
-        fprintf(stderr, "Pipeline not begin");
-        abort();
-    }
-    if (direct.currentPassType != RT_MODULE_RENDER)
-    {
-        fprintf(stderr, "Pipeline not begin");
-        abort();
-    }
-    auto* indexNative = dx_buffer_native(ebo);
-    auto* indirectNative = dx_buffer_native(indirect);
-    if (!indexNative || !indexNative->handle || !indirectNative || !indirectNative->handle)
-        return;
-    dx_flush_descriptors();
-    dx_bind_draw_vbos(vbo, vbo_num);
-    dx_transition_buffer(*indexNative, D3D12_RESOURCE_STATE_INDEX_BUFFER);
-    D3D12_INDEX_BUFFER_VIEW view = {};
-    view.BufferLocation = indexNative->handle->GetGPUVirtualAddress();
-    view.SizeInBytes = (UINT)ebo.size;
-    view.Format = rt_to_dx_index_type(direct.currentRenderPass->module.index_type);
-    direct.cmd->IASetIndexBuffer(&view);
-    if (indirectNative->heap != D3D12_HEAP_TYPE_UPLOAD)
-        dx_transition_buffer(*indirectNative, D3D12_RESOURCE_STATE_INDIRECT_ARGUMENT);
-    auto* signature = dx_indirect_signature(D3D12_INDIRECT_ARGUMENT_TYPE_DRAW_INDEXED, sizeof(D3D12_DRAW_INDEXED_ARGUMENTS));
-    direct.cmd->ExecuteIndirect(signature, 1, indirectNative->handle.Get(), (UINT64)offset, nullptr, 0);
+    for (auto& vertex : mesh.vertex)
+        dx_destroy_buffer(vertex);
+    dx_destroy_buffer(mesh.index);
+    direct.meshes.erase(mesh.handle);
+    mesh.handle = 0;
+    mesh.native = nullptr;
 }
 
 void dx_draw_mesh(rt_mesh_t& mesh)
@@ -2843,7 +2772,7 @@ void dx_draw_meshlet(rt_meshlet_t& meshlet)
         fprintf(stderr, "Pipeline not begin");
         abort();
     }
-    rt_module_render_t const& module = direct.currentRenderPass->module;
+    rt_module_render_t const& module = dx_current_render_module();
     uint32_t index_binding = 0;
     for (uint32_t i = 0; i < std::size(module.vertex); ++i)
     {

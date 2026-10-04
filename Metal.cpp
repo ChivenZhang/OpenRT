@@ -711,6 +711,8 @@ struct mt_native_t
         rt_pass_compute_t* currentComputePass;
         rt_pass_transfer_t* currentTransferPass;
     };
+    rt_module_render_t* currentRenderModule = nullptr;
+    rt_module_compute_t* currentComputeModule = nullptr;
 } static metal;
 
 static void mt_end_encoder()
@@ -795,11 +797,21 @@ static mt_sampler_native_t* mt_sampler_native(rt_sampler_t const& sampler)
 
 static mt_module_native_t* mt_current_module_native()
 {
-    if (metal.currentPassType == RT_MODULE_COMPUTE && metal.currentComputePass)
-        return (mt_module_native_t*)metal.currentComputePass->module.native;
-    if (metal.currentPassType == RT_MODULE_RENDER && metal.currentRenderPass)
-        return (mt_module_native_t*)metal.currentRenderPass->module.native;
+    if (metal.currentPassType == RT_MODULE_COMPUTE && metal.currentComputeModule)
+        return (mt_module_native_t*)metal.currentComputeModule->native;
+    if (metal.currentPassType == RT_MODULE_RENDER && metal.currentRenderModule)
+        return (mt_module_native_t*)metal.currentRenderModule->native;
     return nullptr;
+}
+
+static rt_module_render_t const& mt_current_render_module()
+{
+    if (metal.currentRenderModule == nullptr)
+    {
+        fprintf(stderr, "Pipeline module not bound\n");
+        abort();
+    }
+    return *metal.currentRenderModule;
 }
 
 static void mt_log_error(const char* what, NS::Error* error)
@@ -1062,15 +1074,16 @@ void mt_load_library(MTL::Device* device, MTL::CommandQueue* queue)
     rt_bind_sampler = mt_bind_sampler;
     rt_create_module_compute = mt_create_module_compute;
     rt_create_module_render = mt_create_module_render;
-    rt_create_module_meshlet = mt_create_module_meshlet;
     rt_destroy_module_render = mt_destroy_module_render;
     rt_destroy_module_compute = mt_destroy_module_compute;
     rt_begin_compute = mt_begin_compute;
     rt_end_compute = mt_end_compute;
+    rt_bind_module_compute = mt_bind_module_compute;
     rt_dispatch_compute = mt_dispatch_compute;
     rt_dispatch_compute_indirect = mt_dispatch_compute_indirect;
     rt_begin_render = mt_begin_render;
     rt_end_render = mt_end_render;
+    rt_bind_module_render = mt_bind_module_render;
     rt_set_viewport = mt_set_viewport;
     rt_set_scissor = mt_set_scissor;
     rt_draw_mesh_task = mt_draw_mesh_task;
@@ -1162,15 +1175,16 @@ void mt_unload_library()
     if (rt_bind_sampler == mt_bind_sampler) rt_bind_sampler = nullptr;
     if (rt_create_module_compute == mt_create_module_compute) rt_create_module_compute = nullptr;
     if (rt_create_module_render == mt_create_module_render) rt_create_module_render = nullptr;
-    if (rt_create_module_meshlet == mt_create_module_meshlet) rt_create_module_meshlet = nullptr;
     if (rt_destroy_module_render == mt_destroy_module_render) rt_destroy_module_render = nullptr;
     if (rt_destroy_module_compute == mt_destroy_module_compute) rt_destroy_module_compute = nullptr;
     if (rt_begin_compute == mt_begin_compute) rt_begin_compute = nullptr;
     if (rt_end_compute == mt_end_compute) rt_end_compute = nullptr;
+    if (rt_bind_module_compute == mt_bind_module_compute) rt_bind_module_compute = nullptr;
     if (rt_dispatch_compute == mt_dispatch_compute) rt_dispatch_compute = nullptr;
     if (rt_dispatch_compute_indirect == mt_dispatch_compute_indirect) rt_dispatch_compute_indirect = nullptr;
     if (rt_begin_render == mt_begin_render) rt_begin_render = nullptr;
     if (rt_end_render == mt_end_render) rt_end_render = nullptr;
+    if (rt_bind_module_render == mt_bind_module_render) rt_bind_module_render = nullptr;
     if (rt_set_viewport == mt_set_viewport) rt_set_viewport = nullptr;
     if (rt_set_scissor == mt_set_scissor) rt_set_scissor = nullptr;
     if (rt_draw_mesh_task == mt_draw_mesh_task) rt_draw_mesh_task = nullptr;
@@ -1602,12 +1616,29 @@ rt_module_render_t mt_create_module_render(rt_module_render_info_t const& info)
         native.vlib = mt_create_library(info.vshader.code, info.vshader.size, "vertex shader");
         native.vfn = mt_function_from_binary(native.vlib, info.vshader.entry, "vertex shader");
     }
+    else if (info.mshader.code)
+    {
+        if (info.tshader.code)
+        {
+            native.tlib = mt_create_library(info.tshader.code, info.tshader.size, "object shader");
+            native.tfn = mt_function_from_binary(native.tlib, info.tshader.entry, "object shader");
+        }
+        native.mlib = mt_create_library(info.mshader.code, info.mshader.size, "mesh shader");
+        native.mfn = mt_function_from_binary(native.mlib, info.mshader.entry, "mesh shader");
+    }
+    else
+    {
+        metal.modules.erase(handle);
+        fprintf(stderr, "Render module requires a vertex shader or a mesh shader\n");
+        abort();
+    }
     if (info.fshader.code)
     {
         native.flib = mt_create_library(info.fshader.code, info.fshader.size, "fragment shader");
         native.ffn = mt_function_from_binary(native.flib, info.fshader.entry, "fragment shader");
     }
-    if ((info.vshader.code && !native.vfn) || (info.fshader.code && !native.ffn))
+    if ((info.vshader.code && !native.vfn) || (info.tshader.code && !native.tfn) ||
+        (info.mshader.code && !native.mfn) || (info.fshader.code && !native.ffn))
     {
         result.native = &native;
         mt_destroy_module_native(handle, result.native);
@@ -1620,85 +1651,47 @@ rt_module_render_t mt_create_module_render(rt_module_render_info_t const& info)
          info.stencil.front.func != RT_ALWAYS || info.stencil.front.sfail != RT_STENCIL_KEEP ||
          info.stencil.front.zfail != RT_STENCIL_KEEP || info.stencil.front.zpass != RT_STENCIL_KEEP);
     NS::Error* error = nullptr;
-    MTL::RenderPipelineDescriptor* desc = MTL::RenderPipelineDescriptor::alloc()->init();
-    desc->setVertexFunction(native.vfn);
-    desc->setFragmentFunction(native.ffn);
-    MTL::VertexDescriptor* vd = MTL::VertexDescriptor::alloc()->init();
-    for (uint32_t i = 0; i < RT_MAX_VERTEX_BUFFER_NUM; ++i)
+    if (native.vfn)
     {
-        if (info.vertex[i].format == RT_VERTEX_NONE) continue;
-        uint32_t loc = info.vertex[i].location;
-        vd->attributes()->object(loc)->setFormat(rt_to_mt_vertex_format(info.vertex[i].format));
-        vd->attributes()->object(loc)->setOffset(0);
-        vd->attributes()->object(loc)->setBufferIndex(loc);
-        vd->layouts()->object(loc)->setStride(rt_to_mt_vertex_size(info.vertex[i].format));
-        vd->layouts()->object(loc)->setStepFunction(info.vertex[i].instance ? MTL::VertexStepFunctionPerInstance : MTL::VertexStepFunctionPerVertex);
-        vd->layouts()->object(loc)->setStepRate(1);
+        MTL::RenderPipelineDescriptor* desc = MTL::RenderPipelineDescriptor::alloc()->init();
+        desc->setVertexFunction(native.vfn);
+        desc->setFragmentFunction(native.ffn);
+        MTL::VertexDescriptor* vd = MTL::VertexDescriptor::alloc()->init();
+        for (uint32_t i = 0; i < RT_MAX_VERTEX_BUFFER_NUM; ++i)
+        {
+            if (info.vertex[i].format == RT_VERTEX_NONE) continue;
+            uint32_t loc = info.vertex[i].location;
+            vd->attributes()->object(loc)->setFormat(rt_to_mt_vertex_format(info.vertex[i].format));
+            vd->attributes()->object(loc)->setOffset(0);
+            vd->attributes()->object(loc)->setBufferIndex(loc);
+            vd->layouts()->object(loc)->setStride(rt_to_mt_vertex_size(info.vertex[i].format));
+            vd->layouts()->object(loc)->setStepFunction(info.vertex[i].instance ? MTL::VertexStepFunctionPerInstance : MTL::VertexStepFunctionPerVertex);
+            vd->layouts()->object(loc)->setStepRate(1);
+        }
+        desc->setVertexDescriptor(vd);
+        mt_release(vd);
+        mt_fill_color_attachments(desc->colorAttachments(), info);
+        if (stencilEnabled) desc->setDepthAttachmentPixelFormat(MTL::PixelFormatDepth32Float_Stencil8);
+        else if (depthEnabled) desc->setDepthAttachmentPixelFormat(MTL::PixelFormatDepth32Float);
+        native.renderPipeline = metal.device->newRenderPipelineState(desc, &error);
+        mt_release(desc);
+        if (!native.renderPipeline)
+            mt_log_error("render pipeline creation failed", error);
     }
-    desc->setVertexDescriptor(vd);
-    mt_release(vd);
-    mt_fill_color_attachments(desc->colorAttachments(), info);
-    if (stencilEnabled) desc->setDepthAttachmentPixelFormat(MTL::PixelFormatDepth32Float_Stencil8);
-    else if (depthEnabled) desc->setDepthAttachmentPixelFormat(MTL::PixelFormatDepth32Float);
-    native.renderPipeline = metal.device->newRenderPipelineState(desc, &error);
-    mt_release(desc);
-    if (!native.renderPipeline)
-        mt_log_error("render pipeline creation failed", error);
-    if (!native.renderPipeline || !mt_create_depth_stencil(native, info, stencilEnabled))
+    else
     {
-        result.native = &native;
-        mt_destroy_module_native(handle, result.native);
-        return {};
+        MTL::MeshRenderPipelineDescriptor* desc = MTL::MeshRenderPipelineDescriptor::alloc()->init();
+        desc->setObjectFunction(native.tfn);
+        desc->setMeshFunction(native.mfn);
+        desc->setFragmentFunction(native.ffn);
+        mt_fill_color_attachments(desc->colorAttachments(), info);
+        if (stencilEnabled) desc->setDepthAttachmentPixelFormat(MTL::PixelFormatDepth32Float_Stencil8);
+        else if (depthEnabled) desc->setDepthAttachmentPixelFormat(MTL::PixelFormatDepth32Float);
+        native.renderPipeline = metal.device->newRenderPipelineState(desc, MTL::PipelineOptionNone, nullptr, &error);
+        mt_release(desc);
+        if (!native.renderPipeline)
+            mt_log_error("mesh pipeline creation failed", error);
     }
-    metal.moduleID = handle;
-    result.handle = handle;
-    result.native = &native;
-    mt_fill_render_state(result, info);
-    return result;
-}
-
-rt_module_render_t mt_create_module_meshlet(rt_module_render_info_t const& info)
-{
-    rt_module_render_t result = {};
-    if (!info.mshader.code || !info.mshader.size || !metal.device) return result;
-    uint32_t handle = metal.moduleID + 1;
-    auto& native = metal.modules[handle];
-    if (info.tshader.code)
-    {
-        native.tlib = mt_create_library(info.tshader.code, info.tshader.size, "object shader");
-        native.tfn = mt_function_from_binary(native.tlib, info.tshader.entry, "object shader");
-    }
-    native.mlib = mt_create_library(info.mshader.code, info.mshader.size, "mesh shader");
-    native.mfn = mt_function_from_binary(native.mlib, info.mshader.entry, "mesh shader");
-    if (info.fshader.code)
-    {
-        native.flib = mt_create_library(info.fshader.code, info.fshader.size, "fragment shader");
-        native.ffn = mt_function_from_binary(native.flib, info.fshader.entry, "fragment shader");
-    }
-    const bool depthEnabled = (info.depth.func != RT_ALWAYS || info.depth.write);
-    const bool stencilEnabled =
-        (info.stencil.back.func != RT_ALWAYS || info.stencil.back.sfail != RT_STENCIL_KEEP ||
-         info.stencil.back.zfail != RT_STENCIL_KEEP || info.stencil.back.zpass != RT_STENCIL_KEEP ||
-         info.stencil.front.func != RT_ALWAYS || info.stencil.front.sfail != RT_STENCIL_KEEP ||
-         info.stencil.front.zfail != RT_STENCIL_KEEP || info.stencil.front.zpass != RT_STENCIL_KEEP);
-    if (!native.mfn)
-    {
-        result.native = &native;
-        mt_destroy_module_native(handle, result.native);
-        return {};
-    }
-    NS::Error* error = nullptr;
-    MTL::MeshRenderPipelineDescriptor* desc = MTL::MeshRenderPipelineDescriptor::alloc()->init();
-    desc->setObjectFunction(native.tfn);
-    desc->setMeshFunction(native.mfn);
-    desc->setFragmentFunction(native.ffn);
-    mt_fill_color_attachments(desc->colorAttachments(), info);
-    if (stencilEnabled) desc->setDepthAttachmentPixelFormat(MTL::PixelFormatDepth32Float_Stencil8);
-    else if (depthEnabled) desc->setDepthAttachmentPixelFormat(MTL::PixelFormatDepth32Float);
-    native.renderPipeline = metal.device->newRenderPipelineState(desc, MTL::PipelineOptionNone, nullptr, &error);
-    mt_release(desc);
-    if (!native.renderPipeline)
-        mt_log_error("mesh pipeline creation failed", error);
     if (!native.renderPipeline || !mt_create_depth_stencil(native, info, stencilEnabled))
     {
         result.native = &native;
@@ -1724,38 +1717,11 @@ void mt_destroy_module_compute(rt_module_compute_t& module)
     module.handle = 0;
 }
 
-void mt_push_constant(uint8_t const* buffer, size_t length)
-{
-    if (metal.currentPipeline == nullptr)
-    {
-        fprintf(stderr, "Pipeline not begin");
-        abort();
-    }
-    if (!buffer || length == 0) return;
-    metal.pushLength = (uint32_t)std::min(length, sizeof(metal.pushData));
-    std::memcpy(metal.pushData, buffer, metal.pushLength);
-    mt_apply_push();
-}
-
-void mt_push_const_int(const char*, int32_t) {}
-void mt_push_const_uint(const char*, uint32_t) {}
-void mt_push_const_float(const char*, float) {}
-void mt_push_const_vec2(const char*, const float*) {}
-void mt_push_const_vec3(const char*, const float*) {}
-void mt_push_const_vec4(const char*, const float*) {}
-void mt_push_const_mat3(const char*, const float*) {}
-void mt_push_const_mat4(const char*, const float*) {}
-
 void mt_begin_compute(rt_pass_compute_t& pass)
 {
     if (metal.currentPipeline)
     {
         fprintf(stderr, "Pipeline not end");
-        abort();
-    }
-    if (pass.module.handle == 0 || !pass.module.native)
-    {
-        fprintf(stderr, "Pipeline module is not created\n");
         abort();
     }
     for (auto& binding : metal.currentBinding)
@@ -1766,12 +1732,10 @@ void mt_begin_compute(rt_pass_compute_t& pass)
     pass.native = &native;
     metal.currentPassType = RT_MODULE_COMPUTE;
     metal.currentComputePass = &pass;
+    metal.currentComputeModule = nullptr;
     mt_end_encoder();
     metal.computeEncoder = metal.cmd->computeCommandEncoder();
     if (metal.computeEncoder) metal.computeEncoder->retain();
-    auto* mod = (mt_module_native_t*)pass.module.native;
-    if (mod && mod->computePipeline)
-        metal.computeEncoder->setComputePipelineState(mod->computePipeline);
     metal.passID = handle;
 }
 
@@ -1792,8 +1756,26 @@ void mt_end_compute(rt_pass_compute_t& pass)
     pass.native = nullptr;
     metal.currentPassType = RT_MODULE_NONE;
     metal.currentPipeline = nullptr;
+    metal.currentComputeModule = nullptr;
     for (auto& binding : metal.currentBinding)
         binding = {};
+}
+
+void mt_bind_module_compute(rt_module_compute_t& module)
+{
+    if (metal.currentPipeline == nullptr || metal.currentPassType != RT_MODULE_COMPUTE)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    auto* mod = (mt_module_native_t*)module.native;
+    if (module.handle == 0 || !mod || !mod->computePipeline)
+    {
+        fprintf(stderr, "Pipeline module is not created\n");
+        abort();
+    }
+    metal.currentComputeModule = &module;
+    metal.computeEncoder->setComputePipelineState(mod->computePipeline);
 }
 
 void mt_dispatch_compute(uint32_t groupX, uint32_t groupY, uint32_t groupZ)
@@ -1808,6 +1790,11 @@ void mt_dispatch_compute(uint32_t groupX, uint32_t groupY, uint32_t groupZ)
         fprintf(stderr, "Pipeline not begin");
         abort();
     }
+    if (metal.currentComputeModule == nullptr)
+    {
+        fprintf(stderr, "Pipeline module not bound\n");
+        abort();
+    }
     mt_flush_descriptors();
     MTL::Size groups = MTL::Size::Make(std::max(1u, groupX), std::max(1u, groupY), std::max(1u, groupZ));
     MTL::Size threads = MTL::Size::Make(1, 1, 1);
@@ -1817,9 +1804,38 @@ void mt_dispatch_compute(uint32_t groupX, uint32_t groupY, uint32_t groupZ)
     metal.computeEncoder->dispatchThreadgroups(groups, threads);
 }
 
+void mt_dispatch_compute_indirect(rt_buffer_t& indirect, size_t offset)
+{
+    if (metal.currentPipeline == nullptr)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    if (metal.currentPassType != RT_MODULE_COMPUTE)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    if (metal.currentComputeModule == nullptr)
+    {
+        fprintf(stderr, "Pipeline module not bound\n");
+        abort();
+    }
+    auto* native = mt_buffer_native(indirect);
+    if (!native || !native->handle)
+        return;
+    mt_flush_descriptors();
+    mt_transition_buffer(*native, MTL_STATE_SHADER_READ);
+    MTL::Size threads = MTL::Size::Make(1, 1, 1);
+    auto* mod = mt_current_module_native();
+    if (mod && mod->computePipeline)
+        threads = MTL::Size::Make(mod->computePipeline->threadExecutionWidth(), 1, 1);
+    metal.computeEncoder->dispatchThreadgroups(native->handle, (NS::UInteger)offset, threads);
+}
+
 static void mt_bind_draw_vbos(rt_buffer_t vbo[], uint32_t vbo_num)
 {
-    rt_module_render_t const& module = metal.currentRenderPass->module;
+    rt_module_render_t const& module = mt_current_render_module();
     uint32_t count = vbo_num;
     if (count > (uint32_t)std::size(module.vertex))
         count = (uint32_t)std::size(module.vertex);
@@ -1838,32 +1854,8 @@ static void mt_bind_draw_vbos(rt_buffer_t vbo[], uint32_t vbo_num)
 
 static MTL::PrimitiveType mt_draw_primitive()
 {
-    auto* mod = (mt_module_native_t*)metal.currentRenderPass->module.native;
+    auto* mod = (mt_module_native_t*)mt_current_render_module().native;
     return mod ? mod->primitive : MTL::PrimitiveTypeTriangle;
-}
-
-void mt_dispatch_compute_indirect(rt_buffer_t& indirect, size_t offset)
-{
-    if (metal.currentPipeline == nullptr)
-    {
-        fprintf(stderr, "Pipeline not begin");
-        abort();
-    }
-    if (metal.currentPassType != RT_MODULE_COMPUTE)
-    {
-        fprintf(stderr, "Pipeline not begin");
-        abort();
-    }
-    auto* native = mt_buffer_native(indirect);
-    if (!native || !native->handle)
-        return;
-    mt_flush_descriptors();
-    mt_transition_buffer(*native, MTL_STATE_SHADER_READ);
-    MTL::Size threads = MTL::Size::Make(1, 1, 1);
-    auto* mod = mt_current_module_native();
-    if (mod && mod->computePipeline)
-        threads = MTL::Size::Make(mod->computePipeline->threadExecutionWidth(), 1, 1);
-    metal.computeEncoder->dispatchThreadgroups(native->handle, (NS::UInteger)offset, threads);
 }
 
 void mt_begin_render(rt_pass_render_t& pass)
@@ -1873,15 +1865,11 @@ void mt_begin_render(rt_pass_render_t& pass)
         fprintf(stderr, "Pipeline not end");
         abort();
     }
-    if (pass.module.handle == 0 || !pass.module.native)
-    {
-        fprintf(stderr, "Pipeline module is not created\n");
-        abort();
-    }
     for (auto& binding : metal.currentBinding)
         binding = {};
     metal.currentPassType = RT_MODULE_RENDER;
     metal.currentRenderPass = &pass;
+    metal.currentRenderModule = nullptr;
 
     MTL::RenderPassDescriptor* desc = MTL::RenderPassDescriptor::renderPassDescriptor();
     uint32_t width = 0, height = 0;
@@ -1936,16 +1924,6 @@ void mt_begin_render(rt_pass_render_t& pass)
     mt_end_encoder();
     metal.renderEncoder = metal.cmd->renderCommandEncoder(desc);
     if (metal.renderEncoder) metal.renderEncoder->retain();
-    auto* mod = (mt_module_native_t*)pass.module.native;
-    if (mod && mod->renderPipeline)
-        metal.renderEncoder->setRenderPipelineState(mod->renderPipeline);
-    if (mod && mod->depthStencil)
-        metal.renderEncoder->setDepthStencilState(mod->depthStencil);
-    if (mod)
-    {
-        metal.renderEncoder->setCullMode(mod->cull);
-        metal.renderEncoder->setFrontFacingWinding(mod->winding);
-    }
     mt_set_viewport(0, 0, (int32_t)width, (int32_t)height);
     mt_set_scissor(0, 0, (int32_t)width, (int32_t)height);
 }
@@ -1973,8 +1951,30 @@ void mt_end_render(rt_pass_render_t& pass)
     pass.native = nullptr;
     metal.currentPassType = RT_MODULE_NONE;
     metal.currentPipeline = nullptr;
+    metal.currentRenderModule = nullptr;
     for (auto& binding : metal.currentBinding)
         binding = {};
+}
+
+void mt_bind_module_render(rt_module_render_t& module)
+{
+    if (metal.currentPipeline == nullptr || metal.currentPassType != RT_MODULE_RENDER)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    auto* mod = (mt_module_native_t*)module.native;
+    if (module.handle == 0 || !mod || !mod->renderPipeline)
+    {
+        fprintf(stderr, "Pipeline module is not created\n");
+        abort();
+    }
+    metal.currentRenderModule = &module;
+    metal.renderEncoder->setRenderPipelineState(mod->renderPipeline);
+    if (mod->depthStencil)
+        metal.renderEncoder->setDepthStencilState(mod->depthStencil);
+    metal.renderEncoder->setCullMode(mod->cull);
+    metal.renderEncoder->setFrontFacingWinding(mod->winding);
 }
 
 void mt_set_viewport(int32_t x, int32_t y, int32_t width, int32_t height)
@@ -2001,6 +2001,91 @@ void mt_set_scissor(int32_t x, int32_t y, int32_t width, int32_t height)
     metal.renderEncoder->setScissorRect(rect);
 }
 
+void mt_draw_array(rt_buffer_t vbo[], uint32_t vbo_num, uint32_t vertex_num, uint32_t instance_num, uint32_t vertex_start, uint32_t instance_start)
+{
+    if (metal.currentPipeline == nullptr)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    if (metal.currentPassType != RT_MODULE_RENDER)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    mt_flush_descriptors();
+    mt_bind_draw_vbos(vbo, vbo_num);
+    metal.renderEncoder->drawPrimitives(mt_draw_primitive(), vertex_start, vertex_num, instance_num, instance_start);
+}
+
+void mt_draw_index(rt_buffer_t vbo[], uint32_t vbo_num, rt_buffer_t& ebo, uint32_t vertex_num, uint32_t instance_num, uint32_t vertex_start, uint32_t instance_start)
+{
+    if (metal.currentPipeline == nullptr)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    if (metal.currentPassType != RT_MODULE_RENDER)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    auto* indexNative = mt_buffer_native(ebo);
+    if (!indexNative || !indexNative->handle)
+        return;
+    mt_flush_descriptors();
+    mt_bind_draw_vbos(vbo, vbo_num);
+    mt_transition_buffer(*indexNative, MTL_STATE_INDEX);
+    metal.renderEncoder->drawIndexedPrimitives(mt_draw_primitive(), vertex_num,
+        rt_to_mt_index_type(mt_current_render_module().index_type), indexNative->handle, 0, instance_num, (NS::Integer)vertex_start, instance_start);
+}
+
+void mt_draw_array_indirect(rt_buffer_t vbo[], uint32_t vbo_num, rt_buffer_t& indirect, size_t offset)
+{
+    if (metal.currentPipeline == nullptr)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    if (metal.currentPassType != RT_MODULE_RENDER)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    auto* indirectNative = mt_buffer_native(indirect);
+    if (!indirectNative || !indirectNative->handle)
+        return;
+    mt_flush_descriptors();
+    mt_bind_draw_vbos(vbo, vbo_num);
+    mt_transition_buffer(*indirectNative, MTL_STATE_SHADER_READ);
+    metal.renderEncoder->drawPrimitives(mt_draw_primitive(), indirectNative->handle, (NS::UInteger)offset);
+}
+
+void mt_draw_index_indirect(rt_buffer_t vbo[], uint32_t vbo_num, rt_buffer_t& ebo, rt_buffer_t& indirect, size_t offset)
+{
+    if (metal.currentPipeline == nullptr)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    if (metal.currentPassType != RT_MODULE_RENDER)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    auto* indexNative = mt_buffer_native(ebo);
+    auto* indirectNative = mt_buffer_native(indirect);
+    if (!indexNative || !indexNative->handle || !indirectNative || !indirectNative->handle)
+        return;
+    mt_flush_descriptors();
+    mt_bind_draw_vbos(vbo, vbo_num);
+    mt_transition_buffer(*indexNative, MTL_STATE_INDEX);
+    mt_transition_buffer(*indirectNative, MTL_STATE_SHADER_READ);
+    metal.renderEncoder->drawIndexedPrimitives(mt_draw_primitive(),
+        rt_to_mt_index_type(mt_current_render_module().index_type),
+        indexNative->handle, 0, indirectNative->handle, (NS::UInteger)offset);
+}
+
 void mt_draw_mesh_task(uint32_t groupX, uint32_t groupY, uint32_t groupZ)
 {
     if (metal.currentPipeline == nullptr)
@@ -2013,6 +2098,7 @@ void mt_draw_mesh_task(uint32_t groupX, uint32_t groupY, uint32_t groupZ)
         fprintf(stderr, "Pipeline not begin");
         abort();
     }
+    (void)mt_current_render_module();
     mt_flush_descriptors();
     MTL::Size groups = MTL::Size::Make(std::max(1u, groupX), std::max(1u, groupY), std::max(1u, groupZ));
     metal.renderEncoder->drawMeshThreadgroups(groups, MTL::Size::Make(1, 1, 1), MTL::Size::Make(1, 1, 1));
@@ -2030,6 +2116,7 @@ void mt_draw_mesh_task_indirect(rt_buffer_t& indirect, size_t offset, uint32_t d
         fprintf(stderr, "Pipeline not begin");
         abort();
     }
+    (void)mt_current_render_module();
     auto* native = mt_buffer_native(indirect);
     if (!native || !native->handle || !metal.renderEncoder)
         return;
@@ -2038,6 +2125,35 @@ void mt_draw_mesh_task_indirect(rt_buffer_t& indirect, size_t offset, uint32_t d
     for (uint32_t i = 0; i < draw_count; ++i)
         metal.renderEncoder->drawMeshThreadgroups(native->handle, (NS::UInteger)offset + (NS::UInteger)draw_stride * i, MTL::Size::Make(1, 1, 1), MTL::Size::Make(1, 1, 1));
 }
+
+void mt_push_constant(uint8_t const* buffer, size_t length)
+{
+    if (metal.currentPipeline == nullptr)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    if (!buffer || length == 0) return;
+    metal.pushLength = (uint32_t)std::min(length, sizeof(metal.pushData));
+    std::memcpy(metal.pushData, buffer, metal.pushLength);
+    mt_apply_push();
+}
+
+void mt_push_const_int(const char*, int32_t) {}
+
+void mt_push_const_uint(const char*, uint32_t) {}
+
+void mt_push_const_float(const char*, float) {}
+
+void mt_push_const_vec2(const char*, const float*) {}
+
+void mt_push_const_vec3(const char*, const float*) {}
+
+void mt_push_const_vec4(const char*, const float*) {}
+
+void mt_push_const_mat3(const char*, const float*) {}
+
+void mt_push_const_mat4(const char*, const float*) {}
 
 void mt_begin_transfer(rt_pass_transfer_t& pass)
 {
@@ -2234,39 +2350,6 @@ void mt_copy_texture_buffer(rt_buffer_texel_t source, rt_texture_copy_t destinat
         MTL::Origin::Make(destination.origin.x, destination.origin.y, destination.origin.z));
 }
 
-rt_mesh_t mt_create_mesh(const float* vertices, const float* normals, const float* uvs, size_t vertex_count, const unsigned int* indices, size_t index_count)
-{
-    rt_mesh_t result = {};
-    if (!vertices || vertex_count == 0) return result;
-    uint32_t handle = metal.meshID + 1;
-    auto& native = metal.meshes[handle];
-    native.vertexCount = (uint32_t)vertex_count;
-    native.indexCount = (uint32_t)index_count;
-    if (vertices)
-        result.vertex[0] = mt_create_buffer({.size = vertex_count * 3 * sizeof(float), .usage = RT_BUFFER_USAGE_VERTEX | RT_BUFFER_USAGE_COPY_DST, .data = vertices});
-    if (normals)
-        result.vertex[1] = mt_create_buffer({.size = vertex_count * 3 * sizeof(float), .usage = RT_BUFFER_USAGE_VERTEX | RT_BUFFER_USAGE_COPY_DST, .data = normals});
-    if (uvs)
-        result.vertex[2] = mt_create_buffer({.size = vertex_count * 2 * sizeof(float), .usage = RT_BUFFER_USAGE_VERTEX | RT_BUFFER_USAGE_COPY_DST, .data = uvs});
-    if (indices)
-        result.index = mt_create_buffer({.size = index_count * sizeof(uint32_t), .usage = RT_BUFFER_USAGE_INDEX | RT_BUFFER_USAGE_COPY_DST, .data = indices});
-    std::iota(result.location, result.location + std::size(result.location), 0);
-    metal.meshID = handle;
-    result.handle = handle;
-    result.native = &native;
-    return result;
-}
-
-void mt_destroy_mesh(rt_mesh_t& mesh)
-{
-    for (auto& vertex : mesh.vertex)
-        mt_destroy_buffer(vertex);
-    mt_destroy_buffer(mesh.index);
-    metal.meshes.erase(mesh.handle);
-    mesh.handle = 0;
-    mesh.native = nullptr;
-}
-
 static void mt_draw_mesh_impl(rt_mesh_t& mesh, uint32_t instanceCount)
 {
     if (metal.currentPipeline == nullptr)
@@ -2280,7 +2363,7 @@ static void mt_draw_mesh_impl(rt_mesh_t& mesh, uint32_t instanceCount)
         abort();
     }
     mt_flush_descriptors();
-    rt_module_render_t const& module = metal.currentRenderPass->module;
+    rt_module_render_t const& module = mt_current_render_module();
     auto* mod = (mt_module_native_t*)module.native;
     uint32_t vertex_count = 0;
     for (uint32_t i = 0; i < std::size(module.vertex); ++i)
@@ -2314,89 +2397,37 @@ static void mt_draw_mesh_impl(rt_mesh_t& mesh, uint32_t instanceCount)
         metal.renderEncoder->drawPrimitives(primitive, 0, vertex_count, instanceCount);
 }
 
-void mt_draw_array(rt_buffer_t vbo[], uint32_t vbo_num, uint32_t vertex_num, uint32_t instance_num, uint32_t vertex_start, uint32_t instance_start)
+rt_mesh_t mt_create_mesh(const float* vertices, const float* normals, const float* uvs, size_t vertex_count, const unsigned int* indices, size_t index_count)
 {
-    if (metal.currentPipeline == nullptr)
-    {
-        fprintf(stderr, "Pipeline not begin");
-        abort();
-    }
-    if (metal.currentPassType != RT_MODULE_RENDER)
-    {
-        fprintf(stderr, "Pipeline not begin");
-        abort();
-    }
-    mt_flush_descriptors();
-    mt_bind_draw_vbos(vbo, vbo_num);
-    metal.renderEncoder->drawPrimitives(mt_draw_primitive(), vertex_start, vertex_num, instance_num, instance_start);
+    rt_mesh_t result = {};
+    if (!vertices || vertex_count == 0) return result;
+    uint32_t handle = metal.meshID + 1;
+    auto& native = metal.meshes[handle];
+    native.vertexCount = (uint32_t)vertex_count;
+    native.indexCount = (uint32_t)index_count;
+    if (vertices)
+        result.vertex[0] = mt_create_buffer({.size = vertex_count * 3 * sizeof(float), .usage = RT_BUFFER_USAGE_VERTEX | RT_BUFFER_USAGE_COPY_DST, .data = vertices});
+    if (normals)
+        result.vertex[1] = mt_create_buffer({.size = vertex_count * 3 * sizeof(float), .usage = RT_BUFFER_USAGE_VERTEX | RT_BUFFER_USAGE_COPY_DST, .data = normals});
+    if (uvs)
+        result.vertex[2] = mt_create_buffer({.size = vertex_count * 2 * sizeof(float), .usage = RT_BUFFER_USAGE_VERTEX | RT_BUFFER_USAGE_COPY_DST, .data = uvs});
+    if (indices)
+        result.index = mt_create_buffer({.size = index_count * sizeof(uint32_t), .usage = RT_BUFFER_USAGE_INDEX | RT_BUFFER_USAGE_COPY_DST, .data = indices});
+    std::iota(result.location, result.location + std::size(result.location), 0);
+    metal.meshID = handle;
+    result.handle = handle;
+    result.native = &native;
+    return result;
 }
 
-void mt_draw_index(rt_buffer_t vbo[], uint32_t vbo_num, rt_buffer_t& ebo, uint32_t vertex_num, uint32_t instance_num, uint32_t vertex_start, uint32_t instance_start)
+void mt_destroy_mesh(rt_mesh_t& mesh)
 {
-    if (metal.currentPipeline == nullptr)
-    {
-        fprintf(stderr, "Pipeline not begin");
-        abort();
-    }
-    if (metal.currentPassType != RT_MODULE_RENDER)
-    {
-        fprintf(stderr, "Pipeline not begin");
-        abort();
-    }
-    auto* indexNative = mt_buffer_native(ebo);
-    if (!indexNative || !indexNative->handle)
-        return;
-    mt_flush_descriptors();
-    mt_bind_draw_vbos(vbo, vbo_num);
-    mt_transition_buffer(*indexNative, MTL_STATE_INDEX);
-    metal.renderEncoder->drawIndexedPrimitives(mt_draw_primitive(), vertex_num,
-        rt_to_mt_index_type(metal.currentRenderPass->module.index_type), indexNative->handle, 0, instance_num, (NS::Integer)vertex_start, instance_start);
-}
-
-void mt_draw_array_indirect(rt_buffer_t vbo[], uint32_t vbo_num, rt_buffer_t& indirect, size_t offset)
-{
-    if (metal.currentPipeline == nullptr)
-    {
-        fprintf(stderr, "Pipeline not begin");
-        abort();
-    }
-    if (metal.currentPassType != RT_MODULE_RENDER)
-    {
-        fprintf(stderr, "Pipeline not begin");
-        abort();
-    }
-    auto* indirectNative = mt_buffer_native(indirect);
-    if (!indirectNative || !indirectNative->handle)
-        return;
-    mt_flush_descriptors();
-    mt_bind_draw_vbos(vbo, vbo_num);
-    mt_transition_buffer(*indirectNative, MTL_STATE_SHADER_READ);
-    metal.renderEncoder->drawPrimitives(mt_draw_primitive(), indirectNative->handle, (NS::UInteger)offset);
-}
-
-void mt_draw_index_indirect(rt_buffer_t vbo[], uint32_t vbo_num, rt_buffer_t& ebo, rt_buffer_t& indirect, size_t offset)
-{
-    if (metal.currentPipeline == nullptr)
-    {
-        fprintf(stderr, "Pipeline not begin");
-        abort();
-    }
-    if (metal.currentPassType != RT_MODULE_RENDER)
-    {
-        fprintf(stderr, "Pipeline not begin");
-        abort();
-    }
-    auto* indexNative = mt_buffer_native(ebo);
-    auto* indirectNative = mt_buffer_native(indirect);
-    if (!indexNative || !indexNative->handle || !indirectNative || !indirectNative->handle)
-        return;
-    mt_flush_descriptors();
-    mt_bind_draw_vbos(vbo, vbo_num);
-    mt_transition_buffer(*indexNative, MTL_STATE_INDEX);
-    mt_transition_buffer(*indirectNative, MTL_STATE_SHADER_READ);
-    metal.renderEncoder->drawIndexedPrimitives(mt_draw_primitive(),
-        rt_to_mt_index_type(metal.currentRenderPass->module.index_type),
-        indexNative->handle, 0, indirectNative->handle, (NS::UInteger)offset);
+    for (auto& vertex : mesh.vertex)
+        mt_destroy_buffer(vertex);
+    mt_destroy_buffer(mesh.index);
+    metal.meshes.erase(mesh.handle);
+    mesh.handle = 0;
+    mesh.native = nullptr;
 }
 
 void mt_draw_mesh(rt_mesh_t& mesh)
@@ -2454,7 +2485,7 @@ void mt_draw_meshlet(rt_meshlet_t& meshlet)
         fprintf(stderr, "Pipeline not begin");
         abort();
     }
-    rt_module_render_t const& module = metal.currentRenderPass->module;
+    rt_module_render_t const& module = mt_current_render_module();
     uint32_t index_binding = 0;
     for (uint32_t i = 0; i < std::size(module.vertex); ++i)
     {
@@ -2490,5 +2521,3 @@ void mt_submit()
 
 #endif
 #endif
-
-   

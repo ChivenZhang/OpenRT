@@ -564,6 +564,8 @@ struct wg_native_t
         rt_pass_compute_t* currentComputePass;
         rt_pass_transfer_t* currentTransferPass;
     };
+    rt_module_render_t* currentRenderModule = nullptr;
+    rt_module_compute_t* currentComputeModule = nullptr;
 } static webgpu;
 
 static WGPUStringView wg_string(char const* text)
@@ -725,11 +727,21 @@ static wg_sampler_native_t* wg_sampler_native(rt_sampler_t const& sampler)
 
 static wg_module_native_t* wg_current_module_native()
 {
-    if (webgpu.currentPassType == RT_MODULE_COMPUTE && webgpu.currentComputePass)
-        return (wg_module_native_t*)webgpu.currentComputePass->module.native;
-    if (webgpu.currentPassType == RT_MODULE_RENDER && webgpu.currentRenderPass)
-        return (wg_module_native_t*)webgpu.currentRenderPass->module.native;
+    if (webgpu.currentPassType == RT_MODULE_COMPUTE && webgpu.currentComputeModule)
+        return (wg_module_native_t*)webgpu.currentComputeModule->native;
+    if (webgpu.currentPassType == RT_MODULE_RENDER && webgpu.currentRenderModule)
+        return (wg_module_native_t*)webgpu.currentRenderModule->native;
     return nullptr;
+}
+
+static rt_module_render_t const& wg_current_render_module()
+{
+    if (webgpu.currentRenderModule == nullptr)
+    {
+        fprintf(stderr, "Pipeline module not bound\n");
+        abort();
+    }
+    return *webgpu.currentRenderModule;
 }
 
 static bool wg_create_pipeline_layout(wg_module_native_t& native, rt_binding_t const* bindings)
@@ -935,15 +947,16 @@ void wg_load_library(WGPUDevice device, WGPUQueue queue)
     rt_bind_sampler = wg_bind_sampler;
     rt_create_module_compute = wg_create_module_compute;
     rt_create_module_render = wg_create_module_render;
-    rt_create_module_meshlet = wg_create_module_meshlet;
     rt_destroy_module_render = wg_destroy_module_render;
     rt_destroy_module_compute = wg_destroy_module_compute;
     rt_begin_compute = wg_begin_compute;
     rt_end_compute = wg_end_compute;
+    rt_bind_module_compute = wg_bind_module_compute;
     rt_dispatch_compute = wg_dispatch_compute;
     rt_dispatch_compute_indirect = wg_dispatch_compute_indirect;
     rt_begin_render = wg_begin_render;
     rt_end_render = wg_end_render;
+    rt_bind_module_render = wg_bind_module_render;
     rt_set_viewport = wg_set_viewport;
     rt_set_scissor = wg_set_scissor;
     rt_draw_mesh_task = wg_draw_mesh_task;
@@ -1051,15 +1064,16 @@ void wg_unload_library()
     if (rt_bind_sampler == wg_bind_sampler) rt_bind_sampler = nullptr;
     if (rt_create_module_compute == wg_create_module_compute) rt_create_module_compute = nullptr;
     if (rt_create_module_render == wg_create_module_render) rt_create_module_render = nullptr;
-    if (rt_create_module_meshlet == wg_create_module_meshlet) rt_create_module_meshlet = nullptr;
     if (rt_destroy_module_render == wg_destroy_module_render) rt_destroy_module_render = nullptr;
     if (rt_destroy_module_compute == wg_destroy_module_compute) rt_destroy_module_compute = nullptr;
     if (rt_begin_compute == wg_begin_compute) rt_begin_compute = nullptr;
     if (rt_end_compute == wg_end_compute) rt_end_compute = nullptr;
+    if (rt_bind_module_compute == wg_bind_module_compute) rt_bind_module_compute = nullptr;
     if (rt_dispatch_compute == wg_dispatch_compute) rt_dispatch_compute = nullptr;
     if (rt_dispatch_compute_indirect == wg_dispatch_compute_indirect) rt_dispatch_compute_indirect = nullptr;
     if (rt_begin_render == wg_begin_render) rt_begin_render = nullptr;
     if (rt_end_render == wg_end_render) rt_end_render = nullptr;
+    if (rt_bind_module_render == wg_bind_module_render) rt_bind_module_render = nullptr;
     if (rt_set_viewport == wg_set_viewport) rt_set_viewport = nullptr;
     if (rt_set_scissor == wg_set_scissor) rt_set_scissor = nullptr;
     if (rt_draw_mesh_task == wg_draw_mesh_task) rt_draw_mesh_task = nullptr;
@@ -1480,7 +1494,22 @@ rt_module_render_t wg_create_module_render(rt_module_render_info_t const& info)
     if (!webgpu.device) return result;
     uint32_t handle = webgpu.moduleID + 1;
     auto& native = webgpu.modules[handle];
-    if (info.vshader.code) native.vshader = wg_create_shader(info.vshader.code, info.vshader.size);
+    if (info.vshader.code)
+    {
+        native.vshader = wg_create_shader(info.vshader.code, info.vshader.size);
+    }
+    else if (info.mshader.code)
+    {
+        webgpu.modules.erase(handle);
+        fprintf(stderr, "WebGPU does not support task/mesh shaders\n");
+        abort();
+    }
+    else
+    {
+        webgpu.modules.erase(handle);
+        fprintf(stderr, "Render module requires a vertex shader or a mesh shader\n");
+        abort();
+    }
     if (info.fshader.code) native.fshader = wg_create_shader(info.fshader.code, info.fshader.size);
     if (!wg_create_pipeline_layout(native, info.binding) || !native.vshader)
     {
@@ -1608,61 +1637,6 @@ rt_module_render_t wg_create_module_render(rt_module_render_info_t const& info)
     return result;
 }
 
-rt_module_render_t wg_create_module_meshlet(rt_module_render_info_t const& info)
-{
-    rt_module_render_t result = {};
-    if (!info.mshader.code || !info.mshader.size || !webgpu.device) return result;
-    uint32_t handle = webgpu.moduleID + 1;
-    auto& native = webgpu.modules[handle];
-    if (info.tshader.code) native.tshader = wg_create_shader(info.tshader.code, info.tshader.size);
-    native.mshader = wg_create_shader(info.mshader.code, info.mshader.size);
-    if (info.fshader.code) native.fshader = wg_create_shader(info.fshader.code, info.fshader.size);
-    if (!native.mshader || !wg_create_pipeline_layout(native, info.binding))
-    {
-        result.native = &native;
-        wg_destroy_module_native(handle, result.native);
-        return {};
-    }
-    webgpu.moduleID = handle;
-    result.handle = handle;
-    result.native = &native;
-    for (size_t i = 0; i < std::size(info.colors); ++i)
-    {
-        result.colors[i].format = info.colors[i].format;
-        result.colors[i].color.func = info.colors[i].color.func;
-        result.colors[i].color.src = info.colors[i].color.src;
-        result.colors[i].color.dst = info.colors[i].color.dst;
-        result.colors[i].alpha.func = info.colors[i].alpha.func;
-        result.colors[i].alpha.src = info.colors[i].alpha.src;
-        result.colors[i].alpha.dst = info.colors[i].alpha.dst;
-    }
-    result.depth.write = info.depth.write;
-    result.depth.bias = info.depth.bias;
-    result.depth.biasSlope = info.depth.biasSlope;
-    result.depth.biasClamp = info.depth.biasClamp;
-    result.depth.func = info.depth.func;
-    result.stencil.read = info.stencil.read;
-    result.stencil.write = info.stencil.write;
-    result.stencil.back.func = info.stencil.back.func;
-    result.stencil.back.sfail = info.stencil.back.sfail;
-    result.stencil.back.zfail = info.stencil.back.zfail;
-    result.stencil.back.zpass = info.stencil.back.zpass;
-    result.stencil.front.func = info.stencil.front.func;
-    result.stencil.front.sfail = info.stencil.front.sfail;
-    result.stencil.front.zfail = info.stencil.front.zfail;
-    result.stencil.front.zpass = info.stencil.front.zpass;
-    result.index_type = info.index_type;
-    for (size_t i = 0; i < std::size(info.vertex); ++i)
-        result.vertex[i] = info.vertex[i];
-    for (size_t i = 0; i < std::size(info.binding); ++i)
-        result.binding[i] = info.binding[i];
-    result.cull_mode = info.cull_mode;
-    result.wind_mode = info.wind_mode;
-    result.fill_mode = info.fill_mode;
-    result.primitive = info.primitive;
-    return result;
-}
-
 void wg_destroy_module_render(rt_module_render_t& module)
 {
     wg_destroy_module_native(module.handle, module.native);
@@ -1675,37 +1649,8 @@ void wg_destroy_module_compute(rt_module_compute_t& module)
     module.handle = 0;
 }
 
-void wg_push_constant(uint8_t const* buffer, size_t length)
-{
-    if (webgpu.currentPipeline == nullptr)
-    {
-        fprintf(stderr, "Pipeline not begin");
-        abort();
-    }
-    if (!buffer || length == 0) return;
-    webgpu.pushLength = (uint32_t)std::min(length, sizeof(webgpu.pushData));
-    std::memcpy(webgpu.pushData, buffer, webgpu.pushLength);
-    if (webgpu.queue && webgpu.pushBuffer)
-        wgpuQueueWriteBuffer(webgpu.queue, webgpu.pushBuffer, 0, webgpu.pushData, 256);
-    wg_flush_descriptors();
-}
-
-void wg_push_const_int(const char*, int32_t) {}
-void wg_push_const_uint(const char*, uint32_t) {}
-void wg_push_const_float(const char*, float) {}
-void wg_push_const_vec2(const char*, const float*) {}
-void wg_push_const_vec3(const char*, const float*) {}
-void wg_push_const_vec4(const char*, const float*) {}
-void wg_push_const_mat3(const char*, const float*) {}
-void wg_push_const_mat4(const char*, const float*) {}
-
 void wg_begin_compute(rt_pass_compute_t& pass)
 {
-    if (pass.module.handle == 0 || !pass.module.native)
-    {
-        fprintf(stderr, "Pipeline module is not created\n");
-        abort();
-    }
     if (webgpu.currentPipeline)
     {
         fprintf(stderr, "Pipeline not end");
@@ -1719,12 +1664,10 @@ void wg_begin_compute(rt_pass_compute_t& pass)
     pass.native = &native;
     webgpu.currentPassType = RT_MODULE_COMPUTE;
     webgpu.currentComputePass = &pass;
+    webgpu.currentComputeModule = nullptr;
     wg_end_pass_encoders();
     wg_ensure_encoder();
     webgpu.computePass = wgpuCommandEncoderBeginComputePass(webgpu.encoder, nullptr);
-    auto* mod = (wg_module_native_t*)pass.module.native;
-    if (mod && mod->computePipeline)
-        wgpuComputePassEncoderSetPipeline(webgpu.computePass, mod->computePipeline);
     webgpu.passID = handle;
 }
 
@@ -1746,8 +1689,27 @@ void wg_end_compute(rt_pass_compute_t& pass)
     pass.native = nullptr;
     webgpu.currentPassType = RT_MODULE_NONE;
     webgpu.currentPipeline = nullptr;
+    webgpu.currentComputeModule = nullptr;
     for (auto& binding : webgpu.currentBinding)
         binding = {};
+}
+
+void wg_bind_module_compute(rt_module_compute_t& module)
+{
+    if (webgpu.currentPipeline == nullptr || webgpu.currentPassType != RT_MODULE_COMPUTE)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    auto* mod = (wg_module_native_t*)module.native;
+    if (module.handle == 0 || !mod || !mod->computePipeline)
+    {
+        fprintf(stderr, "Pipeline module is not created\n");
+        abort();
+    }
+    webgpu.currentComputeModule = &module;
+    if (webgpu.computePass)
+        wgpuComputePassEncoderSetPipeline(webgpu.computePass, mod->computePipeline);
 }
 
 void wg_dispatch_compute(uint32_t groupX, uint32_t groupY, uint32_t groupZ)
@@ -1762,14 +1724,45 @@ void wg_dispatch_compute(uint32_t groupX, uint32_t groupY, uint32_t groupZ)
         fprintf(stderr, "Pipeline not begin");
         abort();
     }
+    if (webgpu.currentComputeModule == nullptr)
+    {
+        fprintf(stderr, "Pipeline module not bound\n");
+        abort();
+    }
     wg_flush_descriptors();
     if (webgpu.computePass)
         wgpuComputePassEncoderDispatchWorkgroups(webgpu.computePass, std::max(1u, groupX), std::max(1u, groupY), std::max(1u, groupZ));
 }
 
+void wg_dispatch_compute_indirect(rt_buffer_t& indirect, size_t offset)
+{
+    if (webgpu.currentPipeline == nullptr)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    if (webgpu.currentPassType != RT_MODULE_COMPUTE)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    if (webgpu.currentComputeModule == nullptr)
+    {
+        fprintf(stderr, "Pipeline module not bound\n");
+        abort();
+    }
+    auto* native = wg_buffer_native(indirect);
+    if (!native || !native->handle)
+        return;
+    wg_flush_descriptors();
+    wg_transition_buffer(*native, WG_STATE_SHADER_READ);
+    if (webgpu.computePass)
+        wgpuComputePassEncoderDispatchWorkgroupsIndirect(webgpu.computePass, native->handle, (uint64_t)offset);
+}
+
 static void wg_bind_draw_vbos(rt_buffer_t vbo[], uint32_t vbo_num)
 {
-    rt_module_render_t const& module = webgpu.currentRenderPass->module;
+    rt_module_render_t const& module = wg_current_render_module();
     uint32_t count = vbo_num;
     if (count > (uint32_t)std::size(module.vertex))
         count = (uint32_t)std::size(module.vertex);
@@ -1786,34 +1779,8 @@ static void wg_bind_draw_vbos(rt_buffer_t vbo[], uint32_t vbo_num)
     }
 }
 
-void wg_dispatch_compute_indirect(rt_buffer_t& indirect, size_t offset)
-{
-    if (webgpu.currentPipeline == nullptr)
-    {
-        fprintf(stderr, "Pipeline not begin");
-        abort();
-    }
-    if (webgpu.currentPassType != RT_MODULE_COMPUTE)
-    {
-        fprintf(stderr, "Pipeline not begin");
-        abort();
-    }
-    auto* native = wg_buffer_native(indirect);
-    if (!native || !native->handle)
-        return;
-    wg_flush_descriptors();
-    wg_transition_buffer(*native, WG_STATE_SHADER_READ);
-    if (webgpu.computePass)
-        wgpuComputePassEncoderDispatchWorkgroupsIndirect(webgpu.computePass, native->handle, (uint64_t)offset);
-}
-
 void wg_begin_render(rt_pass_render_t& pass)
 {
-    if (pass.module.handle == 0 || !pass.module.native)
-    {
-        fprintf(stderr, "Pipeline module is not created\n");
-        abort();
-    }
     if (webgpu.currentPipeline)
     {
         fprintf(stderr, "Pipeline not end");
@@ -1823,6 +1790,7 @@ void wg_begin_render(rt_pass_render_t& pass)
         binding = {};
     webgpu.currentPassType = RT_MODULE_RENDER;
     webgpu.currentRenderPass = &pass;
+    webgpu.currentRenderModule = nullptr;
 
     WGPURenderPassColorAttachment colors[RT_MAX_COLOR_TEXTURE_NUM] = {};
     uint32_t colorCount = 0;
@@ -1888,9 +1856,6 @@ void wg_begin_render(rt_pass_render_t& pass)
     wg_end_pass_encoders();
     wg_ensure_encoder();
     webgpu.renderPass = wgpuCommandEncoderBeginRenderPass(webgpu.encoder, &desc);
-    auto* mod = (wg_module_native_t*)pass.module.native;
-    if (mod && mod->renderPipeline)
-        wgpuRenderPassEncoderSetPipeline(webgpu.renderPass, mod->renderPipeline);
     wg_set_viewport(0, 0, (int32_t)width, (int32_t)height);
     wg_set_scissor(0, 0, (int32_t)width, (int32_t)height);
 }
@@ -1919,8 +1884,27 @@ void wg_end_render(rt_pass_render_t& pass)
     pass.native = nullptr;
     webgpu.currentPassType = RT_MODULE_NONE;
     webgpu.currentPipeline = nullptr;
+    webgpu.currentRenderModule = nullptr;
     for (auto& binding : webgpu.currentBinding)
         binding = {};
+}
+
+void wg_bind_module_render(rt_module_render_t& module)
+{
+    if (webgpu.currentPipeline == nullptr || webgpu.currentPassType != RT_MODULE_RENDER)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    auto* mod = (wg_module_native_t*)module.native;
+    if (module.handle == 0 || !mod || !mod->renderPipeline)
+    {
+        fprintf(stderr, "Pipeline module is not created\n");
+        abort();
+    }
+    webgpu.currentRenderModule = &module;
+    if (webgpu.renderPass)
+        wgpuRenderPassEncoderSetPipeline(webgpu.renderPass, mod->renderPipeline);
 }
 
 void wg_set_viewport(int32_t x, int32_t y, int32_t width, int32_t height)
@@ -1944,6 +1928,92 @@ void wg_set_scissor(int32_t x, int32_t y, int32_t width, int32_t height)
     if (!webgpu.renderPass) return;
     wgpuRenderPassEncoderSetScissorRect(webgpu.renderPass, (uint32_t)std::max(0, x), (uint32_t)std::max(0, y),
         (uint32_t)std::max(0, width), (uint32_t)std::max(0, height));
+}
+
+void wg_draw_array(rt_buffer_t vbo[], uint32_t vbo_num, uint32_t vertex_num, uint32_t instance_num, uint32_t vertex_start, uint32_t instance_start)
+{
+    if (webgpu.currentPipeline == nullptr)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    if (webgpu.currentPassType != RT_MODULE_RENDER)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    wg_flush_descriptors();
+    if (!webgpu.renderPass)
+        return;
+    wg_bind_draw_vbos(vbo, vbo_num);
+    wgpuRenderPassEncoderDraw(webgpu.renderPass, vertex_num, instance_num, vertex_start, instance_start);
+}
+
+void wg_draw_index(rt_buffer_t vbo[], uint32_t vbo_num, rt_buffer_t& ebo, uint32_t vertex_num, uint32_t instance_num, uint32_t vertex_start, uint32_t instance_start)
+{
+    if (webgpu.currentPipeline == nullptr)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    if (webgpu.currentPassType != RT_MODULE_RENDER)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    auto* indexNative = wg_buffer_native(ebo);
+    if (!indexNative || !indexNative->handle || !webgpu.renderPass)
+        return;
+    wg_flush_descriptors();
+    wg_bind_draw_vbos(vbo, vbo_num);
+    wg_transition_buffer(*indexNative, WG_STATE_INDEX);
+    wgpuRenderPassEncoderSetIndexBuffer(webgpu.renderPass, indexNative->handle, rt_to_wg_index_type(wg_current_render_module().index_type), 0, ebo.size);
+    wgpuRenderPassEncoderDrawIndexed(webgpu.renderPass, vertex_num, instance_num, 0, (int32_t)vertex_start, instance_start);
+}
+
+void wg_draw_array_indirect(rt_buffer_t vbo[], uint32_t vbo_num, rt_buffer_t& indirect, size_t offset)
+{
+    if (webgpu.currentPipeline == nullptr)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    if (webgpu.currentPassType != RT_MODULE_RENDER)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    auto* indirectNative = wg_buffer_native(indirect);
+    if (!indirectNative || !indirectNative->handle || !webgpu.renderPass)
+        return;
+    wg_flush_descriptors();
+    wg_bind_draw_vbos(vbo, vbo_num);
+    wg_transition_buffer(*indirectNative, WG_STATE_SHADER_READ);
+    wgpuRenderPassEncoderDrawIndirect(webgpu.renderPass, indirectNative->handle, (uint64_t)offset);
+}
+
+void wg_draw_index_indirect(rt_buffer_t vbo[], uint32_t vbo_num, rt_buffer_t& ebo, rt_buffer_t& indirect, size_t offset)
+{
+    if (webgpu.currentPipeline == nullptr)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    if (webgpu.currentPassType != RT_MODULE_RENDER)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    auto* indexNative = wg_buffer_native(ebo);
+    auto* indirectNative = wg_buffer_native(indirect);
+    if (!indexNative || !indexNative->handle || !indirectNative || !indirectNative->handle || !webgpu.renderPass)
+        return;
+    wg_flush_descriptors();
+    wg_bind_draw_vbos(vbo, vbo_num);
+    wg_transition_buffer(*indexNative, WG_STATE_INDEX);
+    wgpuRenderPassEncoderSetIndexBuffer(webgpu.renderPass, indexNative->handle, rt_to_wg_index_type(wg_current_render_module().index_type), 0, ebo.size);
+    wg_transition_buffer(*indirectNative, WG_STATE_SHADER_READ);
+    wgpuRenderPassEncoderDrawIndexedIndirect(webgpu.renderPass, indirectNative->handle, (uint64_t)offset);
 }
 
 void wg_draw_mesh_task(uint32_t, uint32_t, uint32_t)
@@ -1973,6 +2043,37 @@ void wg_draw_mesh_task_indirect(rt_buffer_t&, size_t, uint32_t, uint32_t)
         abort();
     }
 }
+
+void wg_push_constant(uint8_t const* buffer, size_t length)
+{
+    if (webgpu.currentPipeline == nullptr)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    if (!buffer || length == 0) return;
+    webgpu.pushLength = (uint32_t)std::min(length, sizeof(webgpu.pushData));
+    std::memcpy(webgpu.pushData, buffer, webgpu.pushLength);
+    if (webgpu.queue && webgpu.pushBuffer)
+        wgpuQueueWriteBuffer(webgpu.queue, webgpu.pushBuffer, 0, webgpu.pushData, 256);
+    wg_flush_descriptors();
+}
+
+void wg_push_const_int(const char*, int32_t) {}
+
+void wg_push_const_uint(const char*, uint32_t) {}
+
+void wg_push_const_float(const char*, float) {}
+
+void wg_push_const_vec2(const char*, const float*) {}
+
+void wg_push_const_vec3(const char*, const float*) {}
+
+void wg_push_const_vec4(const char*, const float*) {}
+
+void wg_push_const_mat3(const char*, const float*) {}
+
+void wg_push_const_mat4(const char*, const float*) {}
 
 void wg_begin_transfer(rt_pass_transfer_t& pass)
 {
@@ -2168,39 +2269,6 @@ void wg_copy_texture_buffer(rt_buffer_texel_t source, rt_texture_copy_t destinat
     wgpuCommandEncoderCopyBufferToTexture(webgpu.encoder, &srcCopy, &dstCopy, &size);
 }
 
-rt_mesh_t wg_create_mesh(const float* vertices, const float* normals, const float* uvs, size_t vertex_count, const unsigned int* indices, size_t index_count)
-{
-    rt_mesh_t result = {};
-    if (!vertices || vertex_count == 0) return result;
-    uint32_t handle = webgpu.meshID + 1;
-    auto& native = webgpu.meshes[handle];
-    native.vertexCount = (uint32_t)vertex_count;
-    native.indexCount = (uint32_t)index_count;
-    if (vertices)
-        result.vertex[0] = wg_create_buffer({.size = vertex_count * 3 * sizeof(float), .usage = RT_BUFFER_USAGE_VERTEX | RT_BUFFER_USAGE_COPY_DST, .data = vertices});
-    if (normals)
-        result.vertex[1] = wg_create_buffer({.size = vertex_count * 3 * sizeof(float), .usage = RT_BUFFER_USAGE_VERTEX | RT_BUFFER_USAGE_COPY_DST, .data = normals});
-    if (uvs)
-        result.vertex[2] = wg_create_buffer({.size = vertex_count * 2 * sizeof(float), .usage = RT_BUFFER_USAGE_VERTEX | RT_BUFFER_USAGE_COPY_DST, .data = uvs});
-    if (indices)
-        result.index = wg_create_buffer({.size = index_count * sizeof(uint32_t), .usage = RT_BUFFER_USAGE_INDEX | RT_BUFFER_USAGE_COPY_DST, .data = indices});
-    std::iota(result.location, result.location + std::size(result.location), 0);
-    webgpu.meshID = handle;
-    result.handle = handle;
-    result.native = &native;
-    return result;
-}
-
-void wg_destroy_mesh(rt_mesh_t& mesh)
-{
-    for (auto& vertex : mesh.vertex)
-        wg_destroy_buffer(vertex);
-    wg_destroy_buffer(mesh.index);
-    webgpu.meshes.erase(mesh.handle);
-    mesh.handle = 0;
-    mesh.native = nullptr;
-}
-
 static void wg_draw_mesh_impl(rt_mesh_t& mesh, uint32_t instanceCount)
 {
     if (webgpu.currentPipeline == nullptr)
@@ -2214,7 +2282,7 @@ static void wg_draw_mesh_impl(rt_mesh_t& mesh, uint32_t instanceCount)
         abort();
     }
     wg_flush_descriptors();
-    rt_module_render_t const& module = webgpu.currentRenderPass->module;
+    rt_module_render_t const& module = wg_current_render_module();
     uint32_t vertex_count = 0;
     for (uint32_t i = 0; i < std::size(module.vertex); ++i)
     {
@@ -2246,90 +2314,37 @@ static void wg_draw_mesh_impl(rt_mesh_t& mesh, uint32_t instanceCount)
         wgpuRenderPassEncoderDraw(webgpu.renderPass, vertex_count, instanceCount, 0, 0);
 }
 
-void wg_draw_array(rt_buffer_t vbo[], uint32_t vbo_num, uint32_t vertex_num, uint32_t instance_num, uint32_t vertex_start, uint32_t instance_start)
+rt_mesh_t wg_create_mesh(const float* vertices, const float* normals, const float* uvs, size_t vertex_count, const unsigned int* indices, size_t index_count)
 {
-    if (webgpu.currentPipeline == nullptr)
-    {
-        fprintf(stderr, "Pipeline not begin");
-        abort();
-    }
-    if (webgpu.currentPassType != RT_MODULE_RENDER)
-    {
-        fprintf(stderr, "Pipeline not begin");
-        abort();
-    }
-    wg_flush_descriptors();
-    if (!webgpu.renderPass)
-        return;
-    wg_bind_draw_vbos(vbo, vbo_num);
-    wgpuRenderPassEncoderDraw(webgpu.renderPass, vertex_num, instance_num, vertex_start, instance_start);
+    rt_mesh_t result = {};
+    if (!vertices || vertex_count == 0) return result;
+    uint32_t handle = webgpu.meshID + 1;
+    auto& native = webgpu.meshes[handle];
+    native.vertexCount = (uint32_t)vertex_count;
+    native.indexCount = (uint32_t)index_count;
+    if (vertices)
+        result.vertex[0] = wg_create_buffer({.size = vertex_count * 3 * sizeof(float), .usage = RT_BUFFER_USAGE_VERTEX | RT_BUFFER_USAGE_COPY_DST, .data = vertices});
+    if (normals)
+        result.vertex[1] = wg_create_buffer({.size = vertex_count * 3 * sizeof(float), .usage = RT_BUFFER_USAGE_VERTEX | RT_BUFFER_USAGE_COPY_DST, .data = normals});
+    if (uvs)
+        result.vertex[2] = wg_create_buffer({.size = vertex_count * 2 * sizeof(float), .usage = RT_BUFFER_USAGE_VERTEX | RT_BUFFER_USAGE_COPY_DST, .data = uvs});
+    if (indices)
+        result.index = wg_create_buffer({.size = index_count * sizeof(uint32_t), .usage = RT_BUFFER_USAGE_INDEX | RT_BUFFER_USAGE_COPY_DST, .data = indices});
+    std::iota(result.location, result.location + std::size(result.location), 0);
+    webgpu.meshID = handle;
+    result.handle = handle;
+    result.native = &native;
+    return result;
 }
 
-void wg_draw_index(rt_buffer_t vbo[], uint32_t vbo_num, rt_buffer_t& ebo, uint32_t vertex_num, uint32_t instance_num, uint32_t vertex_start, uint32_t instance_start)
+void wg_destroy_mesh(rt_mesh_t& mesh)
 {
-    if (webgpu.currentPipeline == nullptr)
-    {
-        fprintf(stderr, "Pipeline not begin");
-        abort();
-    }
-    if (webgpu.currentPassType != RT_MODULE_RENDER)
-    {
-        fprintf(stderr, "Pipeline not begin");
-        abort();
-    }
-    auto* indexNative = wg_buffer_native(ebo);
-    if (!indexNative || !indexNative->handle || !webgpu.renderPass)
-        return;
-    wg_flush_descriptors();
-    wg_bind_draw_vbos(vbo, vbo_num);
-    wg_transition_buffer(*indexNative, WG_STATE_INDEX);
-    wgpuRenderPassEncoderSetIndexBuffer(webgpu.renderPass, indexNative->handle, rt_to_wg_index_type(webgpu.currentRenderPass->module.index_type), 0, ebo.size);
-    wgpuRenderPassEncoderDrawIndexed(webgpu.renderPass, vertex_num, instance_num, 0, (int32_t)vertex_start, instance_start);
-}
-
-void wg_draw_array_indirect(rt_buffer_t vbo[], uint32_t vbo_num, rt_buffer_t& indirect, size_t offset)
-{
-    if (webgpu.currentPipeline == nullptr)
-    {
-        fprintf(stderr, "Pipeline not begin");
-        abort();
-    }
-    if (webgpu.currentPassType != RT_MODULE_RENDER)
-    {
-        fprintf(stderr, "Pipeline not begin");
-        abort();
-    }
-    auto* indirectNative = wg_buffer_native(indirect);
-    if (!indirectNative || !indirectNative->handle || !webgpu.renderPass)
-        return;
-    wg_flush_descriptors();
-    wg_bind_draw_vbos(vbo, vbo_num);
-    wg_transition_buffer(*indirectNative, WG_STATE_SHADER_READ);
-    wgpuRenderPassEncoderDrawIndirect(webgpu.renderPass, indirectNative->handle, (uint64_t)offset);
-}
-
-void wg_draw_index_indirect(rt_buffer_t vbo[], uint32_t vbo_num, rt_buffer_t& ebo, rt_buffer_t& indirect, size_t offset)
-{
-    if (webgpu.currentPipeline == nullptr)
-    {
-        fprintf(stderr, "Pipeline not begin");
-        abort();
-    }
-    if (webgpu.currentPassType != RT_MODULE_RENDER)
-    {
-        fprintf(stderr, "Pipeline not begin");
-        abort();
-    }
-    auto* indexNative = wg_buffer_native(ebo);
-    auto* indirectNative = wg_buffer_native(indirect);
-    if (!indexNative || !indexNative->handle || !indirectNative || !indirectNative->handle || !webgpu.renderPass)
-        return;
-    wg_flush_descriptors();
-    wg_bind_draw_vbos(vbo, vbo_num);
-    wg_transition_buffer(*indexNative, WG_STATE_INDEX);
-    wgpuRenderPassEncoderSetIndexBuffer(webgpu.renderPass, indexNative->handle, rt_to_wg_index_type(webgpu.currentRenderPass->module.index_type), 0, ebo.size);
-    wg_transition_buffer(*indirectNative, WG_STATE_SHADER_READ);
-    wgpuRenderPassEncoderDrawIndexedIndirect(webgpu.renderPass, indirectNative->handle, (uint64_t)offset);
+    for (auto& vertex : mesh.vertex)
+        wg_destroy_buffer(vertex);
+    wg_destroy_buffer(mesh.index);
+    webgpu.meshes.erase(mesh.handle);
+    mesh.handle = 0;
+    mesh.native = nullptr;
 }
 
 void wg_draw_mesh(rt_mesh_t& mesh)
@@ -2387,7 +2402,7 @@ void wg_draw_meshlet(rt_meshlet_t& meshlet)
         fprintf(stderr, "Pipeline not begin");
         abort();
     }
-    rt_module_render_t const& module = webgpu.currentRenderPass->module;
+    rt_module_render_t const& module = wg_current_render_module();
     uint32_t index_binding = 0;
     for (uint32_t i = 0; i < std::size(module.vertex); ++i)
     {
@@ -2421,5 +2436,3 @@ void wg_submit()
 }
 
 #endif
-
-

@@ -106,17 +106,18 @@ void (*rt_bind_sampler)(rt_sampler_t& sampler, rt_sampler_bind_t bind) = nullptr
 
 rt_module_compute_t (*rt_create_module_compute)(rt_module_compute_info_t const& info) = nullptr;
 rt_module_render_t (*rt_create_module_render)(rt_module_render_info_t const& info) = nullptr;
-rt_module_render_t (*rt_create_module_meshlet)(rt_module_render_info_t const& info) = nullptr;
 void (*rt_destroy_module_render)(rt_module_render_t& module) = nullptr;
 void (*rt_destroy_module_compute)(rt_module_compute_t& module) = nullptr;
 
 void (*rt_begin_compute)(rt_pass_compute_t& pass) = nullptr;
 void (*rt_end_compute)(rt_pass_compute_t& pass) = nullptr;
+void (*rt_bind_module_compute)(rt_module_compute_t& module) = nullptr;
 void (*rt_dispatch_compute)(uint32_t groupX, uint32_t groupY, uint32_t groupZ) = nullptr;
 void (*rt_dispatch_compute_indirect)(rt_buffer_t& indirect, size_t offset) = nullptr;
 
 void (*rt_begin_render)(rt_pass_render_t& pass) = nullptr;
 void (*rt_end_render)(rt_pass_render_t& pass) = nullptr;
+void (*rt_bind_module_render)(rt_module_render_t& module) = nullptr;
 void (*rt_set_viewport)(int32_t x, int32_t y, int32_t width, int32_t height) = nullptr;
 void (*rt_set_scissor)(int32_t x, int32_t y, int32_t width, int32_t height) = nullptr;
 void (*rt_draw_array)(rt_buffer_t vbo[], uint32_t vbo_num, uint32_t vertex_num, uint32_t instance_num, uint32_t vertex_start, uint32_t instance_start) = nullptr;

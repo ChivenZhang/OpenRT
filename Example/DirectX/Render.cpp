@@ -199,8 +199,9 @@ void frame(int width, int height)
     static auto pass_color = rt_create_texture_color(width, height);
     static auto pass_depth = rt_create_texture_depth(width, height);
     {
-        rt_pass_render_t pass = {.module = module, .colors = {{.texture_view = pass_color.default_view, .clear = true,}}, .depth = {.texture_view = pass_depth.default_view, .clear = true,},};
+        rt_pass_render_t pass = {.colors = {{.texture_view = pass_color.default_view, .clear = true,}}, .depth = {.texture_view = pass_depth.default_view, .clear = true,},};
         rt_begin_render(pass);
+        rt_bind_module_render(module);
 
         auto projMat = glm::perspectiveRH_ZO(glm::radians(60.0f), (float)width / (float)height, 0.1f, 100.0f);
         auto viewMat = glm::lookAt(glm::vec3(0, 2, 5), glm::vec3(0, 0, 0), glm::vec3(0, 1, 0));
