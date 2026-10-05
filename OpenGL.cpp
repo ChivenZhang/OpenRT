@@ -858,13 +858,12 @@ rt_buffer_t gl_create_buffer(rt_buffer_info_t const& info)
     glGenBuffers(1, &native.handle);
     glBindBuffer(GL_ARRAY_BUFFER, native.handle);
 
-    GLbitfield flags = 0;
+    GLbitfield flags = GL_DYNAMIC_STORAGE_BIT;
     if (info.usage & RT_BUFFER_USAGE_MAP_READ)
-        flags |= GL_MAP_READ_BIT | GL_MAP_PERSISTENT_BIT | GL_MAP_COHERENT_BIT;
+        flags |= GL_MAP_READ_BIT;
     if (info.usage & RT_BUFFER_USAGE_MAP_WRITE)
-        flags |= GL_MAP_WRITE_BIT | GL_MAP_PERSISTENT_BIT | GL_MAP_COHERENT_BIT;
-    if (info.usage & RT_BUFFER_USAGE_COPY_DST)
-        flags |= GL_DYNAMIC_STORAGE_BIT;
+        flags |= GL_MAP_WRITE_BIT;
+
     glBufferStorage(GL_ARRAY_BUFFER, (GLsizeiptr)info.size, info.data, flags);
     glBindBuffer(GL_ARRAY_BUFFER, 0);
 
@@ -926,8 +925,6 @@ void* gl_map_buffer(rt_buffer_t& buffer, rt_access_t mode, size_t offset, size_t
         fprintf(stderr, "Unsupported buffer map mode");
         abort();
     }
-    if (buffer.usage & (RT_BUFFER_USAGE_MAP_READ | RT_BUFFER_USAGE_MAP_WRITE))
-        access |= GL_MAP_PERSISTENT_BIT | GL_MAP_COHERENT_BIT;
 
     glBindBuffer(GL_ARRAY_BUFFER, gl_buffer_name(buffer));
     void* ptr = glMapBufferRange(GL_ARRAY_BUFFER, (GLintptr)offset, (GLsizeiptr)size, access);
