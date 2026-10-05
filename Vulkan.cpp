@@ -588,7 +588,7 @@ struct vk_texture_native_t
 struct vk_texture_view_native_t
 {
     VkImageView handle = nullptr;
-    uint32_t texture = 0;
+    vk_texture_native_t* texture = nullptr;
 };
 
 struct vk_sampler_native_t
@@ -898,24 +898,19 @@ static void vk_transition_buffer(vk_buffer_native_t& buffer, VkPipelineStageFlag
 static vk_buffer_native_t* vk_buffer_native(rt_buffer_t const& buffer)
 {
     if (!buffer.native || buffer.handle == 0) return nullptr;
-    auto it = vulkan.buffers.find(buffer.handle);
-    if (it == vulkan.buffers.end()) return nullptr;
-    return &it->second;
+    return (vk_buffer_native_t*)buffer.native;
 }
 
 static vk_texture_native_t* vk_texture_native(rt_texture_t const& texture)
 {
     if (!texture.native || texture.handle == 0) return nullptr;
-    auto it = vulkan.textures.find(texture.handle);
-    if (it == vulkan.textures.end()) return nullptr;
-    return &it->second;
+    return (vk_texture_native_t*)texture.native;
 }
 
-static vk_texture_view_native_t* vk_texture_view_native(uint32_t handle)
+static vk_texture_view_native_t* vk_texture_view_native(rt_texture_view_t const& view)
 {
-    if (handle == 0) return nullptr;
-    auto it = vulkan.textureViews.find(handle);
-    return it == vulkan.textureViews.end() ? nullptr : &it->second;
+    if (!view.native || view.handle == 0) return nullptr;
+    return (vk_texture_view_native_t*)view.native;
 }
 
 static void vk_begin_rendering()
@@ -931,18 +926,16 @@ static void vk_begin_rendering()
     {
         if (pass.colors[i].texture_view.format == RT_TEXTURE_NONE)
             continue;
-        if (auto* view = vk_texture_view_native(pass.colors[i].texture_view.handle))
+        if (auto* view = vk_texture_view_native(pass.colors[i].texture_view))
         {
-            auto texIt = vulkan.textures.find(view->texture);
-            if (texIt != vulkan.textures.end() && view->handle)
-                vk_transition_image(texIt->second, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+            if (view->texture && view->handle)
+                vk_transition_image(*view->texture, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
         }
     }
-    if (auto* view = vk_texture_view_native(pass.depth.texture_view.handle))
+    if (auto* view = vk_texture_view_native(pass.depth.texture_view))
     {
-        auto texIt = vulkan.textures.find(view->texture);
-        if (texIt != vulkan.textures.end() && view->handle)
-            vk_transition_image(texIt->second, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
+        if (view->texture && view->handle)
+            vk_transition_image(*view->texture, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
     }
 
     VkRenderingInfo renderingInfo = {};
@@ -959,16 +952,14 @@ static void vk_begin_rendering()
 
 static VkImageView vk_image_view(rt_texture_view_t const& view)
 {
-    auto* native = vk_texture_view_native(view.handle);
+    auto* native = vk_texture_view_native(view);
     return native ? native->handle : nullptr;
 }
 
 static vk_sampler_native_t* vk_sampler_native(rt_sampler_t const& sampler)
 {
     if (!sampler.native || sampler.handle == 0) return nullptr;
-    auto it = vulkan.samplers.find(sampler.handle);
-    if (it == vulkan.samplers.end()) return nullptr;
-    return &it->second;
+    return (vk_sampler_native_t*)sampler.native;
 }
 
 static vk_module_native_t* vk_current_module_native()
@@ -1012,13 +1003,12 @@ static void vk_destroy_module_native(uint32_t handle, void*& native)
         native = nullptr;
         return;
     }
-    auto it = vulkan.modules.find(handle);
-    if (it == vulkan.modules.end())
+    if (!native || handle == 0)
     {
         native = nullptr;
         return;
     }
-    auto& module = it->second;
+    auto& module = *(vk_module_native_t*)native;
     if (module.descriptorSet && vulkan.descriptorPool)
         vkFreeDescriptorSets(vulkan.device, vulkan.descriptorPool, 1, &module.descriptorSet);
     if (module.vshader) vkDestroyShaderModule(vulkan.device, module.vshader, vulkan.allocator);
@@ -1029,7 +1019,7 @@ static void vk_destroy_module_native(uint32_t handle, void*& native)
     if (module.pipeline) vkDestroyPipeline(vulkan.device, module.pipeline, vulkan.allocator);
     if (module.pipelineLayout) vkDestroyPipelineLayout(vulkan.device, module.pipelineLayout, vulkan.allocator);
     if (module.descriptorSetLayout) vkDestroyDescriptorSetLayout(vulkan.device, module.descriptorSetLayout, vulkan.allocator);
-    vulkan.modules.erase(it);
+    vulkan.modules.erase(handle);
     native = nullptr;
 }
 
@@ -1079,11 +1069,9 @@ static void vk_flush_descriptors()
         }
         else if (type == VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE)
         {
-            auto* view = vk_texture_view_native(slot.texture_view.handle);
-            if (!view || !view->handle) continue;
-            auto texIt = vulkan.textures.find(view->texture);
-            if (texIt == vulkan.textures.end()) continue;
-            auto* tex = &texIt->second;
+            auto* view = vk_texture_view_native(slot.texture_view);
+            if (!view || !view->handle || !view->texture) continue;
+            auto* tex = view->texture;
             VkImageView imageView = view->handle;
             vk_transition_image(*tex, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
             imageInfos[writeCount] = {VK_NULL_HANDLE, imageView, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
@@ -1091,11 +1079,9 @@ static void vk_flush_descriptors()
         }
         else if (type == VK_DESCRIPTOR_TYPE_STORAGE_IMAGE)
         {
-            auto* view = vk_texture_view_native(slot.storage_view.handle);
-            if (!view || !view->handle) continue;
-            auto texIt = vulkan.textures.find(view->texture);
-            if (texIt == vulkan.textures.end()) continue;
-            auto* tex = &texIt->second;
+            auto* view = vk_texture_view_native(slot.storage_view);
+            if (!view || !view->handle || !view->texture) continue;
+            auto* tex = view->texture;
             vk_transition_image(*tex, VK_IMAGE_LAYOUT_GENERAL);
             imageInfos[writeCount] = {VK_NULL_HANDLE, view->handle, VK_IMAGE_LAYOUT_GENERAL};
             writes[writeCount].pImageInfo = &imageInfos[writeCount];
@@ -1504,20 +1490,18 @@ rt_buffer_t vk_create_buffer(rt_buffer_info_t const& info)
 
 void vk_destroy_buffer(rt_buffer_t& buffer)
 {
-    if (vulkan.device && buffer.native)
+    if (vulkan.device)
     {
-        auto it = vulkan.buffers.find(buffer.handle);
-        if (it != vulkan.buffers.end())
+        if (auto* native = vk_buffer_native(buffer))
         {
-            auto& native = it->second;
-            if (native.mapped)
+            if (native->mapped)
             {
-                vkUnmapMemory(vulkan.device, native.memory);
-                native.mapped = nullptr;
+                vkUnmapMemory(vulkan.device, native->memory);
+                native->mapped = nullptr;
             }
-            if (native.handle) vkDestroyBuffer(vulkan.device, native.handle, vulkan.allocator);
-            if (native.memory) vkFreeMemory(vulkan.device, native.memory, vulkan.allocator);
-            vulkan.buffers.erase(it);
+            if (native->handle) vkDestroyBuffer(vulkan.device, native->handle, vulkan.allocator);
+            if (native->memory) vkFreeMemory(vulkan.device, native->memory, vulkan.allocator);
+            vulkan.buffers.erase(buffer.handle);
         }
     }
     buffer = {};
@@ -1710,14 +1694,13 @@ rt_texture_t vk_create_texture(rt_texture_info_t const& info)
 
 void vk_destroy_texture(rt_texture_t& texture)
 {
-    if (vulkan.device && texture.native)
+    if (vulkan.device)
     {
-        auto it = vulkan.textures.find(texture.handle);
-        if (it != vulkan.textures.end())
+        if (auto* native = vk_texture_native(texture))
         {
             for (auto view = vulkan.textureViews.begin(); view != vulkan.textureViews.end(); )
             {
-                if (view->second.texture == texture.handle)
+                if (view->second.texture == native)
                 {
                     if (view->second.handle)
                         vkDestroyImageView(vulkan.device, view->second.handle, vulkan.allocator);
@@ -1726,10 +1709,9 @@ void vk_destroy_texture(rt_texture_t& texture)
                 else
                     ++view;
             }
-            auto& native = it->second;
-            if (native.handle) vkDestroyImage(vulkan.device, native.handle, vulkan.allocator);
-            if (native.memory) vkFreeMemory(vulkan.device, native.memory, vulkan.allocator);
-            vulkan.textures.erase(it);
+            if (native->handle) vkDestroyImage(vulkan.device, native->handle, vulkan.allocator);
+            if (native->memory) vkFreeMemory(vulkan.device, native->memory, vulkan.allocator);
+            vulkan.textures.erase(texture.handle);
         }
     }
     texture = {};
@@ -1802,7 +1784,7 @@ rt_texture_view_t vk_create_texture_view(rt_texture_t& texture, rt_texture_view_
     uint32_t handle = vulkan.textureViewID + 1;
     auto& native = vulkan.textureViews[handle];
     native.handle = imageView;
-    native.texture = texture.handle;
+    native.texture = tex;
     vulkan.textureViewID = handle;
     result.handle = handle;
     result.native = &native;
@@ -1811,15 +1793,13 @@ rt_texture_view_t vk_create_texture_view(rt_texture_t& texture, rt_texture_view_
 
 void vk_destroy_texture_view(rt_texture_view_t& view)
 {
-    auto it = vulkan.textureViews.find(view.handle);
-    if (it != vulkan.textureViews.end())
+    if (auto* native = vk_texture_view_native(view))
     {
-        if (vulkan.device && it->second.handle)
-            vkDestroyImageView(vulkan.device, it->second.handle, vulkan.allocator);
-        vulkan.textureViews.erase(it);
+        if (vulkan.device && native->handle)
+            vkDestroyImageView(vulkan.device, native->handle, vulkan.allocator);
+        vulkan.textureViews.erase(view.handle);
     }
-    view.handle = 0;
-    view.native = nullptr;
+    view = {};
 }
 
 void vk_bind_texture_view(rt_texture_view_t& view, rt_texture_view_bind_t bind)
@@ -1875,13 +1855,12 @@ rt_sampler_t vk_create_sampler(rt_sampler_info_t const& info)
 
 void vk_destroy_sampler(rt_sampler_t& sampler)
 {
-    if (vulkan.device && sampler.native)
+    if (vulkan.device)
     {
-        auto it = vulkan.samplers.find(sampler.handle);
-        if (it != vulkan.samplers.end())
+        if (auto* native = vk_sampler_native(sampler))
         {
-            if (it->second.handle) vkDestroySampler(vulkan.device, it->second.handle, vulkan.allocator);
-            vulkan.samplers.erase(it);
+            if (native->handle) vkDestroySampler(vulkan.device, native->handle, vulkan.allocator);
+            vulkan.samplers.erase(sampler.handle);
         }
     }
     sampler = {};
@@ -2503,12 +2482,11 @@ void vk_begin_render(rt_pass_render_t& pass)
         colorAttachments[i].imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
         colorAttachments[i].loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
         colorAttachments[i].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-        if (auto* view = vk_texture_view_native(pass.colors[i].texture_view.handle))
+        if (auto* view = vk_texture_view_native(pass.colors[i].texture_view))
         {
-            auto texIt = vulkan.textures.find(view->texture);
-            if (texIt != vulkan.textures.end() && view->handle)
+            if (view->texture && view->handle)
             {
-                auto* tex = &texIt->second;
+                auto* tex = view->texture;
                 colorAttachments[i].imageView = view->handle;
                 colorAttachments[i].loadOp = pass.colors[i].clear ? VK_ATTACHMENT_LOAD_OP_CLEAR : VK_ATTACHMENT_LOAD_OP_LOAD;
                 colorAttachments[i].clearValue.color = {{pass.colors[i].value.r, pass.colors[i].value.g, pass.colors[i].value.b, pass.colors[i].value.a}};
@@ -2526,12 +2504,11 @@ void vk_begin_render(rt_pass_render_t& pass)
     depthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
     depthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
     bool hasDepth = false;
-    if (auto* view = vk_texture_view_native(pass.depth.texture_view.handle))
+    if (auto* view = vk_texture_view_native(pass.depth.texture_view))
     {
-        auto texIt = vulkan.textures.find(view->texture);
-        if (texIt != vulkan.textures.end() && view->handle)
+        if (view->texture && view->handle)
         {
-            auto* tex = &texIt->second;
+            auto* tex = view->texture;
             depthAttachment.imageView = view->handle;
             depthAttachment.loadOp = pass.depth.clear ? VK_ATTACHMENT_LOAD_OP_CLEAR : VK_ATTACHMENT_LOAD_OP_LOAD;
             depthAttachment.clearValue.depthStencil.depth = pass.depth.value;
@@ -2565,12 +2542,12 @@ void vk_end_render(rt_pass_render_t& pass)
     }
 
     for (auto& color : pass.colors)
-        if (auto* view = vk_texture_view_native(color.texture_view.handle))
-            if (auto texIt = vulkan.textures.find(view->texture); texIt != vulkan.textures.end())
-                vk_transition_image(texIt->second, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-    if (auto* view = vk_texture_view_native(pass.depth.texture_view.handle))
-        if (auto texIt = vulkan.textures.find(view->texture); texIt != vulkan.textures.end())
-            vk_transition_image(texIt->second, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+        if (auto* view = vk_texture_view_native(color.texture_view))
+            if (view->texture)
+                vk_transition_image(*view->texture, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+    if (auto* view = vk_texture_view_native(pass.depth.texture_view))
+        if (view->texture)
+            vk_transition_image(*view->texture, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
     pass.handle = 0;
     pass.native = nullptr;
     vulkan.renderPass = {};

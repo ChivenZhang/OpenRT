@@ -533,7 +533,7 @@ struct dx_texture_native_t
 struct dx_texture_view_native_t
 {
     D3D12_SHADER_RESOURCE_VIEW_DESC srv = {};
-    uint32_t texture = 0;
+    dx_texture_native_t* texture = nullptr;
 };
 
 struct dx_sampler_native_t
@@ -708,29 +708,25 @@ static void dx_transition_image(dx_texture_native_t& image, D3D12_RESOURCE_STATE
 static dx_buffer_native_t* dx_buffer_native(rt_buffer_t const& buffer)
 {
     if (!buffer.native || buffer.handle == 0) return nullptr;
-    auto it = direct.buffers.find(buffer.handle);
-    return it == direct.buffers.end() ? nullptr : &it->second;
+    return (dx_buffer_native_t*)buffer.native;
 }
 
 static dx_texture_native_t* dx_texture_native(rt_texture_t const& texture)
 {
     if (!texture.native || texture.handle == 0) return nullptr;
-    auto it = direct.textures.find(texture.handle);
-    return it == direct.textures.end() ? nullptr : &it->second;
+    return (dx_texture_native_t*)texture.native;
 }
 
-static dx_texture_view_native_t* dx_texture_view_native(uint32_t handle)
+static dx_texture_view_native_t* dx_texture_view_native(rt_texture_view_t const& view)
 {
-    if (handle == 0) return nullptr;
-    auto it = direct.textureViews.find(handle);
-    return it == direct.textureViews.end() ? nullptr : &it->second;
+    if (!view.native || view.handle == 0) return nullptr;
+    return (dx_texture_view_native_t*)view.native;
 }
 
 static dx_sampler_native_t* dx_sampler_native(rt_sampler_t const& sampler)
 {
     if (!sampler.native || sampler.handle == 0) return nullptr;
-    auto it = direct.samplers.find(sampler.handle);
-    return it == direct.samplers.end() ? nullptr : &it->second;
+    return (dx_sampler_native_t*)sampler.native;
 }
 
 static dx_module_native_t* dx_current_module_native()
@@ -848,11 +844,9 @@ static void dx_flush_descriptors()
         }
         else if (mod->kinds[i] == DX_KIND_SRV)
         {
-            auto* view = dx_texture_view_native(slot.texture_view.handle);
-            if (!view) continue;
-            auto texIt = direct.textures.find(view->texture);
-            if (texIt == direct.textures.end() || !texIt->second.handle) continue;
-            auto* tex = &texIt->second;
+            auto* view = dx_texture_view_native(slot.texture_view);
+            if (!view || !view->texture || !view->texture->handle) continue;
+            auto* tex = view->texture;
             dx_transition_image(*tex, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
             auto gpu = dx_alloc_srv();
             direct.device->CreateShaderResourceView(tex->handle.Get(), &view->srv, dx_srv_cpu(gpu));
@@ -861,11 +855,9 @@ static void dx_flush_descriptors()
         }
         else if (mod->kinds[i] == DX_KIND_UAV)
         {
-            auto* view = dx_texture_view_native(slot.storage_view.handle);
-            if (!view) continue;
-            auto texIt = direct.textures.find(view->texture);
-            if (texIt == direct.textures.end() || !texIt->second.handle) continue;
-            auto* tex = &texIt->second;
+            auto* view = dx_texture_view_native(slot.storage_view);
+            if (!view || !view->texture || !view->texture->handle) continue;
+            auto* tex = view->texture;
             dx_transition_image(*tex, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
             auto gpu = dx_alloc_srv();
             D3D12_UNORDERED_ACCESS_VIEW_DESC uav = {};
@@ -1188,15 +1180,11 @@ rt_buffer_t dx_create_buffer(rt_buffer_info_t const& info)
 
 void dx_destroy_buffer(rt_buffer_t& buffer)
 {
-    if (buffer.native)
+    if (auto* native = dx_buffer_native(buffer))
     {
-        auto it = direct.buffers.find(buffer.handle);
-        if (it != direct.buffers.end())
-        {
-            if (it->second.mapped && it->second.handle)
-                it->second.handle->Unmap(0, nullptr);
-            direct.buffers.erase(it);
-        }
+        if (native->mapped && native->handle)
+            native->handle->Unmap(0, nullptr);
+        direct.buffers.erase(buffer.handle);
     }
     buffer = {};
 }
@@ -1375,18 +1363,17 @@ rt_texture_t dx_create_texture(rt_texture_info_t const& info)
 
 void dx_destroy_texture(rt_texture_t& texture)
 {
-    if (texture.handle)
+    if (auto* native = dx_texture_native(texture))
     {
         for (auto it = direct.textureViews.begin(); it != direct.textureViews.end(); )
         {
-            if (it->second.texture == texture.handle)
+            if (it->second.texture == native)
                 it = direct.textureViews.erase(it);
             else
                 ++it;
         }
-    }
-    if (texture.native)
         direct.textures.erase(texture.handle);
+    }
     texture = {};
 }
 
@@ -1483,7 +1470,7 @@ rt_texture_view_t dx_create_texture_view(rt_texture_t& texture, rt_texture_view_
 
     uint32_t handle = direct.textureViewID + 1;
     auto& native = direct.textureViews[handle];
-    native.texture = texture.handle;
+    native.texture = tex;
     native.srv = srv;
     direct.textureViewID = handle;
     result.handle = handle;
@@ -1493,9 +1480,9 @@ rt_texture_view_t dx_create_texture_view(rt_texture_t& texture, rt_texture_view_
 
 void dx_destroy_texture_view(rt_texture_view_t& view)
 {
-    direct.textureViews.erase(view.handle);
-    view.handle = 0;
-    view.native = nullptr;
+    if (dx_texture_view_native(view))
+        direct.textureViews.erase(view.handle);
+    view = {};
 }
 
 void dx_bind_texture_view(rt_texture_view_t& view, rt_texture_view_bind_t bind)
@@ -2139,11 +2126,9 @@ void dx_begin_render(rt_pass_render_t& pass)
     {
         if (pass.colors[i].texture_view.format == RT_TEXTURE_NONE)
             continue;
-        auto* view = dx_texture_view_native(pass.colors[i].texture_view.handle);
-        if (!view) continue;
-        auto texIt = direct.textures.find(view->texture);
-        if (texIt == direct.textures.end() || !texIt->second.handle) continue;
-        auto* tex = &texIt->second;
+        auto* view = dx_texture_view_native(pass.colors[i].texture_view);
+        if (!view || !view->texture || !view->texture->handle) continue;
+        auto* tex = view->texture;
         dx_transition_image(*tex, D3D12_RESOURCE_STATE_RENDER_TARGET);
         D3D12_CPU_DESCRIPTOR_HANDLE rtv = rtvStart;
         rtv.ptr += (SIZE_T)i * direct.rtvSize;
@@ -2166,12 +2151,11 @@ void dx_begin_render(rt_pass_render_t& pass)
 
     D3D12_CPU_DESCRIPTOR_HANDLE dsv = {};
     bool hasDepth = false;
-    if (auto* view = dx_texture_view_native(pass.depth.texture_view.handle))
+    if (auto* view = dx_texture_view_native(pass.depth.texture_view))
     {
-        auto texIt = direct.textures.find(view->texture);
-        if (texIt != direct.textures.end() && texIt->second.handle)
+        if (view->texture && view->texture->handle)
         {
-            auto* tex = &texIt->second;
+            auto* tex = view->texture;
             dx_transition_image(*tex, D3D12_RESOURCE_STATE_DEPTH_WRITE);
             dsv = direct.dsvHeap->GetCPUDescriptorHandleForHeapStart();
             D3D12_DEPTH_STENCIL_VIEW_DESC dsvDesc = {};
@@ -2208,12 +2192,12 @@ void dx_end_render(rt_pass_render_t& pass)
         abort();
     }
     for (auto& color : pass.colors)
-        if (auto* view = dx_texture_view_native(color.texture_view.handle))
-            if (auto texIt = direct.textures.find(view->texture); texIt != direct.textures.end())
-                dx_transition_image(texIt->second, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-    if (auto* view = dx_texture_view_native(pass.depth.texture_view.handle))
-        if (auto texIt = direct.textures.find(view->texture); texIt != direct.textures.end())
-            dx_transition_image(texIt->second, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+        if (auto* view = dx_texture_view_native(color.texture_view))
+            if (view->texture)
+                dx_transition_image(*view->texture, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+    if (auto* view = dx_texture_view_native(pass.depth.texture_view))
+        if (view->texture)
+            dx_transition_image(*view->texture, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
     pass.handle = 0;
     pass.native = nullptr;
     direct.currentPassType = RT_MODULE_NONE;

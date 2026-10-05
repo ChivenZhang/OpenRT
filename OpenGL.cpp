@@ -547,29 +547,31 @@ struct OpenGL
 static gl_buffer_native_t* gl_buffer_native(rt_buffer_t const& buffer)
 {
     if (!buffer.native || buffer.handle == 0) return nullptr;
-    auto it = opengl.buffers.find(buffer.handle);
-    return it == opengl.buffers.end() ? nullptr : &it->second;
-}
-
-static gl_texture_native_t* gl_texture_native(rt_texture_t const& texture)
-{
-    if (!texture.native || texture.handle == 0) return nullptr;
-    auto it = opengl.textures.find(texture.handle);
-    return it == opengl.textures.end() ? nullptr : &it->second;
+    return (gl_buffer_native_t*)buffer.native;
 }
 
 static gl_sampler_native_t* gl_sampler_native(rt_sampler_t const& sampler)
 {
     if (!sampler.native || sampler.handle == 0) return nullptr;
-    auto it = opengl.samplers.find(sampler.handle);
-    return it == opengl.samplers.end() ? nullptr : &it->second;
+    return (gl_sampler_native_t*)sampler.native;
+}
+
+static gl_texture_native_t* gl_texture_native(rt_texture_t const& texture)
+{
+    if (!texture.native || texture.handle == 0) return nullptr;
+    return (gl_texture_native_t*)texture.native;
+}
+
+static gl_texture_view_native_t* gl_texture_view_native(rt_texture_view_t const& view)
+{
+    if (!view.native || view.handle == 0) return nullptr;
+    return (gl_texture_view_native_t*)view.native;
 }
 
 static gl_module_native_t* gl_module_native(uint32_t handle, void* native)
 {
     if (!native || handle == 0) return nullptr;
-    auto it = opengl.modules.find(handle);
-    return it == opengl.modules.end() ? nullptr : &it->second;
+    return (gl_module_native_t*)native;
 }
 
 static rt_module_render_t const& gl_current_render_module()
@@ -621,9 +623,8 @@ static GLuint gl_texture_name(rt_texture_t const& texture)
 
 static GLuint gl_texture_view_name(rt_texture_view_t const& view)
 {
-    if (view.handle == 0) return 0;
-    auto it = opengl.textureViews.find(view.handle);
-    return it == opengl.textureViews.end() ? 0 : it->second.handle;
+    auto* native = gl_texture_view_native(view);
+    return native ? native->handle : 0;
 }
 
 static GLuint gl_sampler_name(rt_sampler_t const& sampler)
@@ -1237,15 +1238,13 @@ rt_texture_view_t gl_create_texture_view(rt_texture_t& texture, rt_texture_view_
 
 void gl_destroy_texture_view(rt_texture_view_t& view)
 {
-    auto it = opengl.textureViews.find(view.handle);
-    if (it != opengl.textureViews.end())
+    if (auto* native = gl_texture_view_native(view))
     {
-        if (it->second.handle)
-            glDeleteTextures(1, &it->second.handle);
-        opengl.textureViews.erase(it);
+        if (native->handle)
+            glDeleteTextures(1, &native->handle);
+        opengl.textureViews.erase(view.handle);
     }
-    view.handle = 0;
-    view.native = nullptr;
+    view = {};
 }
 
 void gl_bind_texture_view(rt_texture_view_t& view, rt_texture_view_bind_t bind)
@@ -3174,7 +3173,7 @@ void gl_draw_screen(int width, int height, rt_color_t clear, rt_texture_t& textu
 
 void gl_submit()
 {
-    glFinish();
+    // glFinish();
 }
 
 #endif

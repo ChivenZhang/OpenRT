@@ -484,7 +484,7 @@ struct wg_texture_native_t
 struct wg_texture_view_native_t
 {
     WGPUTextureView handle = nullptr;
-    uint32_t texture = 0;
+    wg_texture_native_t* texture = nullptr;
 
     wg_texture_view_native_t() = default;
     wg_texture_view_native_t(const wg_texture_view_native_t&) = delete;
@@ -711,35 +711,31 @@ static void wg_transition_image(wg_texture_native_t& image, wg_res_state_t dst)
 static wg_buffer_native_t* wg_buffer_native(rt_buffer_t const& buffer)
 {
     if (!buffer.native || buffer.handle == 0) return nullptr;
-    auto it = webgpu.buffers.find(buffer.handle);
-    return it == webgpu.buffers.end() ? nullptr : &it->second;
+    return (wg_buffer_native_t*)buffer.native;
 }
 
 static wg_texture_native_t* wg_texture_native(rt_texture_t const& texture)
 {
     if (!texture.native || texture.handle == 0) return nullptr;
-    auto it = webgpu.textures.find(texture.handle);
-    return it == webgpu.textures.end() ? nullptr : &it->second;
+    return (wg_texture_native_t*)texture.native;
 }
 
-static wg_texture_view_native_t* wg_texture_view_native(uint32_t handle)
+static wg_texture_view_native_t* wg_texture_view_native(rt_texture_view_t const& view)
 {
-    if (handle == 0) return nullptr;
-    auto it = webgpu.textureViews.find(handle);
-    return it == webgpu.textureViews.end() ? nullptr : &it->second;
+    if (!view.native || view.handle == 0) return nullptr;
+    return (wg_texture_view_native_t*)view.native;
 }
 
 static WGPUTextureView wg_image_view(rt_texture_view_t const& view)
 {
-    auto* native = wg_texture_view_native(view.handle);
+    auto* native = wg_texture_view_native(view);
     return native ? native->handle : nullptr;
 }
 
 static wg_sampler_native_t* wg_sampler_native(rt_sampler_t const& sampler)
 {
     if (!sampler.native || sampler.handle == 0) return nullptr;
-    auto it = webgpu.samplers.find(sampler.handle);
-    return it == webgpu.samplers.end() ? nullptr : &it->second;
+    return (wg_sampler_native_t*)sampler.native;
 }
 
 static wg_module_native_t* wg_current_module_native()
@@ -830,10 +826,9 @@ static bool wg_create_pipeline_layout(wg_module_native_t& native, rt_binding_t c
 
 static void wg_destroy_module_native(uint32_t handle, void*& native)
 {
-    auto it = webgpu.modules.find(handle);
-    if (it != webgpu.modules.end())
+    if (native && handle != 0)
     {
-        auto& module = it->second;
+        auto& module = *(wg_module_native_t*)native;
         if (module.bindGroup) wgpuBindGroupRelease(module.bindGroup);
         if (module.renderPipeline) wgpuRenderPipelineRelease(module.renderPipeline);
         if (module.computePipeline) wgpuComputePipelineRelease(module.computePipeline);
@@ -844,7 +839,7 @@ static void wg_destroy_module_native(uint32_t handle, void*& native)
         if (module.mshader) wgpuShaderModuleRelease(module.mshader);
         if (module.fshader) wgpuShaderModuleRelease(module.fshader);
         if (module.cshader) wgpuShaderModuleRelease(module.cshader);
-        webgpu.modules.erase(it);
+        webgpu.modules.erase(handle);
     }
     native = nullptr;
 }
@@ -878,22 +873,18 @@ static void wg_flush_descriptors()
         }
         else if (mod->kinds[i] == WG_KIND_TEXTURE)
         {
-            auto* view = wg_texture_view_native(slot.texture_view.handle);
-            if (!view || !view->handle) continue;
-            auto texIt = webgpu.textures.find(view->texture);
-            if (texIt == webgpu.textures.end()) continue;
-            auto* tex = &texIt->second;
+            auto* view = wg_texture_view_native(slot.texture_view);
+            if (!view || !view->handle || !view->texture) continue;
+            auto* tex = view->texture;
             WGPUTextureView gpuView = view->handle;
             wg_transition_image(*tex, WG_STATE_SHADER_READ);
             entries[count].textureView = gpuView;
         }
         else if (mod->kinds[i] == WG_KIND_STORAGE_TEXTURE)
         {
-            auto* view = wg_texture_view_native(slot.storage_view.handle);
-            if (!view || !view->handle) continue;
-            auto texIt = webgpu.textures.find(view->texture);
-            if (texIt == webgpu.textures.end()) continue;
-            auto* tex = &texIt->second;
+            auto* view = wg_texture_view_native(slot.storage_view);
+            if (!view || !view->handle || !view->texture) continue;
+            auto* tex = view->texture;
             wg_transition_image(*tex, WG_STATE_SHADER_WRITE);
             entries[count].textureView = view->handle;
         }
@@ -1173,14 +1164,8 @@ rt_buffer_t wg_create_buffer(rt_buffer_info_t const& info)
 
 void wg_destroy_buffer(rt_buffer_t& buffer)
 {
-    if (buffer.native)
-    {
-        auto it = webgpu.buffers.find(buffer.handle);
-        if (it != webgpu.buffers.end())
-        {
-            webgpu.buffers.erase(it);
-        }
-    }
+    if (wg_buffer_native(buffer))
+        webgpu.buffers.erase(buffer.handle);
     buffer = {};
 }
 
@@ -1319,18 +1304,17 @@ rt_texture_t wg_create_texture(rt_texture_info_t const& info)
 
 void wg_destroy_texture(rt_texture_t& texture)
 {
-    if (texture.handle)
+    if (auto* native = wg_texture_native(texture))
     {
         for (auto it = webgpu.textureViews.begin(); it != webgpu.textureViews.end(); )
         {
-            if (it->second.texture == texture.handle)
+            if (it->second.texture == native)
                 it = webgpu.textureViews.erase(it);
             else
                 ++it;
         }
-    }
-    if (texture.native)
         webgpu.textures.erase(texture.handle);
+    }
     texture = {};
 }
 
@@ -1393,7 +1377,7 @@ rt_texture_view_t wg_create_texture_view(rt_texture_t& texture, rt_texture_view_
     uint32_t handle = webgpu.textureViewID + 1;
     auto& native = webgpu.textureViews[handle];
     native.handle = view;
-    native.texture = texture.handle;
+    native.texture = tex;
     webgpu.textureViewID = handle;
     result.handle = handle;
     result.native = &native;
@@ -1402,9 +1386,9 @@ rt_texture_view_t wg_create_texture_view(rt_texture_t& texture, rt_texture_view_
 
 void wg_destroy_texture_view(rt_texture_view_t& view)
 {
-    webgpu.textureViews.erase(view.handle);
-    view.handle = 0;
-    view.native = nullptr;
+    if (wg_texture_view_native(view))
+        webgpu.textureViews.erase(view.handle);
+    view = {};
 }
 
 void wg_bind_texture_view(rt_texture_view_t& view, rt_texture_view_bind_t bind)
@@ -1454,14 +1438,8 @@ rt_sampler_t wg_create_sampler(rt_sampler_info_t const& info)
 
 void wg_destroy_sampler(rt_sampler_t& sampler)
 {
-    if (sampler.native)
-    {
-        auto it = webgpu.samplers.find(sampler.handle);
-        if (it != webgpu.samplers.end())
-        {
-            webgpu.samplers.erase(it);
-        }
-    }
+    if (wg_sampler_native(sampler))
+        webgpu.samplers.erase(sampler.handle);
     sampler = {};
 }
 
@@ -1833,11 +1811,9 @@ void wg_begin_render(rt_pass_render_t& pass)
     {
         if (pass.colors[i].texture_view.format == RT_TEXTURE_NONE)
             continue;
-        auto* view = wg_texture_view_native(pass.colors[i].texture_view.handle);
-        if (!view || !view->handle) continue;
-        auto texIt = webgpu.textures.find(view->texture);
-        if (texIt == webgpu.textures.end()) continue;
-        auto* tex = &texIt->second;
+        auto* view = wg_texture_view_native(pass.colors[i].texture_view);
+        if (!view || !view->handle || !view->texture) continue;
+        auto* tex = view->texture;
         wg_transition_image(*tex, WG_STATE_COLOR);
         colors[i].view = view->handle;
         colors[i].depthSlice = tex->target == RT_TEXTURE_3D ? pass.colors[i].texture_view.base_layer : WGPU_DEPTH_SLICE_UNDEFINED;
@@ -1860,12 +1836,11 @@ void wg_begin_render(rt_pass_render_t& pass)
 
     WGPURenderPassDepthStencilAttachment depth = {};
     bool hasDepth = false;
-    if (auto* view = wg_texture_view_native(pass.depth.texture_view.handle))
+    if (auto* view = wg_texture_view_native(pass.depth.texture_view))
     {
-        auto texIt = webgpu.textures.find(view->texture);
-        if (texIt != webgpu.textures.end() && view->handle)
+        if (view->texture && view->handle)
         {
-            auto* tex = &texIt->second;
+            auto* tex = view->texture;
             wg_transition_image(*tex, WG_STATE_DEPTH);
             depth.view = view->handle;
             depth.depthLoadOp = pass.depth.clear ? WGPULoadOp_Clear : WGPULoadOp_Load;
@@ -1910,12 +1885,12 @@ void wg_end_render(rt_pass_render_t& pass)
         webgpu.renderPass = nullptr;
     }
     for (auto& color : pass.colors)
-        if (auto* view = wg_texture_view_native(color.texture_view.handle))
-            if (auto texIt = webgpu.textures.find(view->texture); texIt != webgpu.textures.end())
-                wg_transition_image(texIt->second, WG_STATE_SHADER_READ);
-    if (auto* view = wg_texture_view_native(pass.depth.texture_view.handle))
-        if (auto texIt = webgpu.textures.find(view->texture); texIt != webgpu.textures.end())
-            wg_transition_image(texIt->second, WG_STATE_SHADER_READ);
+        if (auto* view = wg_texture_view_native(color.texture_view))
+            if (view->texture)
+                wg_transition_image(*view->texture, WG_STATE_SHADER_READ);
+    if (auto* view = wg_texture_view_native(pass.depth.texture_view))
+        if (view->texture)
+            wg_transition_image(*view->texture, WG_STATE_SHADER_READ);
     pass.handle = 0;
     pass.native = nullptr;
     webgpu.currentPassType = RT_MODULE_NONE;
