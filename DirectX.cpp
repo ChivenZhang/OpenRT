@@ -1812,7 +1812,8 @@ rt_module_render_t dx_create_module_render(rt_module_render_info_t const& info)
         rt.SrcBlendAlpha = rt_to_dx_blend(info.colors[i].alpha.src);
         rt.DestBlendAlpha = rt_to_dx_blend(info.colors[i].alpha.dst);
         rt.BlendOpAlpha = rt_to_dx_blend_op(info.colors[i].alpha.func);
-        rt.RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
+        rt.RenderTargetWriteMask = (info.colors[i].write.r ? D3D12_COLOR_WRITE_ENABLE_RED : 0) | (info.colors[i].write.g ? D3D12_COLOR_WRITE_ENABLE_GREEN : 0) |
+            (info.colors[i].write.b ? D3D12_COLOR_WRITE_ENABLE_BLUE : 0) | (info.colors[i].write.a ? D3D12_COLOR_WRITE_ENABLE_ALPHA : 0);
         pso.RTVFormats[i] = rt_to_dx_texture_format(info.colors[i].format);
     }
     native.colorCount = colorCount;
@@ -1906,6 +1907,10 @@ rt_module_render_t dx_create_module_render(rt_module_render_info_t const& info)
     for (size_t i = 0; i < std::size(info.colors); ++i)
     {
         result.colors[i].format = info.colors[i].format;
+        result.colors[i].write.r = info.colors[i].write.r;
+        result.colors[i].write.g = info.colors[i].write.g;
+        result.colors[i].write.b = info.colors[i].write.b;
+        result.colors[i].write.a = info.colors[i].write.a;
         result.colors[i].color.func = info.colors[i].color.func;
         result.colors[i].color.src = info.colors[i].color.src;
         result.colors[i].color.dst = info.colors[i].color.dst;

@@ -881,6 +881,10 @@ static void mt_fill_render_state(rt_module_render_t& result, rt_module_render_in
     for (size_t i = 0; i < std::size(info.colors); ++i)
     {
         result.colors[i].format = info.colors[i].format;
+        result.colors[i].write.r = info.colors[i].write.r;
+        result.colors[i].write.g = info.colors[i].write.g;
+        result.colors[i].write.b = info.colors[i].write.b;
+        result.colors[i].write.a = info.colors[i].write.a;
         result.colors[i].color.func = info.colors[i].color.func;
         result.colors[i].color.src = info.colors[i].color.src;
         result.colors[i].color.dst = info.colors[i].color.dst;
@@ -933,6 +937,10 @@ static void mt_fill_color_attachments(MTL::RenderPipelineColorAttachmentDescript
         attachment->setSourceAlphaBlendFactor(rt_to_mt_blend(info.colors[i].alpha.src));
         attachment->setDestinationAlphaBlendFactor(rt_to_mt_blend(info.colors[i].alpha.dst));
         attachment->setAlphaBlendOperation(rt_to_mt_blend_op(info.colors[i].alpha.func));
+        attachment->setWriteMask((info.colors[i].write.r ? MTL::ColorWriteMaskRed : MTL::ColorWriteMaskNone) |
+            (info.colors[i].write.g ? MTL::ColorWriteMaskGreen : MTL::ColorWriteMaskNone) |
+            (info.colors[i].write.b ? MTL::ColorWriteMaskBlue : MTL::ColorWriteMaskNone) |
+            (info.colors[i].write.a ? MTL::ColorWriteMaskAlpha : MTL::ColorWriteMaskNone));
     }
 }
 

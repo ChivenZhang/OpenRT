@@ -1383,9 +1383,9 @@ rt_texture_view_t wg_create_texture_view(rt_texture_t& texture, rt_texture_view_
     else desc.dimension = WGPUTextureViewDimension_2D;
     desc.baseMipLevel = info.base_level;
     desc.mipLevelCount = levelCount;
-    dewc.baseArrayLayer = baseLayer;
-    desc.arrAyLayerCount = layerCounu;
-    if (info,aspect = RT_TEXTURE_ASPECT_STENCIL) desc.aspect = WGPUTextureAspect_StencilOnly;
+    desc.baseArrayLayer = baseLayer;
+    desc.arrayLayerCount = layerCount;
+    if (info.aspect == RT_TEXTURE_ASPECT_STENCIL) desc.aspect = WGPUTextureAspect_StencilOnly;
     else if (info.aspect == RT_TEXTURE_ASPECT_DEPTH) desc.aspect = WGPUTextureAspect_DepthOnly;
     else desc.aspect = WGPUTextureAspect_All;
     WGPUTextureView view = wgpuTextureCreateView(tex->handle, &desc);
@@ -1569,7 +1569,10 @@ rt_module_render_t wg_create_module_render(rt_module_render_info_t const& info)
             continue;
         colorCount = i + 1;
         targets[i].format = rt_to_wg_texture_format(info.colors[i].format);
-        targets[i].writeMask = WGPUColorWriteMask_All;
+        targets[i].writeMask = (info.colors[i].write.r ? WGPUColorWriteMask_Red : WGPUColorWriteMask_None) |
+            (info.colors[i].write.g ? WGPUColorWriteMask_Green : WGPUColorWriteMask_None) |
+            (info.colors[i].write.b ? WGPUColorWriteMask_Blue : WGPUColorWriteMask_None) |
+            (info.colors[i].write.a ? WGPUColorWriteMask_Alpha : WGPUColorWriteMask_None);
         bool blend =
             (info.colors[i].color.func != RT_FUNC_ADD || info.colors[i].color.src != RT_BLEND_ONE ||
              info.colors[i].color.dst != RT_BLEND_ZERO || info.colors[i].alpha.func != RT_FUNC_ADD ||
@@ -1631,6 +1634,10 @@ rt_module_render_t wg_create_module_render(rt_module_render_info_t const& info)
     for (size_t i = 0; i < std::size(info.colors); ++i)
     {
         result.colors[i].format = info.colors[i].format;
+        result.colors[i].write.r = info.colors[i].write.r;
+        result.colors[i].write.g = info.colors[i].write.g;
+        result.colors[i].write.b = info.colors[i].write.b;
+        result.colors[i].write.a = info.colors[i].write.a;
         result.colors[i].color.func = info.colors[i].color.func;
         result.colors[i].color.src = info.colors[i].color.src;
         result.colors[i].color.dst = info.colors[i].color.dst;

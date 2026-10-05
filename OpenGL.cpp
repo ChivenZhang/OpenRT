@@ -1500,6 +1500,10 @@ rt_module_render_t gl_create_module_render(rt_module_render_info_t const& info)
     for (size_t i = 0; i < std::size(info.colors); ++i)
     {
         result.colors[i].format = info.colors[i].format;
+        result.colors[i].write.r = info.colors[i].write.r;
+        result.colors[i].write.g = info.colors[i].write.g;
+        result.colors[i].write.b = info.colors[i].write.b;
+        result.colors[i].write.a = info.colors[i].write.a;
         result.colors[i].color.func = info.colors[i].color.func;
         result.colors[i].color.src = info.colors[i].color.src;
         result.colors[i].color.dst = info.colors[i].color.dst;
@@ -1829,6 +1833,7 @@ void gl_begin_render(rt_pass_render_t& pass)
         gl_set_viewport(0.0f, 0.0f, (float)width, (float)height, 0.0f, 1.0f);
 
         glDisable(GL_BLEND);
+        glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
         glDepthMask(GL_TRUE);
         glStencilMask(0xFFFFFFFF);
         for (size_t i = 0; i < std::size(pass.colors); ++i)
@@ -1838,7 +1843,6 @@ void gl_begin_render(rt_pass_render_t& pass)
 
             if (pass.colors[i].clear)
             {
-                glColorMask(true, true, true, true);
                 glClearBufferfv(GL_COLOR, (int32_t)i, &pass.colors[i].value.r);
             }
         }
@@ -1860,6 +1864,9 @@ void gl_begin_render(rt_pass_render_t& pass)
     {
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
+        glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+        glDepthMask(GL_TRUE);
+        glStencilMask(0xFFFFFFFF);
         if (pass.screen.color.clear)
         {
             glClearBufferfv(GL_COLOR, 0, &pass.screen.color.value.r);
@@ -1996,6 +2003,7 @@ void gl_bind_module_render(rt_module_render_t& module)
                 glEnable(GL_BLEND);
             }
 
+            glColorMaski((GLuint)i, module.colors[i].write.r, module.colors[i].write.g, module.colors[i].write.b, module.colors[i].write.a);
             glBlendEquationSeparatei(i, rt_to_gl_blend_op(module.colors[i].color.func), rt_to_gl_blend_op(module.colors[i].alpha.func));
             glBlendFuncSeparatei(i, rt_to_gl_blend_factor(module.colors[i].color.src), rt_to_gl_blend_factor(module.colors[i].color.dst), rt_to_gl_blend_factor(module.colors[i].alpha.src), rt_to_gl_blend_factor(module.colors[i].alpha.dst));
         }

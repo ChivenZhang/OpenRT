@@ -2222,7 +2222,8 @@ rt_module_render_t vk_create_module_render(rt_module_render_info_t const& info)
         colorBlendAttachments[i].dstAlphaBlendFactor = rt_to_vk_blend_factor(info.colors[i].alpha.dst);
         colorBlendAttachments[i].alphaBlendOp = rt_to_vk_blend_op(info.colors[i].alpha.func);
         colorBlendAttachments[i].colorWriteMask =
-            VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+            (info.colors[i].write.r ? VK_COLOR_COMPONENT_R_BIT : 0) | (info.colors[i].write.g ? VK_COLOR_COMPONENT_G_BIT : 0) |
+            (info.colors[i].write.b ? VK_COLOR_COMPONENT_B_BIT : 0) | (info.colors[i].write.a ? VK_COLOR_COMPONENT_A_BIT : 0);
     }
 
     VkPipelineColorBlendStateCreateInfo colorBlending = {};
@@ -2274,6 +2275,10 @@ rt_module_render_t vk_create_module_render(rt_module_render_info_t const& info)
     for (size_t i = 0; i < std::size(info.colors); ++i)
     {
         result.colors[i].format = info.colors[i].format;
+        result.colors[i].write.r = info.colors[i].write.r;
+        result.colors[i].write.g = info.colors[i].write.g;
+        result.colors[i].write.b = info.colors[i].write.b;
+        result.colors[i].write.a = info.colors[i].write.a;
         result.colors[i].color.func = info.colors[i].color.func;
         result.colors[i].color.src = info.colors[i].color.src;
         result.colors[i].color.dst = info.colors[i].color.dst;

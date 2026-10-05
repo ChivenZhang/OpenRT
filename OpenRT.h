@@ -582,6 +582,10 @@ struct rt_module_render_info_t
         rt_texture_format_t format = RT_TEXTURE_NONE;
         struct
         {
+            bool r = true, g = true, b = true, a = true;
+        } write;
+        struct
+        {
             rt_blend_op_t func = RT_FUNC_ADD; // RT_FUNC_ADD / RT_FUNC_SUBTRACT / RT_FUNC_REVERSE_SUBTRACT / RT_MIN / RT_MAX
             rt_blend_factor_t src = RT_BLEND_ONE; // RT_BLEND_ZERO / RT_BLEND_ONE / RT_BLEND_SRC_COLOR / RT_BLEND_ONE_MINUS_SRC_COLOR / RT_BLEND_DST_COLOR / RT_BLEND_ONE_MINUS_DST_COLOR / RT_BLEND_SRC_ALPHA / RT_BLEND_ONE_MINUS_SRC_ALPHA / RT_BLEND_DST_ALPHA / RT_BLEND_ONE_MINUS_DST_ALPHA / RT_BLEND_CONSTANT_COLOR / RT_BLEND_ONE_MINUS_CONSTANT_COLOR / RT_BLEND_CONSTANT_ALPHA / RT_BLEND_ONE_MINUS_CONSTANT_ALPHA / RT_BLEND_SRC_ALPHA_SATURATE
             rt_blend_factor_t dst = RT_BLEND_ZERO; // RT_BLEND_ZERO / RT_BLEND_ONE / RT_BLEND_SRC_COLOR / RT_BLEND_ONE_MINUS_SRC_COLOR / RT_BLEND_DST_COLOR / RT_BLEND_ONE_MINUS_DST_COLOR / RT_BLEND_SRC_ALPHA / RT_BLEND_ONE_MINUS_SRC_ALPHA / RT_BLEND_DST_ALPHA / RT_BLEND_ONE_MINUS_DST_ALPHA / RT_BLEND_CONSTANT_COLOR / RT_BLEND_ONE_MINUS_CONSTANT_COLOR / RT_BLEND_CONSTANT_ALPHA / RT_BLEND_ONE_MINUS_CONSTANT_ALPHA / RT_BLEND_SRC_ALPHA_SATURATE
@@ -625,6 +629,10 @@ struct rt_module_render_t
     struct
     {
         rt_texture_format_t format = RT_TEXTURE_NONE;
+        struct
+        {
+            bool r = true, g = true, b = true, a = true;
+        } write;
         struct
         {
             rt_blend_op_t func = RT_FUNC_ADD;
