@@ -927,9 +927,9 @@ void* gl_map_buffer(rt_buffer_t& buffer, rt_access_t mode, size_t offset, size_t
     }
 
     glBindBuffer(GL_ARRAY_BUFFER, gl_buffer_name(buffer));
-    void* ptr = glMapBufferRange(GL_ARRAY_BUFFER, (GLintptr)offset, (GLsizeiptr)size, access);
+    void* memory = glMapBufferRange(GL_ARRAY_BUFFER, (GLintptr)offset, (GLsizeiptr)size, access);
     glBindBuffer(GL_ARRAY_BUFFER, 0);
-    return ptr;
+    return memory;
 }
 
 void gl_unmap_buffer(rt_buffer_t& buffer)
@@ -2599,11 +2599,6 @@ void gl_end_transfer(rt_pass_transfer_t& pass)
     pass.native = nullptr;
     opengl.currentPassType = RT_MODULE_NONE;
     opengl.currentTransferPass = nullptr;
-
-    // 保证传输结果对后续的着色器读取、顶点拉取和纹理采样可见
-    glMemoryBarrier(GL_BUFFER_UPDATE_BARRIER_BIT | GL_TEXTURE_UPDATE_BARRIER_BIT | GL_PIXEL_BUFFER_BARRIER_BIT |
-                    GL_VERTEX_ATTRIB_ARRAY_BARRIER_BIT | GL_ELEMENT_ARRAY_BARRIER_BIT | GL_UNIFORM_BARRIER_BIT |
-                    GL_TEXTURE_FETCH_BARRIER_BIT | GL_SHADER_STORAGE_BARRIER_BIT);
 }
 
 void gl_copy_buffer(rt_buffer_copy_t source, rt_buffer_copy_t destination, size_t copySize)
