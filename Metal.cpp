@@ -821,7 +821,7 @@ static rt_module_render_t const& mt_current_render_module()
 {
     if (metal.currentRenderModule == nullptr)
     {
-        fprintf(stderr, "Pipeline module not bound\n");
+        fprintf(stderr, "Pipeline module not bound");
         abort();
     }
     return *metal.currentRenderModule;
@@ -836,7 +836,7 @@ static void mt_log_error(const char* what, NS::Error* error)
         if (desc && desc->utf8String() && desc->utf8String()[0])
             message = desc->utf8String();
     }
-    fprintf(stderr, "[Metal][ERROR] %s:\n%s\n", what, message);
+    fprintf(stderr, "[Metal][ERROR] %s:\n%s", what, message);
 }
 
 static MTL::Function* mt_function_from_binary(MTL::Library* library, const char* entry, const char* stage)
@@ -847,7 +847,7 @@ static MTL::Function* mt_function_from_binary(MTL::Library* library, const char*
     MTL::Function* fn = library->newFunction(fnName);
     mt_release(fnName);
     if (!fn)
-        fprintf(stderr, "[Metal][ERROR] %s function '%s' not found\n", stage, name);
+        fprintf(stderr, "[Metal][ERROR] %s function '%s' not found", stage, name);
     return fn;
 }
 
@@ -855,12 +855,12 @@ static MTL::Library* mt_create_library(const char* data, uint32_t length, const 
 {
     if (!data || !length || !metal.device)
     {
-        fprintf(stderr, "[Metal][ERROR] %s: metallib is empty\n", stage);
+        fprintf(stderr, "[Metal][ERROR] %s: metallib is empty", stage);
         return nullptr;
     }
     if (length < 4 || data[0] != 'M' || data[1] != 'T' || data[2] != 'L' || data[3] != 'B')
     {
-        fprintf(stderr, "[Metal][ERROR] %s: expected a metallib (MTLB) binary\n", stage);
+        fprintf(stderr, "[Metal][ERROR] %s: expected a metallib (MTLB) binary", stage);
         return nullptr;
     }
     NS::Error* error = nullptr;
@@ -1063,12 +1063,12 @@ void mt_load_library(MTL::Device* device, MTL::CommandQueue* queue)
     metal.ownsQueue = false;
     if (!metal.device)
     {
-        fprintf(stderr, "Metal: device is null\n");
+        fprintf(stderr, "Metal: device is null");
         abort();
     }
     if (!metal.queue)
     {
-        fprintf(stderr, "Metal: queue is null\n");
+        fprintf(stderr, "Metal: queue is null");
         abort();
     }
     mt_retain_cmd(metal.queue->commandBuffer());
@@ -1649,7 +1649,7 @@ rt_module_render_t mt_create_module_render(rt_module_render_info_t const& info)
     else
     {
         metal.modules.erase(handle);
-        fprintf(stderr, "Render module requires a vertex shader or a mesh shader\n");
+        fprintf(stderr, "Render module requires a vertex shader or a mesh shader");
         abort();
     }
     if (info.fshader.code)
@@ -1795,7 +1795,7 @@ void mt_bind_module_compute(rt_module_compute_t& module)
     auto* mod = (mt_module_native_t*)module.native;
     if (module.handle == 0 || !mod || !mod->computePipeline)
     {
-        fprintf(stderr, "Pipeline module is not created\n");
+        fprintf(stderr, "Pipeline module is not created");
         abort();
     }
     metal.currentComputeModule = &module;
@@ -1816,7 +1816,7 @@ void mt_dispatch_compute(uint32_t groupX, uint32_t groupY, uint32_t groupZ)
     }
     if (metal.currentComputeModule == nullptr)
     {
-        fprintf(stderr, "Pipeline module not bound\n");
+        fprintf(stderr, "Pipeline module not bound");
         abort();
     }
     mt_flush_descriptors();
@@ -1842,7 +1842,7 @@ void mt_dispatch_compute_indirect(rt_buffer_t& indirect, size_t offset)
     }
     if (metal.currentComputeModule == nullptr)
     {
-        fprintf(stderr, "Pipeline module not bound\n");
+        fprintf(stderr, "Pipeline module not bound");
         abort();
     }
     auto* native = mt_buffer_native(indirect);
@@ -1988,7 +1988,7 @@ void mt_bind_module_render(rt_module_render_t& module)
     auto* mod = (mt_module_native_t*)module.native;
     if (module.handle == 0 || !mod || !mod->renderPipeline)
     {
-        fprintf(stderr, "Pipeline module is not created\n");
+        fprintf(stderr, "Pipeline module is not created");
         abort();
     }
     metal.currentRenderModule = &module;
@@ -2183,21 +2183,53 @@ void mt_push_constant(uint8_t const* buffer, size_t length)
     mt_apply_push();
 }
 
-void mt_push_const_int(const char*, int32_t) {}
+void mt_push_const_int(const char*, int32_t)
+{
+    fprintf(stderr, "Metal: does not support rt_push_const_int");
+    abort();
+}
 
-void mt_push_const_uint(const char*, uint32_t) {}
+void mt_push_const_uint(const char*, uint32_t)
+{
+    fprintf(stderr, "Metal: does not support rt_push_const_uint");
+    abort();
+}
 
-void mt_push_const_float(const char*, float) {}
+void mt_push_const_float(const char*, float)
+{
+    fprintf(stderr, "Metal: does not support rt_push_const_float");
+    abort();
+}
 
-void mt_push_const_vec2(const char*, const float*) {}
+void mt_push_const_vec2(const char*, const float*)
+{
+    fprintf(stderr, "Metal: does not support rt_push_const_vec2");
+    abort();
+}
 
-void mt_push_const_vec3(const char*, const float*) {}
+void mt_push_const_vec3(const char*, const float*)
+{
+    fprintf(stderr, "Metal: does not support rt_push_const_vec3");
+    abort();
+}
 
-void mt_push_const_vec4(const char*, const float*) {}
+void mt_push_const_vec4(const char*, const float*)
+{
+    fprintf(stderr, "Metal: does not support rt_push_const_vec4");
+    abort();
+}
 
-void mt_push_const_mat3(const char*, const float*) {}
+void mt_push_const_mat3(const char*, const float*)
+{
+    fprintf(stderr, "Metal: does not support rt_push_const_mat3");
+    abort();
+}
 
-void mt_push_const_mat4(const char*, const float*) {}
+void mt_push_const_mat4(const char*, const float*)
+{
+    fprintf(stderr, "Metal: does not support rt_push_const_mat4");
+    abort();
+}
 
 void mt_begin_transfer(rt_pass_transfer_t& pass)
 {

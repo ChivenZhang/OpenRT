@@ -229,7 +229,7 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL debug_callback(VkDebugUtilsMessageSeverity
     const char* level = "INFO";
     if (severity >= VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT) level = "ERROR";
     else if (severity >= VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT) level = "WARNING";
-    fprintf(stderr, "[Vulkan][%s] %s\n", level, data && data->pMessage ? data->pMessage : "");
+    fprintf(stderr, "[Vulkan][%s] %s", level, data && data->pMessage ? data->pMessage : "");
     fflush(stderr);
     return VK_FALSE;
 }
@@ -286,7 +286,7 @@ void frame(int width, int height)
     beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
     if (vkBeginCommandBuffer(cmdBuffer, &beginInfo) != VK_SUCCESS)
     {
-        fprintf(stderr, "Vulkan: failed to begin command buffer\n");
+        fprintf(stderr, "Vulkan: failed to begin command buffer");
         abort();
     }
 
@@ -341,7 +341,7 @@ int main()
     for (auto& layer : layers)
         if (strcmp(layer.layerName, validationLayer) == 0) { hasValidation = true; break; }
     if (!hasValidation)
-        fprintf(stderr, "[Vulkan][ERROR] VK_LAYER_KHRONOS_validation is not available\n");
+        fprintf(stderr, "[Vulkan][ERROR] VK_LAYER_KHRONOS_validation is not available");
 
     VkDebugUtilsMessengerCreateInfoEXT dbgInfo = {
         .sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT,
@@ -362,7 +362,7 @@ int main()
     VkInstance instance = nullptr;
     if (vkCreateInstance(&instanceInfo, nullptr, &instance) != VK_SUCCESS)
     {
-        fprintf(stderr, "[Vulkan][ERROR] vkCreateInstance failed\n");
+        fprintf(stderr, "[Vulkan][ERROR] vkCreateInstance failed");
         return 1;
     }
     VkDebugUtilsMessengerEXT messenger = nullptr;
@@ -443,7 +443,7 @@ int main()
     };
     if (vkCreateDevice(physical, &deviceInfo, nullptr, &device) != VK_SUCCESS)
     {
-        fprintf(stderr, "[Vulkan][ERROR] vkCreateDevice failed\n");
+        fprintf(stderr, "[Vulkan][ERROR] vkCreateDevice failed");
         return 1;
     }
     vkGetDeviceQueue(device, family, 0, &queue);

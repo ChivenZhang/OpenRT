@@ -744,7 +744,7 @@ static uint32_t vk_find_memory_type(uint32_t typeBits, VkMemoryPropertyFlags fla
         if (typeBits & (1u << i))
             return i;
     }
-    fprintf(stderr, "Vulkan: no compatible memory type\n");
+    fprintf(stderr, "Vulkan: no compatible memory type");
     abort();
 }
 
@@ -975,7 +975,7 @@ static rt_module_render_t const& vk_current_render_module()
 {
     if (vulkan.currentRenderModule == nullptr)
     {
-        fprintf(stderr, "Pipeline module not bound\n");
+        fprintf(stderr, "Pipeline module not bound");
         abort();
     }
     return *vulkan.currentRenderModule;
@@ -1104,27 +1104,27 @@ void vk_load_library(VkInstance instance, VkPhysicalDevice physical, VkDevice de
 {
     if (!instance)
     {
-        fprintf(stderr, "Vulkan: instance is null\n");
+        fprintf(stderr, "Vulkan: instance is null");
         abort();
     }
     if (!physical)
     {
-        fprintf(stderr, "Vulkan: physical device is null\n");
+        fprintf(stderr, "Vulkan: physical device is null");
         abort();
     }
     if (!device)
     {
-        fprintf(stderr, "Vulkan: device is null\n");
+        fprintf(stderr, "Vulkan: device is null");
         abort();
     }
     if (!queue)
     {
-        fprintf(stderr, "Vulkan: queue is null\n");
+        fprintf(stderr, "Vulkan: queue is null");
         abort();
     }
     if (!cmdbuf)
     {
-        fprintf(stderr, "Vulkan: command buffer is null\n");
+        fprintf(stderr, "Vulkan: command buffer is null");
         abort();
     }
     vulkan.instance = instance;
@@ -1452,7 +1452,7 @@ rt_buffer_t vk_create_buffer(rt_buffer_info_t const& info)
                     beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
                     if (vkBeginCommandBuffer(vulkan.cmdBuffer, &beginInfo) != VK_SUCCESS)
                     {
-                        fprintf(stderr, "Vulkan: failed to begin command buffer\n");
+                        fprintf(stderr, "Vulkan: failed to begin command buffer");
                         abort();
                     }
                 }
@@ -1464,7 +1464,7 @@ rt_buffer_t vk_create_buffer(rt_buffer_info_t const& info)
                 {
                     if (vkEndCommandBuffer(vulkan.cmdBuffer) != VK_SUCCESS)
                     {
-                        fprintf(stderr, "Vulkan: failed to end command buffer\n");
+                        fprintf(stderr, "Vulkan: failed to end command buffer");
                         abort();
                     }
                     VkSubmitInfo submitInfo = {};
@@ -1633,7 +1633,7 @@ rt_texture_t vk_create_texture(rt_texture_info_t const& info)
             beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
             if (vkBeginCommandBuffer(vulkan.cmdBuffer, &beginInfo) != VK_SUCCESS)
             {
-                fprintf(stderr, "Vulkan: failed to begin command buffer\n");
+                fprintf(stderr, "Vulkan: failed to begin command buffer");
                 abort();
             }
         }
@@ -1654,7 +1654,7 @@ rt_texture_t vk_create_texture(rt_texture_info_t const& info)
         {
             if (vkEndCommandBuffer(vulkan.cmdBuffer) != VK_SUCCESS)
             {
-                fprintf(stderr, "Vulkan: failed to end command buffer\n");
+                fprintf(stderr, "Vulkan: failed to end command buffer");
                 abort();
             }
             VkSubmitInfo submitInfo = {};
@@ -1996,7 +1996,7 @@ rt_module_render_t vk_create_module_render(rt_module_render_info_t const& info)
     else
     {
         vulkan.modules.erase(handle);
-        fprintf(stderr, "Render module requires a vertex shader or a mesh shader\n");
+        fprintf(stderr, "Render module requires a vertex shader or a mesh shader");
         abort();
     }
     if (info.fshader.code)
@@ -2316,7 +2316,7 @@ void vk_begin_compute(rt_pass_compute_t& pass)
     beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
     if (vkBeginCommandBuffer(vulkan.cmdBuffer, &beginInfo) != VK_SUCCESS)
     {
-        fprintf(stderr, "Vulkan: failed to begin command buffer\n");
+        fprintf(stderr, "Vulkan: failed to begin command buffer");
         abort();
     }
     for (auto& binding : vulkan.currentBinding)
@@ -2349,7 +2349,7 @@ void vk_end_compute(rt_pass_compute_t& pass)
         binding = {};
     if (vkEndCommandBuffer(vulkan.cmdBuffer) != VK_SUCCESS)
     {
-        fprintf(stderr, "Vulkan: failed to end command buffer\n");
+        fprintf(stderr, "Vulkan: failed to end command buffer");
         abort();
     }
 }
@@ -2364,7 +2364,7 @@ void vk_bind_module_compute(rt_module_compute_t& module)
     auto* mod = (vk_module_native_t*)module.native;
     if (module.handle == 0 || !mod || !mod->pipeline)
     {
-        fprintf(stderr, "Pipeline module is not created\n");
+        fprintf(stderr, "Pipeline module is not created");
         abort();
     }
     vulkan.currentComputeModule = &module;
@@ -2385,7 +2385,7 @@ void vk_dispatch_compute(uint32_t groupX, uint32_t groupY, uint32_t groupZ)
     }
     if (vulkan.currentComputeModule == nullptr)
     {
-        fprintf(stderr, "Pipeline module not bound\n");
+        fprintf(stderr, "Pipeline module not bound");
         abort();
     }
     vk_flush_descriptors();
@@ -2406,7 +2406,7 @@ void vk_dispatch_compute_indirect(rt_buffer_t& indirect, size_t offset)
     }
     if (vulkan.currentComputeModule == nullptr)
     {
-        fprintf(stderr, "Pipeline module not bound\n");
+        fprintf(stderr, "Pipeline module not bound");
         abort();
     }
     auto* native = vk_buffer_native(indirect);
@@ -2459,7 +2459,7 @@ void vk_begin_render(rt_pass_render_t& pass)
     beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
     if (vkBeginCommandBuffer(vulkan.cmdBuffer, &beginInfo) != VK_SUCCESS)
     {
-        fprintf(stderr, "Vulkan: failed to begin command buffer\n");
+        fprintf(stderr, "Vulkan: failed to begin command buffer");
         abort();
     }
     for (auto& binding : vulkan.currentBinding)
@@ -2558,7 +2558,7 @@ void vk_end_render(rt_pass_render_t& pass)
         binding = {};
     if (vkEndCommandBuffer(vulkan.cmdBuffer) != VK_SUCCESS)
     {
-        fprintf(stderr, "Vulkan: failed to end command buffer\n");
+        fprintf(stderr, "Vulkan: failed to end command buffer");
         abort();
     }
 }
@@ -2573,7 +2573,7 @@ void vk_bind_module_render(rt_module_render_t& module)
     auto* mod = (vk_module_native_t*)module.native;
     if (module.handle == 0 || !mod || !mod->pipeline)
     {
-        fprintf(stderr, "Pipeline module is not created\n");
+        fprintf(stderr, "Pipeline module is not created");
         abort();
     }
     vulkan.currentRenderModule = &module;
@@ -2778,21 +2778,53 @@ void vk_push_constant(uint8_t const* buffer, size_t length)
     vkCmdPushConstants(vulkan.cmdBuffer, mod->pipelineLayout, mod->shaderStages, 0, (uint32_t)length, buffer);
 }
 
-void vk_push_const_int(const char*, int32_t) {}
+void vk_push_const_int(const char*, int32_t)
+{
+    fprintf(stderr, "Vulkan: does not support rt_push_const_int");
+    abort();
+}
 
-void vk_push_const_uint(const char*, uint32_t) {}
+void vk_push_const_uint(const char*, uint32_t)
+{
+    fprintf(stderr, "Vulkan: does not support rt_push_const_uint");
+    abort();
+}
 
-void vk_push_const_float(const char*, float) {}
+void vk_push_const_float(const char*, float)
+{
+    fprintf(stderr, "Vulkan: does not support rt_push_const_float");
+    abort();
+}
 
-void vk_push_const_vec2(const char*, const float*) {}
+void vk_push_const_vec2(const char*, const float*)
+{
+    fprintf(stderr, "Vulkan: does not support rt_push_const_vec2");
+    abort();
+}
 
-void vk_push_const_vec3(const char*, const float*) {}
+void vk_push_const_vec3(const char*, const float*)
+{
+    fprintf(stderr, "Vulkan: does not support rt_push_const_vec3");
+    abort();
+}
 
-void vk_push_const_vec4(const char*, const float*) {}
+void vk_push_const_vec4(const char*, const float*)
+{
+    fprintf(stderr, "Vulkan: does not support rt_push_const_vec4");
+    abort();
+}
 
-void vk_push_const_mat3(const char*, const float*) {}
+void vk_push_const_mat3(const char*, const float*)
+{
+    fprintf(stderr, "Vulkan: does not support rt_push_const_mat3");
+    abort();
+}
 
-void vk_push_const_mat4(const char*, const float*) {}
+void vk_push_const_mat4(const char*, const float*)
+{
+    fprintf(stderr, "Vulkan: does not support rt_push_const_mat4");
+    abort();
+}
 
 void vk_begin_transfer(rt_pass_transfer_t& pass)
 {
@@ -2806,7 +2838,7 @@ void vk_begin_transfer(rt_pass_transfer_t& pass)
     beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
     if (vkBeginCommandBuffer(vulkan.cmdBuffer, &beginInfo) != VK_SUCCESS)
     {
-        fprintf(stderr, "Vulkan: failed to begin command buffer\n");
+        fprintf(stderr, "Vulkan: failed to begin command buffer");
         abort();
     }
     auto handle = vulkan.passID + 1;
@@ -2832,7 +2864,7 @@ void vk_end_transfer(rt_pass_transfer_t& pass)
     vulkan.currentPipeline = nullptr;
     if (vkEndCommandBuffer(vulkan.cmdBuffer) != VK_SUCCESS)
     {
-        fprintf(stderr, "Vulkan: failed to end command buffer\n");
+        fprintf(stderr, "Vulkan: failed to end command buffer");
         abort();
     }
 }

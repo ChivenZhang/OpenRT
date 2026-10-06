@@ -578,7 +578,7 @@ static rt_module_render_t const& gl_current_render_module()
 {
     if (opengl.currentRenderModule == nullptr)
     {
-        fprintf(stderr, "Pipeline module not bound\n");
+        fprintf(stderr, "Pipeline module not bound");
         abort();
     }
     return *opengl.currentRenderModule;
@@ -639,7 +639,7 @@ void gl_load_library()
     GLenum err = glewInit();
     if (err != GLEW_OK)
     {
-        fprintf(stderr, "GLEW init failed: %s\n", (const char*)glewGetErrorString(err));
+        fprintf(stderr, "GLEW init failed: %s", (const char*)glewGetErrorString(err));
         abort();
     }
     fprintf(stdout, "OpenGL Version: %s\n", glGetString(GL_VERSION));
@@ -1319,7 +1319,7 @@ rt_module_compute_t gl_create_module_compute(rt_module_compute_info_t const& inf
 
     if (!info.cshader.code)
     {
-        fprintf(stderr, "Compute shader source is empty\n");
+        fprintf(stderr, "Compute shader source is empty");
         abort();
     }
 
@@ -1334,7 +1334,7 @@ rt_module_compute_t gl_create_module_compute(rt_module_compute_info_t const& inf
     {
         char log[1024];
         glGetShaderInfoLog(cs, sizeof(log), nullptr, log);
-        fprintf(stderr, "Compute shader compile error:\n%s\n", log);
+        fprintf(stderr, "Compute shader compile error:\n%s", log);
         abort();
     }
 
@@ -1384,7 +1384,7 @@ rt_module_render_t gl_create_module_render(rt_module_render_info_t const& info)
         {
             char log[1024];
             glGetShaderInfoLog(vs, sizeof(log), nullptr, log);
-            fprintf(stderr, "Vertex shader compile error:\n%s\n", log);
+            fprintf(stderr, "Vertex shader compile error:\n%s", log);
             abort();
         }
     }
@@ -1403,7 +1403,7 @@ rt_module_render_t gl_create_module_render(rt_module_render_info_t const& info)
             {
                 char log[1024];
                 glGetShaderInfoLog(ts, sizeof(log), nullptr, log);
-                fprintf(stderr, "Task shader compile error:\n%s\n", log);
+                fprintf(stderr, "Task shader compile error:\n%s", log);
                 abort();
             }
         }
@@ -1419,13 +1419,13 @@ rt_module_render_t gl_create_module_render(rt_module_render_info_t const& info)
         {
             char log[1024];
             glGetShaderInfoLog(ms, sizeof(log), nullptr, log);
-            fprintf(stderr, "Mesh shader compile error:\n%s\n", log);
+            fprintf(stderr, "Mesh shader compile error:\n%s", log);
             abort();
         }
     }
     else
     {
-        fprintf(stderr, "Render module requires a vertex shader or a mesh shader\n");
+        fprintf(stderr, "Render module requires a vertex shader or a mesh shader");
         abort();
     }
 
@@ -1442,7 +1442,7 @@ rt_module_render_t gl_create_module_render(rt_module_render_info_t const& info)
         {
             char log[1024];
             glGetShaderInfoLog(fs, sizeof(log), nullptr, log);
-            fprintf(stderr, "Fragment shader compile error:\n%s\n", log);
+            fprintf(stderr, "Fragment shader compile error:\n%s", log);
             abort();
         }
     }
@@ -1467,7 +1467,7 @@ rt_module_render_t gl_create_module_render(rt_module_render_info_t const& info)
     {
         char log[1024];
         glGetProgramInfoLog(native.program, sizeof(log), nullptr, log);
-        fprintf(stderr, "Program link error:\n%s\n", log);
+        fprintf(stderr, "Program link error:\n%s", log);
         abort();
     }
 
@@ -1575,7 +1575,7 @@ void gl_begin_compute(rt_pass_compute_t& pass)
 {
     if (opengl.currentPipeline != nullptr)
     {
-        fprintf(stderr, "Pipeline not end\n");
+        fprintf(stderr, "Pipeline not end");
         abort();
     }
     auto handle = opengl.passID + 1;
@@ -1592,7 +1592,7 @@ void gl_end_compute(rt_pass_compute_t& pass)
 {
     if (opengl.currentComputePass != &pass)
     {
-        fprintf(stderr, "Pipeline not end\n");
+        fprintf(stderr, "Pipeline not end");
         abort();
     }
     opengl.computePasses.erase(pass.handle);
@@ -1609,13 +1609,13 @@ void gl_bind_module_compute(rt_module_compute_t& module)
 {
     if (opengl.currentPipeline == nullptr || opengl.currentPassType != RT_MODULE_COMPUTE)
     {
-        fprintf(stderr, "Pipeline not begin\n");
+        fprintf(stderr, "Pipeline not begin");
         abort();
     }
     auto* moduleNative = gl_module_native(module.handle, module.native);
     if (module.handle == 0 || !moduleNative)
     {
-        fprintf(stderr, "Pipeline module is not created\n");
+        fprintf(stderr, "Pipeline module is not created");
         abort();
     }
     opengl.currentComputeModule = &module;
@@ -1626,17 +1626,17 @@ void gl_dispatch_compute(uint32_t groupX, uint32_t groupY, uint32_t groupZ)
 {
     if (opengl.currentPipeline == nullptr)
     {
-        fprintf(stderr, "Pipeline not begin\n");
+        fprintf(stderr, "Pipeline not begin");
         abort();
     }
     if (opengl.currentPassType != RT_MODULE_COMPUTE)
     {
-        fprintf(stderr, "Pipeline not begin\n");
+        fprintf(stderr, "Pipeline not begin");
         abort();
     }
     if (opengl.currentComputeModule == nullptr)
     {
-        fprintf(stderr, "Pipeline module not bound\n");
+        fprintf(stderr, "Pipeline module not bound");
         abort();
     }
 
@@ -1647,17 +1647,17 @@ void gl_dispatch_compute_indirect(rt_buffer_t& indirect, size_t offset)
 {
     if (opengl.currentPipeline == nullptr)
     {
-        fprintf(stderr, "Pipeline not begin\n");
+        fprintf(stderr, "Pipeline not begin");
         abort();
     }
     if (opengl.currentPassType != RT_MODULE_COMPUTE)
     {
-        fprintf(stderr, "Pipeline not begin\n");
+        fprintf(stderr, "Pipeline not begin");
         abort();
     }
     if (opengl.currentComputeModule == nullptr)
     {
-        fprintf(stderr, "Pipeline module not bound\n");
+        fprintf(stderr, "Pipeline module not bound");
         abort();
     }
 
@@ -1746,7 +1746,7 @@ void gl_begin_render(rt_pass_render_t& pass)
 {
     if (opengl.currentPipeline != nullptr)
     {
-        fprintf(stderr, "Pipeline not end\n");
+        fprintf(stderr, "Pipeline not end");
         abort();
     }
     opengl.currentPassType = RT_MODULE_RENDER;
@@ -1811,7 +1811,7 @@ void gl_begin_render(rt_pass_render_t& pass)
             }
             else
             {
-                fprintf(stderr, "Invalid depth attachment\n");
+                fprintf(stderr, "Invalid depth attachment");
                 abort();
             }
             GLint texWidth = 0, texHeight = 0;
@@ -1823,7 +1823,7 @@ void gl_begin_render(rt_pass_render_t& pass)
 
         if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
         {
-            fprintf(stderr, "Framebuffer not complete\n");
+            fprintf(stderr, "Framebuffer not complete");
             abort();
         }
         gl_set_viewport(0.0f, 0.0f, (float)width, (float)height, 0.0f, 1.0f);
@@ -1935,7 +1935,7 @@ void gl_end_render(rt_pass_render_t& pass)
 {
     if (opengl.currentRenderPass != &pass)
     {
-        fprintf(stderr, "Pipeline not end\n");
+        fprintf(stderr, "Pipeline not end");
         abort();
     }
     opengl.currentPassType = RT_MODULE_NONE;
@@ -1967,13 +1967,13 @@ void gl_bind_module_render(rt_module_render_t& module)
 {
     if (opengl.currentPipeline == nullptr || opengl.currentPassType != RT_MODULE_RENDER)
     {
-        fprintf(stderr, "Pipeline not begin\n");
+        fprintf(stderr, "Pipeline not begin");
         abort();
     }
     auto* moduleNative = gl_module_native(module.handle, module.native);
     if (module.handle == 0 || !moduleNative)
     {
-        fprintf(stderr, "Pipeline module is not created\n");
+        fprintf(stderr, "Pipeline module is not created");
         abort();
     }
     rt_pass_render_t const& pass = *opengl.currentRenderPass;
@@ -2068,12 +2068,12 @@ void gl_set_viewport(float x, float y, float width, float height, float minDepth
 {
     if (opengl.currentPipeline == nullptr)
     {
-        fprintf(stderr, "Pipeline not begin\n");
+        fprintf(stderr, "Pipeline not begin");
         abort();
     }
     if (opengl.currentPassType != RT_MODULE_RENDER)
     {
-        fprintf(stderr, "Pipeline not begin\n");
+        fprintf(stderr, "Pipeline not begin");
         abort();
     }
 
@@ -2085,12 +2085,12 @@ void gl_set_scissor(int32_t x, int32_t y, int32_t width, int32_t height)
 {
     if (opengl.currentPipeline == nullptr)
     {
-        fprintf(stderr, "Pipeline not begin\n");
+        fprintf(stderr, "Pipeline not begin");
         abort();
     }
     if (opengl.currentPassType != RT_MODULE_RENDER)
     {
-        fprintf(stderr, "Pipeline not begin\n");
+        fprintf(stderr, "Pipeline not begin");
         abort();
     }
 
@@ -2102,7 +2102,7 @@ void gl_set_blend_constant(float r, float g, float b, float a)
 {
     if (opengl.currentPipeline == nullptr || opengl.currentPassType != RT_MODULE_RENDER)
     {
-        fprintf(stderr, "Pipeline not begin\n");
+        fprintf(stderr, "Pipeline not begin");
         abort();
     }
 
@@ -2113,7 +2113,7 @@ void gl_set_stencil_reference(int32_t refer)
 {
     if (opengl.currentPipeline == nullptr || opengl.currentPassType != RT_MODULE_RENDER)
     {
-        fprintf(stderr, "Pipeline not begin\n");
+        fprintf(stderr, "Pipeline not begin");
         abort();
     }
     opengl.stencilRefer = refer;
@@ -2137,12 +2137,12 @@ void gl_draw_array(rt_buffer_t vbo[], uint32_t vbo_num, uint32_t vertex_num, uin
 {
     if (opengl.currentPipeline == nullptr)
     {
-        fprintf(stderr, "Pipeline not begin\n");
+        fprintf(stderr, "Pipeline not begin");
         abort();
     }
     if (opengl.currentPassType != RT_MODULE_RENDER)
     {
-        fprintf(stderr, "Pipeline not begin\n");
+        fprintf(stderr, "Pipeline not begin");
         abort();
     }
 
@@ -2165,12 +2165,12 @@ void gl_draw_index(rt_buffer_t vbo[], uint32_t vbo_num, rt_buffer_t& ebo, uint32
 {
     if (opengl.currentPipeline == nullptr)
     {
-        fprintf(stderr, "Pipeline not begin\n");
+        fprintf(stderr, "Pipeline not begin");
         abort();
     }
     if (opengl.currentPassType != RT_MODULE_RENDER)
     {
-        fprintf(stderr, "Pipeline not begin\n");
+        fprintf(stderr, "Pipeline not begin");
         abort();
     }
 
@@ -2193,12 +2193,12 @@ void gl_draw_array_indirect(rt_buffer_t vbo[], uint32_t vbo_num, rt_buffer_t& in
 {
     if (opengl.currentPipeline == nullptr)
     {
-        fprintf(stderr, "Pipeline not begin\n");
+        fprintf(stderr, "Pipeline not begin");
         abort();
     }
     if (opengl.currentPassType != RT_MODULE_RENDER)
     {
-        fprintf(stderr, "Pipeline not begin\n");
+        fprintf(stderr, "Pipeline not begin");
         abort();
     }
 
@@ -2222,12 +2222,12 @@ void gl_draw_index_indirect(rt_buffer_t vbo[], uint32_t vbo_num, rt_buffer_t& eb
 {
     if (opengl.currentPipeline == nullptr)
     {
-        fprintf(stderr, "Pipeline not begin\n");
+        fprintf(stderr, "Pipeline not begin");
         abort();
     }
     if (opengl.currentPassType != RT_MODULE_RENDER)
     {
-        fprintf(stderr, "Pipeline not begin\n");
+        fprintf(stderr, "Pipeline not begin");
         abort();
     }
 
@@ -2251,12 +2251,12 @@ void gl_draw_mesh_task(uint32_t groupX, uint32_t groupY, uint32_t groupZ)
 {
     if (opengl.currentPipeline == nullptr)
     {
-        fprintf(stderr, "Pipeline not begin\n");
+        fprintf(stderr, "Pipeline not begin");
         abort();
     }
     if (opengl.currentPassType != RT_MODULE_RENDER)
     {
-        fprintf(stderr, "Pipeline not begin\n");
+        fprintf(stderr, "Pipeline not begin");
         abort();
     }
 
@@ -2267,12 +2267,12 @@ void gl_draw_mesh_task_indirect(rt_buffer_t& indirect, size_t offset, uint32_t d
 {
     if (opengl.currentPipeline == nullptr)
     {
-        fprintf(stderr, "Pipeline not begin\n");
+        fprintf(stderr, "Pipeline not begin");
         abort();
     }
     if (opengl.currentPassType != RT_MODULE_RENDER)
     {
-        fprintf(stderr, "Pipeline not begin\n");
+        fprintf(stderr, "Pipeline not begin");
         abort();
     }
 
@@ -2282,6 +2282,8 @@ void gl_draw_mesh_task_indirect(rt_buffer_t& indirect, size_t offset, uint32_t d
 
 void gl_push_constant(uint8_t const* buffer, size_t length)
 {
+    fprintf(stderr, "OpenGL: does not support rt_push_constant");
+    abort();
 }
 
 void gl_push_const_int(const char* name, int32_t value)
@@ -2434,7 +2436,7 @@ static uint32_t gl_type_size(GLenum type)
     case GL_FLOAT_32_UNSIGNED_INT_24_8_REV:
         return 8;
     default:
-        fprintf(stderr, "Unsupported pixel type\n");
+        fprintf(stderr, "Unsupported pixel type");
         abort();
     }
 }
@@ -2492,7 +2494,7 @@ static uint32_t gl_bytes_per_pixel(GLenum format, GLenum type)
         components = 4;
         break;
     default:
-        fprintf(stderr, "Unsupported pixel format\n");
+        fprintf(stderr, "Unsupported pixel format");
         abort();
     }
 
@@ -2505,12 +2507,12 @@ static void gl_transfer_format(rt_texture_t const& texture, rt_texture_aspect_t 
     rt_texture_format_t texFormat = tex ? tex->format : RT_TEXTURE_NONE;
     if (aspect == RT_TEXTURE_ASPECT_DEPTH && !rt_texture_has_depth(texFormat))
     {
-        fprintf(stderr, "Texture has no depth aspect\n");
+        fprintf(stderr, "Texture has no depth aspect");
         abort();
     }
     if (aspect == RT_TEXTURE_ASPECT_STENCIL && !rt_texture_has_stencil(texFormat))
     {
-        fprintf(stderr, "Texture has no stencil aspect\n");
+        fprintf(stderr, "Texture has no stencil aspect");
         abort();
     }
     rt_to_gl_transfer(texFormat, aspect, download, format, type);
@@ -2575,7 +2577,7 @@ void gl_begin_transfer(rt_pass_transfer_t& pass)
 {
     if (opengl.currentPipeline != nullptr)
     {
-        fprintf(stderr, "Pipeline not end\n");
+        fprintf(stderr, "Pipeline not end");
         abort();
     }
     auto handle = opengl.passID + 1;
@@ -2591,7 +2593,7 @@ void gl_end_transfer(rt_pass_transfer_t& pass)
 {
     if (opengl.currentTransferPass != &pass)
     {
-        fprintf(stderr, "Pipeline not end\n");
+        fprintf(stderr, "Pipeline not end");
         abort();
     }
     opengl.transferPasses.erase(pass.handle);
@@ -2605,12 +2607,12 @@ void gl_copy_buffer(rt_buffer_copy_t source, rt_buffer_copy_t destination, size_
 {
     if (opengl.currentPipeline == nullptr)
     {
-        fprintf(stderr, "Pipeline not begin\n");
+        fprintf(stderr, "Pipeline not begin");
         abort();
     }
     if (opengl.currentPassType != RT_MODULE_TRANSFER)
     {
-        fprintf(stderr, "Pipeline not begin\n");
+        fprintf(stderr, "Pipeline not begin");
         abort();
     }
     if (source.buffer.handle == 0 || destination.buffer.handle == 0 || copySize == 0)
@@ -2628,12 +2630,12 @@ void gl_copy_buffer_data(rt_buffer_data_t source, rt_buffer_copy_t destination, 
 {
     if (opengl.currentPipeline == nullptr)
     {
-        fprintf(stderr, "Pipeline not begin\n");
+        fprintf(stderr, "Pipeline not begin");
         abort();
     }
     if (opengl.currentPassType != RT_MODULE_TRANSFER)
     {
-        fprintf(stderr, "Pipeline not begin\n");
+        fprintf(stderr, "Pipeline not begin");
         abort();
     }
     if (source.data == nullptr || destination.buffer.handle == 0 || copySize == 0)
@@ -2651,12 +2653,12 @@ void gl_copy_buffer_texture(rt_texture_copy_t source, rt_buffer_texel_t destinat
 {
     if (opengl.currentPipeline == nullptr)
     {
-        fprintf(stderr, "Pipeline not begin\n");
+        fprintf(stderr, "Pipeline not begin");
         abort();
     }
     if (opengl.currentPassType != RT_MODULE_TRANSFER)
     {
-        fprintf(stderr, "Pipeline not begin\n");
+        fprintf(stderr, "Pipeline not begin");
         abort();
     }
     if (destination.buffer.handle == 0)
@@ -2691,12 +2693,12 @@ void gl_copy_texture(rt_texture_copy_t source, rt_texture_copy_t destination, rt
 {
     if (opengl.currentPipeline == nullptr)
     {
-        fprintf(stderr, "Pipeline not begin\n");
+        fprintf(stderr, "Pipeline not begin");
         abort();
     }
     if (opengl.currentPassType != RT_MODULE_TRANSFER)
     {
-        fprintf(stderr, "Pipeline not begin\n");
+        fprintf(stderr, "Pipeline not begin");
         abort();
     }
     if (copySize.x == 0 || copySize.y == 0)
@@ -2721,12 +2723,12 @@ void gl_copy_texture_data(rt_texture_data_t source, rt_texture_copy_t destinatio
 {
     if (opengl.currentPipeline == nullptr)
     {
-        fprintf(stderr, "Pipeline not begin\n");
+        fprintf(stderr, "Pipeline not begin");
         abort();
     }
     if (opengl.currentPassType != RT_MODULE_TRANSFER)
     {
-        fprintf(stderr, "Pipeline not begin\n");
+        fprintf(stderr, "Pipeline not begin");
         abort();
     }
     if (source.data == nullptr)
@@ -2775,7 +2777,7 @@ void gl_copy_texture_data(rt_texture_data_t source, rt_texture_copy_t destinatio
     }
     else
     {
-        fprintf(stderr, "Unsupported texture target\n");
+        fprintf(stderr, "Unsupported texture target");
         abort();
     }
     glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
@@ -2787,12 +2789,12 @@ void gl_copy_texture_buffer(rt_buffer_texel_t source, rt_texture_copy_t destinat
 {
     if (opengl.currentPipeline == nullptr)
     {
-        fprintf(stderr, "Pipeline not begin\n");
+        fprintf(stderr, "Pipeline not begin");
         abort();
     }
     if (opengl.currentPassType != RT_MODULE_TRANSFER)
     {
-        fprintf(stderr, "Pipeline not begin\n");
+        fprintf(stderr, "Pipeline not begin");
         abort();
     }
     if (source.buffer.handle == 0)
@@ -2842,7 +2844,7 @@ void gl_copy_texture_buffer(rt_buffer_texel_t source, rt_texture_copy_t destinat
     }
     else
     {
-        fprintf(stderr, "Unsupported texture target\n");
+        fprintf(stderr, "Unsupported texture target");
         abort();
     }
     glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
@@ -2905,12 +2907,12 @@ void gl_draw_mesh(rt_mesh_t& mesh)
 {
     if (opengl.currentPipeline == nullptr)
     {
-        fprintf(stderr, "Pipeline not begin\n");
+        fprintf(stderr, "Pipeline not begin");
         abort();
     }
     if (opengl.currentPassType != RT_MODULE_RENDER)
     {
-        fprintf(stderr, "Pipeline not begin\n");
+        fprintf(stderr, "Pipeline not begin");
         abort();
     }
 
@@ -2960,12 +2962,12 @@ void gl_draw_mesh_multi(rt_mesh_t& mesh, uint32_t count)
 {
     if (opengl.currentPipeline == nullptr)
     {
-        fprintf(stderr, "Pipeline not begin\n");
+        fprintf(stderr, "Pipeline not begin");
         abort();
     }
     if (opengl.currentPassType != RT_MODULE_RENDER)
     {
-        fprintf(stderr, "Pipeline not begin\n");
+        fprintf(stderr, "Pipeline not begin");
         abort();
     }
 
@@ -3057,12 +3059,12 @@ void gl_draw_meshlet(rt_meshlet_t& meshlet)
 {
     if (opengl.currentPipeline == nullptr)
     {
-        fprintf(stderr, "Pipeline not begin\n");
+        fprintf(stderr, "Pipeline not begin");
         abort();
     }
     if (opengl.currentPassType != RT_MODULE_RENDER)
     {
-        fprintf(stderr, "Pipeline not begin\n");
+        fprintf(stderr, "Pipeline not begin");
         abort();
     }
 

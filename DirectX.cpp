@@ -742,7 +742,7 @@ static rt_module_render_t const& dx_current_render_module()
 {
     if (direct.currentRenderModule == nullptr)
     {
-        fprintf(stderr, "Pipeline module not bound\n");
+        fprintf(stderr, "Pipeline module not bound");
         abort();
     }
     return *direct.currentRenderModule;
@@ -884,19 +884,19 @@ void dx_load_library(ID3D12Device* device, ID3D12CommandQueue* queue)
     direct.queue = queue;
     if (!direct.device)
     {
-        fprintf(stderr, "DirectX: device is null\n");
+        fprintf(stderr, "DirectX: device is null");
         abort();
     }
     if (!direct.queue)
     {
-        fprintf(stderr, "DirectX: queue is null\n");
+        fprintf(stderr, "DirectX: queue is null");
         abort();
     }
 
     if (FAILED(direct.device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&direct.allocator))) ||
         FAILED(direct.device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, direct.allocator.Get(), nullptr, IID_PPV_ARGS(&direct.cmd))))
     {
-        fprintf(stderr, "DirectX: failed to create command list\n");
+        fprintf(stderr, "DirectX: failed to create command list");
         abort();
     }
     direct.cmd.As(&direct.cmdMesh);
@@ -1664,7 +1664,7 @@ rt_module_render_t dx_create_module_render(rt_module_render_info_t const& info)
     else
     {
         direct.modules.erase(handle);
-        fprintf(stderr, "Render module requires a vertex shader or a mesh shader\n");
+        fprintf(stderr, "Render module requires a vertex shader or a mesh shader");
         abort();
     }
     if (info.fshader.code && info.fshader.size)
@@ -1880,7 +1880,7 @@ rt_module_render_t dx_create_module_render(rt_module_render_info_t const& info)
         if (SUCCEEDED(direct.device.As(&device2)))
             hr = device2->CreatePipelineState(&streamDesc, IID_PPV_ARGS(&native.pipeline));
         else
-            fprintf(stderr, "Mesh shader pipeline requires ID3D12Device2\n");
+            fprintf(stderr, "Mesh shader pipeline requires ID3D12Device2");
     }
     if (FAILED(hr))
     {
@@ -1968,7 +1968,7 @@ static ID3D12CommandSignature* dx_indirect_signature(D3D12_INDIRECT_ARGUMENT_TYP
     desc.pArgumentDescs = &arg;
     if (FAILED(direct.device->CreateCommandSignature(&desc, nullptr, IID_PPV_ARGS(&(*slot)))))
     {
-        fprintf(stderr, "DirectX: failed to create command signature\n");
+        fprintf(stderr, "DirectX: failed to create command signature");
         abort();
     }
     if (type == D3D12_INDIRECT_ARGUMENT_TYPE_DISPATCH_MESH)
@@ -2024,7 +2024,7 @@ void dx_bind_module_compute(rt_module_compute_t& module)
     auto* mod = (dx_module_native_t*)module.native;
     if (module.handle == 0 || !mod || !mod->pipeline)
     {
-        fprintf(stderr, "Pipeline module is not created\n");
+        fprintf(stderr, "Pipeline module is not created");
         abort();
     }
     direct.currentComputeModule = &module;
@@ -2047,7 +2047,7 @@ void dx_dispatch_compute(uint32_t groupX, uint32_t groupY, uint32_t groupZ)
     }
     if (direct.currentComputeModule == nullptr)
     {
-        fprintf(stderr, "Pipeline module not bound\n");
+        fprintf(stderr, "Pipeline module not bound");
         abort();
     }
     dx_flush_descriptors();
@@ -2068,7 +2068,7 @@ void dx_dispatch_compute_indirect(rt_buffer_t& indirect, size_t offset)
     }
     if (direct.currentComputeModule == nullptr)
     {
-        fprintf(stderr, "Pipeline module not bound\n");
+        fprintf(stderr, "Pipeline module not bound");
         abort();
     }
     auto* native = dx_buffer_native(indirect);
@@ -2218,7 +2218,7 @@ void dx_bind_module_render(rt_module_render_t& module)
     auto* mod = (dx_module_native_t*)module.native;
     if (module.handle == 0 || !mod || !mod->pipeline)
     {
-        fprintf(stderr, "Pipeline module is not created\n");
+        fprintf(stderr, "Pipeline module is not created");
         abort();
     }
     direct.currentRenderModule = &module;
@@ -2427,21 +2427,53 @@ void dx_push_constant(uint8_t const* buffer, size_t length)
         direct.cmd->SetGraphicsRoot32BitConstants(0, count, direct.pushData, 0);
 }
 
-void dx_push_const_int(const char*, int32_t) {}
+void dx_push_const_int(const char*, int32_t)
+{
+    fprintf(stderr, "DirectX: does not support rt_push_const_int");
+    abort();
+}
 
-void dx_push_const_uint(const char*, uint32_t) {}
+void dx_push_const_uint(const char*, uint32_t)
+{
+    fprintf(stderr, "DirectX: does not support rt_push_const_uint");
+    abort();
+}
 
-void dx_push_const_float(const char*, float) {}
+void dx_push_const_float(const char*, float)
+{
+    fprintf(stderr, "DirectX: does not support rt_push_const_float");
+    abort();
+}
 
-void dx_push_const_vec2(const char*, const float*) {}
+void dx_push_const_vec2(const char*, const float*)
+{
+    fprintf(stderr, "DirectX: does not support rt_push_const_vec2");
+    abort();
+}
 
-void dx_push_const_vec3(const char*, const float*) {}
+void dx_push_const_vec3(const char*, const float*)
+{
+    fprintf(stderr, "DirectX: does not support rt_push_const_vec3");
+    abort();
+}
 
-void dx_push_const_vec4(const char*, const float*) {}
+void dx_push_const_vec4(const char*, const float*)
+{
+    fprintf(stderr, "DirectX: does not support rt_push_const_vec4");
+    abort();
+}
 
-void dx_push_const_mat3(const char*, const float*) {}
+void dx_push_const_mat3(const char*, const float*)
+{
+    fprintf(stderr, "DirectX: does not support rt_push_const_mat3");
+    abort();
+}
 
-void dx_push_const_mat4(const char*, const float*) {}
+void dx_push_const_mat4(const char*, const float*)
+{
+    fprintf(stderr, "DirectX: does not support rt_push_const_mat4");
+    abort();
+}
 
 static void dx_fill_placed(D3D12_PLACED_SUBRESOURCE_FOOTPRINT& footprint, dx_texture_native_t& tex, uint32_t bytesPerRow, rt_size_t copySize)
 {
@@ -2845,7 +2877,7 @@ void dx_submit()
     if (!direct.cmd) return;
     if (FAILED(direct.cmd->Close()))
     {
-        fprintf(stderr, "DirectX: failed to close command list\n");
+        fprintf(stderr, "DirectX: failed to close command list");
         abort();
     }
     ID3D12CommandList* lists[] = {direct.cmd.Get()};
@@ -2856,7 +2888,7 @@ void dx_submit()
     direct.allocator->Reset();
     if (FAILED(direct.cmd->Reset(direct.allocator.Get(), nullptr)))
     {
-        fprintf(stderr, "DirectX: failed to reset command list\n");
+        fprintf(stderr, "DirectX: failed to reset command list");
         abort();
     }
 }

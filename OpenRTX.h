@@ -79,7 +79,7 @@ rt_image_t rt_load_image_file(const char* filename, bool flip)
     }
 
     if (!data) {
-        fprintf(stderr, "Failed to load image: %s (%s)\n", filename, stbi_failure_reason());
+        fprintf(stderr, "Failed to load image: %s (%s)", filename, stbi_failure_reason());
         return {};
     }
 
@@ -115,7 +115,7 @@ rt_texture_t rt_load_texture(rt_image_t image)
 
     if (image.channel < 1 || image.channel > 4)
     {
-        fprintf(stderr, "Unsupported channel count: %d\n", image.channel);
+        fprintf(stderr, "Unsupported channel count: %d", image.channel);
         return {};
     }
 

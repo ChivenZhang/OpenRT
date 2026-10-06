@@ -31,7 +31,7 @@ static void present(rt_texture_t& color, uint32_t width, uint32_t height)
     CA::MetalDrawable* drawable = layer->nextDrawable();
     if (!drawable)
     {
-        fprintf(stderr, "[Metal][ERROR] nextDrawable failed\n");
+        fprintf(stderr, "[Metal][ERROR] nextDrawable failed");
         pool->drain();
         return;
     }
@@ -80,14 +80,14 @@ int main()
     layer = (CA::MetalLayer*)SDL_Metal_GetLayer(view);
     if (!layer)
     {
-        fprintf(stderr, "[Metal][ERROR] SDL window has no CAMetalLayer\n");
+        fprintf(stderr, "[Metal][ERROR] SDL window has no CAMetalLayer");
         return 1;
     }
 
     device = MTL::CreateSystemDefaultDevice();
     if (!device)
     {
-        fprintf(stderr, "[Metal][ERROR] MTLCreateSystemDefaultDevice failed\n");
+        fprintf(stderr, "[Metal][ERROR] MTLCreateSystemDefaultDevice failed");
         return 1;
     }
     queue = device->newCommandQueue();

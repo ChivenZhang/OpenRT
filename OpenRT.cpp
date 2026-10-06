@@ -36,7 +36,7 @@ void rt_load_library(rt_load_info_t const& info)
 #ifdef OPENGL_IMPLEMENTATION
         gl_load_library();
 #else
-        fprintf(stderr, "OpenRT: OpenGL backend is not built\n");
+        fprintf(stderr, "OpenRT: OpenGL backend is not built");
         abort();
 #endif
         return;
@@ -50,7 +50,7 @@ void rt_load_library(rt_load_info_t const& info)
             static_cast<VkCommandBuffer>(info.vulkan.cmdbuf),
             info.vulkan.family);
 #else
-        fprintf(stderr, "OpenRT: Vulkan backend is not built\n");
+        fprintf(stderr, "OpenRT: Vulkan backend is not built");
         abort();
 #endif
         return;
@@ -58,7 +58,7 @@ void rt_load_library(rt_load_info_t const& info)
 #ifdef DIRECTX_IMPLEMENTATION
         dx_load_library(static_cast<ID3D12Device*>(info.directx.device), static_cast<ID3D12CommandQueue*>(info.directx.queue));
 #else
-        fprintf(stderr, "OpenRT: DirectX backend is not built\n");
+        fprintf(stderr, "OpenRT: DirectX backend is not built");
         abort();
 #endif
         return;
@@ -66,7 +66,7 @@ void rt_load_library(rt_load_info_t const& info)
 #ifdef METAL_IMPLEMENTATION
         mt_load_library(static_cast<MTL::Device*>(info.metal.device), static_cast<MTL::CommandQueue*>(info.metal.queue));
 #else
-        fprintf(stderr, "OpenRT: Metal backend is not built\n");
+        fprintf(stderr, "OpenRT: Metal backend is not built");
         abort();
 #endif
         return;
@@ -74,12 +74,12 @@ void rt_load_library(rt_load_info_t const& info)
 #ifdef WEBGPU_IMPLEMENTATION
         wg_load_library(static_cast<WGPUDevice>(info.webgpu.device), static_cast<WGPUQueue>(info.webgpu.queue));
 #else
-        fprintf(stderr, "OpenRT: WebGPU backend is not built\n");
+        fprintf(stderr, "OpenRT: WebGPU backend is not built");
         abort();
 #endif
         return;
     }
-    fprintf(stderr, "OpenRT: unknown backend %u\n", (uint32_t)info.backend);
+    fprintf(stderr, "OpenRT: unknown backend %u", (uint32_t)info.backend);
     abort();
 }
 

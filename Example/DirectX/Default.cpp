@@ -130,7 +130,7 @@ int main()
     HWND hwnd = (HWND)SDL_GetPointerProperty(SDL_GetWindowProperties(window), SDL_PROP_WINDOW_WIN32_HWND_POINTER, nullptr);
     if (!hwnd)
     {
-        fprintf(stderr, "[DirectX][ERROR] SDL window has no HWND\n");
+        fprintf(stderr, "[DirectX][ERROR] SDL window has no HWND");
         return 1;
     }
 
@@ -141,7 +141,7 @@ int main()
     ComPtr<IDXGIFactory4> factory;
     if (FAILED(CreateDXGIFactory2(0, IID_PPV_ARGS(&factory))))
     {
-        fprintf(stderr, "[DirectX][ERROR] CreateDXGIFactory2 failed\n");
+        fprintf(stderr, "[DirectX][ERROR] CreateDXGIFactory2 failed");
         return 1;
     }
     ComPtr<IDXGIAdapter1> adapter;
@@ -156,7 +156,7 @@ int main()
     }
     if (!device)
     {
-        fprintf(stderr, "[DirectX][ERROR] D3D12CreateDevice failed\n");
+        fprintf(stderr, "[DirectX][ERROR] D3D12CreateDevice failed");
         return 1;
     }
 
@@ -164,7 +164,7 @@ int main()
     queueDesc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
     if (FAILED(device->CreateCommandQueue(&queueDesc, IID_PPV_ARGS(&queue))))
     {
-        fprintf(stderr, "[DirectX][ERROR] CreateCommandQueue failed\n");
+        fprintf(stderr, "[DirectX][ERROR] CreateCommandQueue failed");
         return 1;
     }
 
@@ -179,7 +179,7 @@ int main()
     ComPtr<IDXGISwapChain1> swap1;
     if (FAILED(factory->CreateSwapChainForHwnd(queue.Get(), hwnd, &swapDesc, nullptr, nullptr, &swap1)))
     {
-        fprintf(stderr, "[DirectX][ERROR] CreateSwapChainForHwnd failed\n");
+        fprintf(stderr, "[DirectX][ERROR] CreateSwapChainForHwnd failed");
         return 1;
     }
     factory->MakeWindowAssociation(hwnd, DXGI_MWA_NO_ALT_ENTER);

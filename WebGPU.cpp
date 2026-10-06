@@ -751,7 +751,7 @@ static rt_module_render_t const& wg_current_render_module()
 {
     if (webgpu.currentRenderModule == nullptr)
     {
-        fprintf(stderr, "Pipeline module not bound\n");
+        fprintf(stderr, "Pipeline module not bound");
         abort();
     }
     return *webgpu.currentRenderModule;
@@ -922,12 +922,12 @@ void wg_load_library(WGPUDevice device, WGPUQueue queue)
     webgpu.queue = queue;
     if (!webgpu.device)
     {
-        fprintf(stderr, "WebGPU: device is null\n");
+        fprintf(stderr, "WebGPU: device is null");
         abort();
     }
     if (!webgpu.queue)
     {
-        fprintf(stderr, "WebGPU: queue is null\n");
+        fprintf(stderr, "WebGPU: queue is null");
         abort();
     }
     wg_ensure_encoder();
@@ -1500,13 +1500,13 @@ rt_module_render_t wg_create_module_render(rt_module_render_info_t const& info)
     else if (info.mshader.code)
     {
         webgpu.modules.erase(handle);
-        fprintf(stderr, "WebGPU does not support task/mesh shaders\n");
+        fprintf(stderr, "WebGPU does not support task/mesh shaders");
         abort();
     }
     else
     {
         webgpu.modules.erase(handle);
-        fprintf(stderr, "Render module requires a vertex shader or a mesh shader\n");
+        fprintf(stderr, "Render module requires a vertex shader or a mesh shader");
         abort();
     }
     if (info.fshader.code) native.fshader = wg_create_shader(info.fshader.code, info.fshader.size);
@@ -1717,7 +1717,7 @@ void wg_bind_module_compute(rt_module_compute_t& module)
     auto* mod = (wg_module_native_t*)module.native;
     if (module.handle == 0 || !mod || !mod->computePipeline)
     {
-        fprintf(stderr, "Pipeline module is not created\n");
+        fprintf(stderr, "Pipeline module is not created");
         abort();
     }
     webgpu.currentComputeModule = &module;
@@ -1739,7 +1739,7 @@ void wg_dispatch_compute(uint32_t groupX, uint32_t groupY, uint32_t groupZ)
     }
     if (webgpu.currentComputeModule == nullptr)
     {
-        fprintf(stderr, "Pipeline module not bound\n");
+        fprintf(stderr, "Pipeline module not bound");
         abort();
     }
     wg_flush_descriptors();
@@ -1761,7 +1761,7 @@ void wg_dispatch_compute_indirect(rt_buffer_t& indirect, size_t offset)
     }
     if (webgpu.currentComputeModule == nullptr)
     {
-        fprintf(stderr, "Pipeline module not bound\n");
+        fprintf(stderr, "Pipeline module not bound");
         abort();
     }
     auto* native = wg_buffer_native(indirect);
@@ -1910,7 +1910,7 @@ void wg_bind_module_render(rt_module_render_t& module)
     auto* mod = (wg_module_native_t*)module.native;
     if (module.handle == 0 || !mod || !mod->renderPipeline)
     {
-        fprintf(stderr, "Pipeline module is not created\n");
+        fprintf(stderr, "Pipeline module is not created");
         abort();
     }
     webgpu.currentRenderModule = &module;
@@ -2093,21 +2093,53 @@ void wg_push_constant(uint8_t const* buffer, size_t length)
     wg_flush_descriptors();
 }
 
-void wg_push_const_int(const char*, int32_t) {}
+void wg_push_const_int(const char*, int32_t)
+{
+    fprintf(stderr, "WebGPU: does not support rt_push_const_int");
+    abort();
+}
 
-void wg_push_const_uint(const char*, uint32_t) {}
+void wg_push_const_uint(const char*, uint32_t)
+{
+    fprintf(stderr, "WebGPU: does not support rt_push_const_uint");
+    abort();
+}
 
-void wg_push_const_float(const char*, float) {}
+void wg_push_const_float(const char*, float)
+{
+    fprintf(stderr, "WebGPU: does not support rt_push_const_float");
+    abort();
+}
 
-void wg_push_const_vec2(const char*, const float*) {}
+void wg_push_const_vec2(const char*, const float*)
+{
+    fprintf(stderr, "WebGPU: does not support rt_push_const_vec2");
+    abort();
+}
 
-void wg_push_const_vec3(const char*, const float*) {}
+void wg_push_const_vec3(const char*, const float*)
+{
+    fprintf(stderr, "WebGPU: does not support rt_push_const_vec3");
+    abort();
+}
 
-void wg_push_const_vec4(const char*, const float*) {}
+void wg_push_const_vec4(const char*, const float*)
+{
+    fprintf(stderr, "WebGPU: does not support rt_push_const_vec4");
+    abort();
+}
 
-void wg_push_const_mat3(const char*, const float*) {}
+void wg_push_const_mat3(const char*, const float*)
+{
+    fprintf(stderr, "WebGPU: does not support rt_push_const_mat3");
+    abort();
+}
 
-void wg_push_const_mat4(const char*, const float*) {}
+void wg_push_const_mat4(const char*, const float*)
+{
+    fprintf(stderr, "WebGPU: does not support rt_push_const_mat4");
+    abort();
+}
 
 void wg_begin_transfer(rt_pass_transfer_t& pass)
 {

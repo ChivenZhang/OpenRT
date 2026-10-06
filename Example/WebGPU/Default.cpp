@@ -90,7 +90,7 @@ static void configure_surface(int width, int height)
 
 static void on_error(WGPUDevice const*, WGPUErrorType, WGPUStringView message, void*, void*)
 {
-    fprintf(stderr, "[WebGPU][ERROR] %s\n", message.data ? message.data : "");
+    fprintf(stderr, "[WebGPU][ERROR] %s", message.data ? message.data : "");
 }
 
 static void present(rt_texture_t& color, uint32_t width, uint32_t height)
@@ -181,7 +181,7 @@ static void on_device(WGPURequestDeviceStatus status, WGPUDevice dev, WGPUString
 {
     if (status != WGPURequestDeviceStatus_Success || !dev)
     {
-        fprintf(stderr, "[WebGPU][ERROR] requestDevice failed: %s\n", message.data ? message.data : "");
+        fprintf(stderr, "[WebGPU][ERROR] requestDevice failed: %s", message.data ? message.data : "");
         return;
     }
     device = dev;
@@ -203,7 +203,7 @@ static void on_adapter(WGPURequestAdapterStatus status, WGPUAdapter ad, WGPUStri
 {
     if (status != WGPURequestAdapterStatus_Success || !ad)
     {
-        fprintf(stderr, "[WebGPU][ERROR] requestAdapter failed: %s\n", message.data ? message.data : "");
+        fprintf(stderr, "[WebGPU][ERROR] requestAdapter failed: %s", message.data ? message.data : "");
         return;
     }
     adapter = ad;
@@ -222,7 +222,7 @@ int main()
     window = SDL_CreateWindow("WebGPU-Default", w, h, 0);
     if (!window)
     {
-        fprintf(stderr, "[WebGPU][ERROR] SDL_CreateWindow failed: %s\n", SDL_GetError());
+        fprintf(stderr, "[WebGPU][ERROR] SDL_CreateWindow failed: %s", SDL_GetError());
         return 1;
     }
 
@@ -237,7 +237,7 @@ int main()
     surface = wgpuInstanceCreateSurface(instance, &surfaceDesc);
     if (!surface)
     {
-        fprintf(stderr, "[WebGPU][ERROR] wgpuInstanceCreateSurface failed\n");
+        fprintf(stderr, "[WebGPU][ERROR] wgpuInstanceCreateSurface failed");
         return 1;
     }
 
