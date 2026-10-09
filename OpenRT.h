@@ -609,7 +609,7 @@ struct rt_module_render_info_t
             rt_stencil_op_t sfail = RT_STENCIL_KEEP; // RT_STENCIL_KEEP / RT_STENCIL_ZERO / RT_STENCIL_REPLACE / RT_STENCIL_INCR / RT_STENCIL_INCR_WRAP / RT_STENCIL_DECR / RT_STENCIL_DECR_WRAP / RT_STENCIL_INVERT
             rt_stencil_op_t zfail = RT_STENCIL_KEEP; // RT_STENCIL_KEEP / RT_STENCIL_ZERO / RT_STENCIL_REPLACE / RT_STENCIL_INCR / RT_STENCIL_INCR_WRAP / RT_STENCIL_DECR / RT_STENCIL_DECR_WRAP / RT_STENCIL_INVERT
             rt_stencil_op_t zpass = RT_STENCIL_KEEP; // RT_STENCIL_KEEP / RT_STENCIL_ZERO / RT_STENCIL_REPLACE / RT_STENCIL_INCR / RT_STENCIL_INCR_WRAP / RT_STENCIL_DECR / RT_STENCIL_DECR_WRAP / RT_STENCIL_INVERT
-        } back, front;
+        } front, back;
     } stencil;
 
     rt_index_type_t index_type = RT_INDEX_UINT32; // RT_INDEX_UINT16 / RT_INDEX_UINT32
@@ -658,7 +658,7 @@ struct rt_module_render_t
             rt_stencil_op_t sfail = RT_STENCIL_KEEP;
             rt_stencil_op_t zfail = RT_STENCIL_KEEP;
             rt_stencil_op_t zpass = RT_STENCIL_KEEP;
-        } back, front;
+        } front, back;
     } stencil;
 
     rt_index_type_t index_type = RT_INDEX_UINT32;
