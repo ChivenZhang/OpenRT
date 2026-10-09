@@ -418,6 +418,8 @@ struct rt_buffer_info_t
 struct rt_buffer_bind_t
 {
     uint32_t binding = 0;
+    size_t offset = 0;
+    size_t size = -1U;
 };
 
 // ====================================================================

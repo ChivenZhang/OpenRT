@@ -895,7 +895,10 @@ void gl_bind_buffer(rt_buffer_t& buffer, rt_buffer_bind_t bind)
     }
     rt_binding_type_t type = gl_query_buffer_binding_type(bind.binding);
     GLenum target = (type == RT_BINDING_STORAGE_BUFFER) ? GL_SHADER_STORAGE_BUFFER : GL_UNIFORM_BUFFER;
-    glBindBufferBase(target, bind.binding, gl_buffer_name(buffer));
+    size_t size = bind.size;
+    if (size == (size_t)-1U)
+        size = buffer.size > bind.offset ? buffer.size - bind.offset : 0;
+    glBindBufferRange(target, bind.binding, gl_buffer_name(buffer), (GLintptr)bind.offset, (GLsizeiptr)size);
 }
 
 void* gl_map_buffer(rt_buffer_t& buffer, rt_access_t mode, size_t offset, size_t size)

@@ -249,13 +249,13 @@ static VkDescriptorType rt_to_vk_descriptor(rt_binding_type_t bindingType)
 {
     switch (bindingType)
     {
-        case RT_BINDING_NONE: return VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-        case RT_BINDING_UNIFORM_BUFFER: return VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-        case RT_BINDING_STORAGE_BUFFER: return VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        case RT_BINDING_NONE: return VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
+        case RT_BINDING_UNIFORM_BUFFER: return VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
+        case RT_BINDING_STORAGE_BUFFER: return VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC;
         case RT_BINDING_SAMPLER: return VK_DESCRIPTOR_TYPE_SAMPLER;
         case RT_BINDING_TEXTURE: return VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
         case RT_BINDING_STORAGE_TEXTURE: return VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
-        default: return VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+        default: return VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
     }
 }
 
@@ -1045,17 +1045,20 @@ static void vk_flush_descriptors()
         writes[writeCount].descriptorCount = 1;
         writes[writeCount].descriptorType = type;
 
-        if (type == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER || type == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER)
+        if (type == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC || type == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC)
         {
             auto* buf = vk_buffer_native(slot.buffer);
             if (!buf) continue;
-            bufferInfos[writeCount] = {buf->handle, 0, VK_WHOLE_SIZE};
+            VkDeviceSize range = VK_WHOLE_SIZE;
+            if (slot.buffer_bind.size != (size_t)-1U)
+                range = slot.buffer_bind.size;
+            bufferInfos[writeCount] = {buf->handle, 0, range};
             writes[writeCount].pBufferInfo = &bufferInfos[writeCount];
             VkPipelineStageFlags dstStage = (vulkan.currentPassType == RT_MODULE_COMPUTE) ?
                                            VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT :
                                            (VK_PIPELINE_STAGE_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT |
                                             VK_PIPELINE_STAGE_TASK_SHADER_BIT_NV | VK_PIPELINE_STAGE_MESH_SHADER_BIT_NV);
-            if (writes[writeCount].descriptorType == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER)
+            if (type == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC)
                 vk_transition_buffer(*buf, dstStage, VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT);
             else
                 vk_transition_buffer(*buf, dstStage, VK_ACCESS_UNIFORM_READ_BIT);
@@ -1093,9 +1096,24 @@ static void vk_flush_descriptors()
     if (writeCount)
         vkUpdateDescriptorSets(vulkan.device, writeCount, writes, 0, nullptr);
 
+    uint32_t dynamicOffsets[RT_MAX_BINDING_HANDLE_NUM];
+    uint32_t dynamicCount = 0;
+    for (uint32_t binding = 0; binding < RT_MAX_BINDING_HANDLE_NUM; ++binding)
+    {
+        for (uint32_t i = 0; i < mod->descriptorCount; ++i)
+        {
+            if (mod->descriptorBindings[i] != binding) continue;
+            VkDescriptorType type = mod->descriptorTypes[i];
+            if (type != VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC && type != VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC)
+                break;
+            dynamicOffsets[dynamicCount++] = (uint32_t)vulkan.currentBinding[binding].buffer_bind.offset;
+            break;
+        }
+    }
+
     VkPipelineBindPoint bindPoint = (vulkan.currentPassType == RT_MODULE_COMPUTE) ?
                                     VK_PIPELINE_BIND_POINT_COMPUTE : VK_PIPELINE_BIND_POINT_GRAPHICS;
-    vkCmdBindDescriptorSets(vulkan.cmdBuffer, bindPoint, mod->pipelineLayout, 0, 1, &mod->descriptorSet, 0, nullptr);
+    vkCmdBindDescriptorSets(vulkan.cmdBuffer, bindPoint, mod->pipelineLayout, 0, 1, &mod->descriptorSet, dynamicCount, dynamicCount ? dynamicOffsets : nullptr);
 }
 
 // ====================================================================
@@ -1157,8 +1175,8 @@ void vk_load_library(VkInstance instance, VkPhysicalDevice physical, VkDevice de
     fflush(stdout);
 
     VkDescriptorPoolSize poolSizes[] = {
-        {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 256},
-        {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 256},
+        {VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 256},
+        {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC, 256},
         {VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 256},
         {VK_DESCRIPTOR_TYPE_SAMPLER, 256},
         {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 256}

@@ -774,11 +774,13 @@ static bool wg_create_pipeline_layout(wg_module_native_t& native, rt_binding_t c
             {
                 native.kinds[native.descriptorCount] = WG_KIND_UNIFORM;
                 entry.buffer.type = WGPUBufferBindingType_Uniform;
+                entry.buffer.hasDynamicOffset = WGPU_TRUE;
             }
             else if (bindings[i].type == RT_BINDING_STORAGE_BUFFER)
             {
                 native.kinds[native.descriptorCount] = WG_KIND_STORAGE;
                 entry.buffer.type = WGPUBufferBindingType_Storage;
+                entry.buffer.hasDynamicOffset = WGPU_TRUE;
             }
             else if (bindings[i].type == RT_BINDING_TEXTURE)
             {
@@ -855,6 +857,9 @@ static void wg_flush_descriptors()
     }
 
     WGPUBindGroupEntry entries[RT_MAX_BINDING_HANDLE_NUM + 1] = {};
+    uint32_t dynamicBinding[RT_MAX_BINDING_HANDLE_NUM];
+    uint32_t dynamicOffsets[RT_MAX_BINDING_HANDLE_NUM];
+    uint32_t dynamicCount = 0;
     uint32_t count = 0;
     for (uint32_t i = 0; i < mod->descriptorCount; ++i)
     {
@@ -867,9 +872,16 @@ static void wg_flush_descriptors()
             if (!buf) continue;
             bool storage = (mod->kinds[i] == WG_KIND_STORAGE);
             wg_transition_buffer(*buf, storage ? WG_STATE_SHADER_WRITE : WG_STATE_SHADER_READ);
+            size_t bindOffset = slot.buffer_bind.offset;
+            size_t bindSize = slot.buffer_bind.size;
+            if (bindSize == (size_t)-1U)
+                bindSize = slot.buffer.size > bindOffset ? slot.buffer.size - bindOffset : 0;
             entries[count].buffer = buf->handle;
             entries[count].offset = 0;
-            entries[count].size = slot.buffer.size;
+            entries[count].size = bindSize;
+            dynamicBinding[dynamicCount] = binding;
+            dynamicOffsets[dynamicCount] = (uint32_t)bindOffset;
+            dynamicCount++;
         }
         else if (mod->kinds[i] == WG_KIND_TEXTURE)
         {
@@ -910,10 +922,25 @@ static void wg_flush_descriptors()
     desc.entries = entries;
     mod->bindGroup = wgpuDeviceCreateBindGroup(webgpu.device, &desc);
     if (!mod->bindGroup) return;
+    for (uint32_t a = 1; a < dynamicCount; ++a)
+    {
+        uint32_t binding = dynamicBinding[a];
+        uint32_t offset = dynamicOffsets[a];
+        uint32_t b = a;
+        while (b > 0 && dynamicBinding[b - 1] > binding)
+        {
+            dynamicBinding[b] = dynamicBinding[b - 1];
+            dynamicOffsets[b] = dynamicOffsets[b - 1];
+            --b;
+        }
+        dynamicBinding[b] = binding;
+        dynamicOffsets[b] = offset;
+    }
+    uint32_t const* offsets = dynamicCount ? dynamicOffsets : nullptr;
     if (webgpu.renderPass)
-        wgpuRenderPassEncoderSetBindGroup(webgpu.renderPass, 0, mod->bindGroup, 0, nullptr);
+        wgpuRenderPassEncoderSetBindGroup(webgpu.renderPass, 0, mod->bindGroup, dynamicCount, offsets);
     if (webgpu.computePass)
-        wgpuComputePassEncoderSetBindGroup(webgpu.computePass, 0, mod->bindGroup, 0, nullptr);
+        wgpuComputePassEncoderSetBindGroup(webgpu.computePass, 0, mod->bindGroup, dynamicCount, offsets);
 }
 
 void wg_load_library(WGPUDevice device, WGPUQueue queue)

@@ -811,9 +811,13 @@ static void dx_flush_descriptors()
             if (!buf) continue;
             dx_transition_buffer(*buf, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
             auto gpu = dx_alloc_srv();
+            size_t bindOffset = slot.buffer_bind.offset;
+            size_t bindSize = slot.buffer_bind.size;
+            if (bindSize == (size_t)-1U)
+                bindSize = slot.buffer.size > bindOffset ? slot.buffer.size - bindOffset : 0;
             D3D12_CONSTANT_BUFFER_VIEW_DESC cbv = {};
-            cbv.BufferLocation = buf->handle->GetGPUVirtualAddress();
-            cbv.SizeInBytes = (UINT)((slot.buffer.size + 255) & ~255ull);
+            cbv.BufferLocation = buf->handle->GetGPUVirtualAddress() + bindOffset;
+            cbv.SizeInBytes = (UINT)((bindSize + 255ull) & ~255ull);
             direct.device->CreateConstantBufferView(&cbv, dx_srv_cpu(gpu));
             if (mod->cshader.BytecodeLength) direct.cmd->SetComputeRootDescriptorTable(root, gpu);
             else direct.cmd->SetGraphicsRootDescriptorTable(root, gpu);
@@ -824,10 +828,15 @@ static void dx_flush_descriptors()
             if (!buf) continue;
             dx_transition_buffer(*buf, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
             auto gpu = dx_alloc_srv();
+            size_t bindOffset = slot.buffer_bind.offset;
+            size_t bindSize = slot.buffer_bind.size;
+            if (bindSize == (size_t)-1U)
+                bindSize = slot.buffer.size > bindOffset ? slot.buffer.size - bindOffset : 0;
             D3D12_UNORDERED_ACCESS_VIEW_DESC uav = {};
             uav.Format = DXGI_FORMAT_R32_TYPELESS;
             uav.ViewDimension = D3D12_UAV_DIMENSION_BUFFER;
-            uav.Buffer.NumElements = (UINT)(slot.buffer.size / 4);
+            uav.Buffer.FirstElement = bindOffset / 4;
+            uav.Buffer.NumElements = (UINT)(bindSize / 4);
             uav.Buffer.Flags = D3D12_BUFFER_UAV_FLAG_RAW;
             direct.device->CreateUnorderedAccessView(buf->handle.Get(), nullptr, &uav, dx_srv_cpu(gpu));
             if (mod->cshader.BytecodeLength) direct.cmd->SetComputeRootDescriptorTable(root, gpu);

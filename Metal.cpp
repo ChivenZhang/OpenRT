@@ -1010,13 +1010,14 @@ static void mt_flush_descriptors()
             if (!buf) continue;
             bool storage = (bind.type == RT_BINDING_STORAGE_BUFFER);
             mt_transition_buffer(*buf, storage ? MTL_STATE_SHADER_WRITE : MTL_STATE_SHADER_READ);
+            NS::UInteger offset = (NS::UInteger)slot.buffer_bind.offset;
             if (metal.renderEncoder)
             {
-                metal.renderEncoder->setVertexBuffer(buf->handle, 0, bind.binding);
-                metal.renderEncoder->setFragmentBuffer(buf->handle, 0, bind.binding);
+                metal.renderEncoder->setVertexBuffer(buf->handle, offset, bind.binding);
+                metal.renderEncoder->setFragmentBuffer(buf->handle, offset, bind.binding);
             }
             if (metal.computeEncoder)
-                metal.computeEncoder->setBuffer(buf->handle, 0, bind.binding);
+                metal.computeEncoder->setBuffer(buf->handle, offset, bind.binding);
         }
         else if (bind.type == RT_BINDING_TEXTURE)
         {
