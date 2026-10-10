@@ -111,6 +111,8 @@ rt_texture_t rt_load_texture(rt_image_t image)
     info.depth = 1;
     info.target = RT_TEXTURE_2D;
     info.format = image.format;
+    info.address_u = info.address_v = info.address_w = RT_CLAMP_TO_BORDER;
+    info.mipmaps = 0;
     info.data = data;
 
     if (image.channel < 1 || image.channel > 4)
@@ -138,6 +140,7 @@ rt_texture_t rt_create_texture_color(uint32_t width, uint32_t height)
         .format = RT_TEXTURE_RGBA8UNORM,
         .min_filter = RT_LINEAR, .mag_filter = RT_LINEAR,
         .address_u = RT_CLAMP_TO_EDGE, .address_v = RT_CLAMP_TO_EDGE, .address_w = RT_CLAMP_TO_EDGE,
+        .mipmaps = 1,
     });
 }
 
@@ -148,6 +151,7 @@ rt_texture_t rt_create_texture_color_float(uint32_t width, uint32_t height)
         .format = RT_TEXTURE_RGBA32FLOAT,
         .min_filter = RT_LINEAR, .mag_filter = RT_LINEAR,
         .address_u = RT_CLAMP_TO_EDGE, .address_v = RT_CLAMP_TO_EDGE, .address_w = RT_CLAMP_TO_EDGE,
+        .mipmaps = 1,
     });
 }
 
@@ -158,6 +162,7 @@ rt_texture_t rt_create_texture_depth(uint32_t width, uint32_t height)
         .format = RT_TEXTURE_DEPTH32FLOAT,
         .min_filter = RT_LINEAR, .mag_filter = RT_LINEAR,
         .address_u = RT_CLAMP_TO_EDGE, .address_v = RT_CLAMP_TO_EDGE, .address_w = RT_CLAMP_TO_EDGE,
+        .mipmaps = 1,
     });
 }
 
@@ -168,6 +173,7 @@ rt_texture_t rt_create_texture_depth_stencil(uint32_t width, uint32_t height)
         .format = RT_TEXTURE_DEPTH24PLUS_STENCIL8,
         .min_filter = RT_LINEAR, .mag_filter = RT_LINEAR,
         .address_u = RT_CLAMP_TO_EDGE, .address_v = RT_CLAMP_TO_EDGE, .address_w = RT_CLAMP_TO_EDGE,
+        .mipmaps = 1,
     });
 }
 

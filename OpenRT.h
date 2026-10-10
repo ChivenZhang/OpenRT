@@ -481,7 +481,7 @@ struct rt_texture_info_t
     rt_address_t address_u = RT_REPEAT;                    // RT_REPEAT / RT_MIRRORED_REPEAT / RT_CLAMP_TO_EDGE / RT_CLAMP_TO_BORDER / RT_MIRROR_CLAMP_TO_EDGE
     rt_address_t address_v = RT_REPEAT;                    // RT_REPEAT / RT_MIRRORED_REPEAT / RT_CLAMP_TO_EDGE / RT_CLAMP_TO_BORDER / RT_MIRROR_CLAMP_TO_EDGE
     rt_address_t address_w = RT_REPEAT;                    // RT_REPEAT / RT_MIRRORED_REPEAT / RT_CLAMP_TO_EDGE / RT_CLAMP_TO_BORDER / RT_MIRROR_CLAMP_TO_EDGE
-    uint32_t mipmaps = 0;   // 0:auto generate
+    uint32_t mipmaps = 1;   // 0:auto generate
     rt_texture_sample_t samples = RT_TEXTURE_SAMPLE_1X; // RT_TEXTURE_SAMPLE_1X / RT_TEXTURE_SAMPLE_4X
     float border[4] = {0.0f, 0.0f, 0.0f, 0.0f};
     const void* data = nullptr;
