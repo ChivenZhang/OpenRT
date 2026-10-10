@@ -3102,6 +3102,11 @@ void gl_draw_meshlet(rt_meshlet_t& meshlet)
     }
 }
 
+void gl_submit()
+{
+    // glFinish();
+}
+
 // ====================================================================
 
 rt_mesh_t gl_create_mesh_screen()
@@ -3155,7 +3160,7 @@ void gl_draw_screen(int width, int height, rt_color_t clear, rt_texture_t& textu
         }
     )";
     static auto module = gl_create_module_render({.vshader = {.code = VS}, .fshader = {.code = FS}, .vertex = {rt_vertex_vertex, {}, rt_vertex_uv,},});
-    rt_pass_render_t pass = {.screen = {.color = { .clear = true, .value = clear,}}};
+    rt_pass_render_t pass = {.screen = {.color = { .clear = true, .value = clear,}, .depth = {.clear = true,}, .stencil = {.clear = true,}}};
     gl_begin_render(pass);
     gl_bind_module_render(module);
     gl_set_viewport(0.0f, 0.0f, (float)width, (float)height, 0.0f, 1.0f);
@@ -3166,11 +3171,6 @@ void gl_draw_screen(int width, int height, rt_color_t clear, rt_texture_t& textu
         gl_draw_mesh(mesh);
     }
     gl_end_render(pass);
-}
-
-void gl_submit()
-{
-    // glFinish();
 }
 
 #endif
