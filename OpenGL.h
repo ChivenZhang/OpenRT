@@ -88,9 +88,9 @@ rt_meshlet_t gl_create_meshlet(const float* vertices, const float* normals, cons
 void gl_destroy_meshlet(rt_meshlet_t& meshlet);
 void gl_draw_meshlet(rt_meshlet_t& meshlet);
 
+void gl_submit();
+
 rt_mesh_t gl_create_mesh_screen();
 void gl_draw_screen(int width, int height, rt_color_t clear, rt_texture_t& texture);
-
-void gl_submit();
 
 #endif
