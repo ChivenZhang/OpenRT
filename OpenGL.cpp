@@ -1144,22 +1144,19 @@ rt_texture_t gl_create_texture(rt_texture_info_t const& info)
 
 void gl_destroy_texture(rt_texture_t& texture)
 {
-    if (texture.handle)
+    if (auto* native = gl_texture_native(texture))
     {
         for (auto it = opengl.textureViews.begin(); it != opengl.textureViews.end(); )
         {
-            if (it->second.texture->handle == texture.handle)
+            if (it->second.texture == native)
             {
                 if (it->second.handle)
                     glDeleteTextures(1, &it->second.handle);
                 it = opengl.textureViews.erase(it);
             }
-            else
-                ++it;
+            else ++it;
         }
-    }
-    if (auto* native = gl_texture_native(texture))
-    {
+
         if (native->handle)
             glDeleteTextures(1, &native->handle);
         opengl.textures.erase(texture.handle);
