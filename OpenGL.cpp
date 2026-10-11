@@ -479,7 +479,7 @@ struct gl_texture_native_t
 struct gl_texture_view_native_t
 {
     GLuint handle = 0;
-    uint32_t texture = 0;
+    gl_texture_native_t* texture = nullptr;
 };
 
 struct gl_sampler_native_t
@@ -560,6 +560,12 @@ static gl_texture_native_t* gl_texture_native(rt_texture_t const& texture)
 {
     if (!texture.native || texture.handle == 0) return nullptr;
     return (gl_texture_native_t*)texture.native;
+}
+
+static gl_texture_native_t* gl_texture_native(rt_texture_view_t const& view)
+{
+    if (!view.native || view.handle == 0) return nullptr;
+    return ((gl_texture_view_native_t*)view.native)->texture;
 }
 
 static gl_texture_view_native_t* gl_texture_view_native(rt_texture_view_t const& view)
@@ -1142,7 +1148,7 @@ void gl_destroy_texture(rt_texture_t& texture)
     {
         for (auto it = opengl.textureViews.begin(); it != opengl.textureViews.end(); )
         {
-            if (it->second.texture == texture.handle)
+            if (it->second.texture->handle == texture.handle)
             {
                 if (it->second.handle)
                     glDeleteTextures(1, &it->second.handle);
@@ -1229,7 +1235,7 @@ rt_texture_view_t gl_create_texture_view(rt_texture_t& texture, rt_texture_view_
         glBindTexture(rt_to_gl_texture_target(info.target), native.handle);
         glTexParameteri(rt_to_gl_texture_target(info.target), GL_DEPTH_STENCIL_TEXTURE_MODE, mode);
     }
-    native.texture = texture.handle;
+    native.texture = parentTex;
     opengl.textureViewID = handle;
     result.handle = handle;
     result.native = &native;
@@ -1786,11 +1792,8 @@ void gl_begin_render(rt_pass_render_t& pass)
             glBindTexture(target, name);
             glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + (GLenum)i, target, name, 0);
             colorAttachments[i] = GL_COLOR_ATTACHMENT0 + (GLenum)i;
-            GLint texWidth = 0, texHeight = 0;
-            glGetTextureLevelParameteriv(name, 0, GL_TEXTURE_WIDTH, &texWidth);
-            glGetTextureLevelParameteriv(name, 0, GL_TEXTURE_HEIGHT, &texHeight);
-            width = std::max(width, (uint32_t)std::max(0, texWidth));
-            height = std::max(height, (uint32_t)std::max(0, texHeight));
+            width = std::max(width, gl_texture_native(pass.colors[i].texture_view)->width);
+            height = std::max(height, gl_texture_native(pass.colors[i].texture_view)->height);
             colorCount = (int32_t)i + 1;
         }
         if (colorCount) glDrawBuffers(colorCount, colorAttachments);
@@ -1817,11 +1820,8 @@ void gl_begin_render(rt_pass_render_t& pass)
                 fprintf(stderr, "Invalid depth attachment");
                 abort();
             }
-            GLint texWidth = 0, texHeight = 0;
-            glGetTextureLevelParameteriv(name, 0, GL_TEXTURE_WIDTH, &texWidth);
-            glGetTextureLevelParameteriv(name, 0, GL_TEXTURE_HEIGHT, &texHeight);
-            width = std::max(width, (uint32_t)std::max(0, texWidth));
-            height = std::max(height, (uint32_t)std::max(0, texHeight));
+            width = std::max(width, gl_texture_native(pass.depth.texture_view)->width);
+            height = std::max(height, gl_texture_native(pass.depth.texture_view)->height);
         }
 
         if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)

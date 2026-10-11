@@ -423,6 +423,7 @@ struct rt_buffer_bind_t
 };
 
 // ====================================================================
+struct rt_texture_t;
 
 struct rt_texture_view_t
 {
