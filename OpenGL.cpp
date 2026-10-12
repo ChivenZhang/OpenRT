@@ -529,7 +529,7 @@ struct OpenGL
     std::map<uint32_t, gl_meshlet_native_t> meshlets;
     std::map<uint32_t, gl_pass_compute_native_t> computePasses;
     std::map<uint32_t, gl_pass_transfer_native_t> transferPasses;
-    GLuint framebuffer = 0;
+    GLuint fbo = 0;
 
     rt_module_type_t currentPassType = RT_MODULE_NONE;
     union
@@ -735,11 +735,9 @@ void gl_unload_library()
     glBindBuffer(GL_ARRAY_BUFFER, 0);
     glBindTexture(GL_TEXTURE_2D, 0);
 
-    if (opengl.framebuffer)
-    {
-        glDeleteFramebuffers(1, &opengl.framebuffer);
-        opengl.framebuffer = 0;
-    }
+    if (opengl.fbo)
+        glDeleteFramebuffers(1, &opengl.fbo);
+    opengl.fbo = 0;
     for (auto& item : opengl.modules)
     {
         if (item.second.vao)
@@ -1772,60 +1770,67 @@ void gl_begin_render(rt_pass_render_t& pass)
 
     if (offscreen)
     {
-        glGenFramebuffers(1, &opengl.framebuffer);
-        glBindFramebuffer(GL_FRAMEBUFFER, opengl.framebuffer);
-
         // Render State
 
         int32_t colorCount = 0;
         uint32_t width = 0, height = 0;
+        GLuint colorNames[RT_MAX_COLOR_TEXTURE_NUM] = {};
+        GLuint depthName = 0;
         GLenum colorAttachments[RT_MAX_COLOR_TEXTURE_NUM] = {};
         for (size_t i = 0; i < std::size(pass.colors); ++i)
         {
             if (pass.colors[i].texture_view.handle == 0 || pass.colors[i].texture_view.format == RT_TEXTURE_NONE)
                 continue;
-            GLuint name = gl_texture_view_name(pass.colors[i].texture_view);
-            GLenum target = rt_to_gl_texture_target(pass.colors[i].texture_view.target);
-            glBindTexture(target, name);
-            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + (GLenum)i, target, name, 0);
+            colorNames[i] = gl_texture_view_name(pass.colors[i].texture_view);
             colorAttachments[i] = GL_COLOR_ATTACHMENT0 + (GLenum)i;
             width = std::max(width, gl_texture_native(pass.colors[i].texture_view)->width);
             height = std::max(height, gl_texture_native(pass.colors[i].texture_view)->height);
             colorCount = (int32_t)i + 1;
         }
-        if (colorCount) glDrawBuffers(colorCount, colorAttachments);
-
         if (pass.depth.texture_view.handle)
         {
-            GLuint name = gl_texture_view_name(pass.depth.texture_view);
+            depthName = gl_texture_view_name(pass.depth.texture_view);
+            width = std::max(width, gl_texture_native(pass.depth.texture_view)->width);
+            height = std::max(height, gl_texture_native(pass.depth.texture_view)->height);
+        }
+
+        if (opengl.fbo == 0)
+            glGenFramebuffers(1, &opengl.fbo);
+        glBindFramebuffer(GL_FRAMEBUFFER, opengl.fbo);
+
+        for (size_t i = 0; i < std::size(pass.colors); ++i)
+        {
+            GLenum target = colorNames[i] ? rt_to_gl_texture_target(pass.colors[i].texture_view.target) : GL_TEXTURE_2D;
+            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + (GLenum)i, target, colorNames[i], 0);
+        }
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_TEXTURE_2D, 0, 0);
+        if (depthName)
+        {
             GLenum target = rt_to_gl_texture_target(pass.depth.texture_view.target);
-            glBindTexture(target, name);
             if (rt_texture_has_depth(pass.depth.texture_view.format) && rt_texture_has_stencil(pass.depth.texture_view.format))
             {
-                glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, target, name, 0);
+                glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, target, depthName, 0);
             }
             else if (rt_texture_has_depth(pass.depth.texture_view.format))
             {
-                glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, target, name, 0);
+                glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, target, depthName, 0);
             }
             else if (rt_texture_has_stencil(pass.depth.texture_view.format))
             {
-                glFramebufferTexture2D(GL_FRAMEBUFFER, GL_STENCIL_ATTACHMENT, target, name, 0);
+                glFramebufferTexture2D(GL_FRAMEBUFFER, GL_STENCIL_ATTACHMENT, target, depthName, 0);
             }
             else
             {
                 fprintf(stderr, "Invalid depth attachment");
                 abort();
             }
-            width = std::max(width, gl_texture_native(pass.depth.texture_view)->width);
-            height = std::max(height, gl_texture_native(pass.depth.texture_view)->height);
         }
-
         if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
         {
             fprintf(stderr, "Framebuffer not complete");
             abort();
         }
+        if (colorCount) glDrawBuffers(colorCount, colorAttachments);
         gl_set_viewport(0.0f, 0.0f, (float)width, (float)height, 0.0f, 1.0f);
 
         glDisable(GL_BLEND);
@@ -1949,14 +1954,7 @@ void gl_end_render(rt_pass_render_t& pass)
             offscreen = true;
     }
     if (offscreen)
-    {
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
-        if (opengl.framebuffer)
-        {
-            glDeleteFramebuffers(1, &opengl.framebuffer);
-            opengl.framebuffer = 0;
-        }
-    }
     pass.handle = 0;
     pass.native = nullptr;
 
@@ -1982,7 +1980,13 @@ void gl_bind_module_render(rt_module_render_t& module)
     glUseProgram(moduleNative->program);
     glBindVertexArray(moduleNative->vao);
 
-    if (opengl.framebuffer)
+    bool offscreen = pass.depth.texture_view.handle;
+    for (size_t i = 0; i < std::size(pass.colors) && !offscreen; ++i)
+    {
+        if (pass.colors[i].texture_view.handle)
+            offscreen = true;
+    }
+    if (offscreen)
     {
         // Blend State
 
@@ -2119,7 +2123,13 @@ void gl_set_stencil_reference(int32_t refer)
     opengl.stencilRefer = refer;
 
     rt_pass_render_t const& pass = *opengl.currentRenderPass;
-    if (opengl.framebuffer)
+    bool offscreen = pass.depth.texture_view.handle;
+    for (size_t i = 0; i < std::size(pass.colors) && !offscreen; ++i)
+    {
+        if (pass.colors[i].texture_view.handle)
+            offscreen = true;
+    }
+    if (offscreen)
     {
         if (opengl.currentRenderModule == nullptr)
             return;
@@ -3101,7 +3111,6 @@ void gl_draw_meshlet(rt_meshlet_t& meshlet)
 
 void gl_submit()
 {
-    // glFinish();
 }
 
 // ====================================================================
