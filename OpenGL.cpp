@@ -1807,7 +1807,6 @@ void gl_begin_render(rt_pass_render_t& pass)
             GLenum target = colorNames[i] ? rt_to_gl_texture_target(pass.colors[i].texture_view.target) : GL_TEXTURE_2D;
             glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + (GLenum)i, target, colorNames[i], 0);
         }
-        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_TEXTURE_2D, 0, 0);
         if (depthName)
         {
             GLenum target = rt_to_gl_texture_target(pass.depth.texture_view.target);
@@ -1828,6 +1827,10 @@ void gl_begin_render(rt_pass_render_t& pass)
                 fprintf(stderr, "Invalid depth attachment");
                 abort();
             }
+        }
+        else
+        {
+            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_TEXTURE_2D, 0, 0);
         }
         if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
         {
