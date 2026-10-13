@@ -1768,6 +1768,9 @@ void gl_begin_render(rt_pass_render_t& pass)
     opengl.stencilRefer = offscreen ? pass.stencil.refer : pass.screen.stencil.refer;
     glBlendColor(0.0f, 0.0f, 0.0f, 0.0f);
 
+    GLint currentFBO = 0;
+    glGetIntegerv(GL_FRAMEBUFFER_BINDING, &currentFBO);
+
     if (offscreen)
     {
         // Render State
@@ -1796,7 +1799,8 @@ void gl_begin_render(rt_pass_render_t& pass)
 
         if (opengl.fbo == 0)
             glGenFramebuffers(1, &opengl.fbo);
-        glBindFramebuffer(GL_FRAMEBUFFER, opengl.fbo);
+        if ((GLuint)currentFBO != opengl.fbo)
+            glBindFramebuffer(GL_FRAMEBUFFER, opengl.fbo);
 
         for (size_t i = 0; i < std::size(pass.colors); ++i)
         {
@@ -1863,7 +1867,8 @@ void gl_begin_render(rt_pass_render_t& pass)
     }
     else
     {
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        if (currentFBO != 0)
+            glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
         glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
         glDepthMask(GL_TRUE);
@@ -1946,15 +1951,6 @@ void gl_end_render(rt_pass_render_t& pass)
     opengl.currentPassType = RT_MODULE_NONE;
     opengl.currentRenderPass = nullptr;
     opengl.currentRenderModule = nullptr;
-
-    bool offscreen = pass.depth.texture_view.handle;
-    for (size_t i = 0; i < std::size(pass.colors) && !offscreen; ++i)
-    {
-        if (pass.colors[i].texture_view.handle)
-            offscreen = true;
-    }
-    if (offscreen)
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
     pass.handle = 0;
     pass.native = nullptr;
 
