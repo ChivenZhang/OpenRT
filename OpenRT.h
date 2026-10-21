@@ -708,7 +708,7 @@ struct rt_pass_render_t
     struct
     {
         bool clear = false;
-        int32_t value = -1;
+        int32_t value = 0;
         int32_t refer = 0;
     } stencil;
 
