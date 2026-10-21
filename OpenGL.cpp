@@ -1208,15 +1208,10 @@ rt_texture_view_t gl_create_texture_view(rt_texture_t& texture, rt_texture_view_
     result.base_level = info.base_level;
     result.level_count = levelCount;
 
-    GLenum internalFormat = rt_to_gl_texture_format(result.format);
-    if (info.aspect == RT_TEXTURE_ASPECT_STENCIL && rt_texture_has_stencil(parentFormat))
-        internalFormat = GL_STENCIL_INDEX8;
-    else if (info.aspect == RT_TEXTURE_ASPECT_DEPTH && rt_texture_has_depth(parentFormat) && rt_texture_has_stencil(parentFormat))
-        internalFormat = parentFormat == RT_TEXTURE_DEPTH32FLOAT_STENCIL8 ? GL_DEPTH_COMPONENT32F : GL_DEPTH_COMPONENT24;
-
     uint32_t handle = opengl.textureViewID + 1;
     auto& native = opengl.textureViews[handle];
     glGenTextures(1, &native.handle);
+    GLenum internalFormat = rt_to_gl_texture_format(result.format);
     glTextureView(native.handle, rt_to_gl_texture_target(info.target), parentTex->handle, internalFormat,
                   (GLuint)info.base_level, (GLuint)levelCount, (GLuint)baseLayer, (GLuint)layerCount);
     if (!native.handle)
@@ -1768,9 +1763,6 @@ void gl_begin_render(rt_pass_render_t& pass)
     opengl.stencilRefer = offscreen ? pass.stencil.refer : pass.screen.stencil.refer;
     glBlendColor(0.0f, 0.0f, 0.0f, 0.0f);
 
-    GLint currentFBO = 0;
-    glGetIntegerv(GL_FRAMEBUFFER_BINDING, &currentFBO);
-
     if (offscreen)
     {
         // Render State
@@ -1799,14 +1791,14 @@ void gl_begin_render(rt_pass_render_t& pass)
 
         if (opengl.fbo == 0)
             glGenFramebuffers(1, &opengl.fbo);
-        if ((GLuint)currentFBO != opengl.fbo)
-            glBindFramebuffer(GL_FRAMEBUFFER, opengl.fbo);
+        glBindFramebuffer(GL_FRAMEBUFFER, opengl.fbo);
 
         for (size_t i = 0; i < std::size(pass.colors); ++i)
         {
             GLenum target = colorNames[i] ? rt_to_gl_texture_target(pass.colors[i].texture_view.target) : GL_TEXTURE_2D;
             glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + (GLenum)i, target, colorNames[i], 0);
         }
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_TEXTURE_2D, 0, 0);
         if (depthName)
         {
             GLenum target = rt_to_gl_texture_target(pass.depth.texture_view.target);
@@ -1827,10 +1819,6 @@ void gl_begin_render(rt_pass_render_t& pass)
                 fprintf(stderr, "Invalid depth attachment");
                 abort();
             }
-        }
-        else
-        {
-            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_TEXTURE_2D, 0, 0);
         }
         if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
         {
@@ -1870,8 +1858,7 @@ void gl_begin_render(rt_pass_render_t& pass)
     }
     else
     {
-        if (currentFBO != 0)
-            glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
         glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
         glDepthMask(GL_TRUE);
@@ -1954,6 +1941,15 @@ void gl_end_render(rt_pass_render_t& pass)
     opengl.currentPassType = RT_MODULE_NONE;
     opengl.currentRenderPass = nullptr;
     opengl.currentRenderModule = nullptr;
+
+    bool offscreen = pass.depth.texture_view.handle;
+    for (size_t i = 0; i < std::size(pass.colors) && !offscreen; ++i)
+    {
+        if (pass.colors[i].texture_view.handle)
+            offscreen = true;
+    }
+    if (offscreen)
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
     pass.handle = 0;
     pass.native = nullptr;
 
