@@ -10,6 +10,9 @@
 * =================================================*/
 #ifdef DIRECTX_IMPLEMENTATION
 #ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
 #include "DirectX.h"
 #include <algorithm>
 #include <cstdio>
