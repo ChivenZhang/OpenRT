@@ -611,7 +611,11 @@ struct rt_module_render_info_t
             rt_compare_op_t func = RT_ALWAYS; // RT_NEVER / RT_LESS / RT_EQUAL / RT_LEQUAL / RT_GREATER / RT_NOTEQUAL / RT_GEQUAL / RT_ALWAYS
             rt_stencil_op_t sfail = RT_STENCIL_KEEP; // RT_STENCIL_KEEP / RT_STENCIL_ZERO / RT_STENCIL_REPLACE / RT_STENCIL_INCR / RT_STENCIL_INCR_WRAP / RT_STENCIL_DECR / RT_STENCIL_DECR_WRAP / RT_STENCIL_INVERT
             rt_stencil_op_t zfail = RT_STENCIL_KEEP; // RT_STENCIL_KEEP / RT_STENCIL_ZERO / RT_STENCIL_REPLACE / RT_STENCIL_INCR / RT_STENCIL_INCR_WRAP / RT_STENCIL_DECR / RT_STENCIL_DECR_WRAP / RT_STENCIL_INVERT
-            rt_stencil_op_t zpass = RT_STENCIL_KEEP; // RT_STENCIL_KEEP / RT_STENCIL_ZERO / RT_STENCIL_REPLACE / RT_STENCIL_INCR / RT_STENCIL_INCR_WRAP / RT_STENCIL_DECR / RT_STENCIL_DECR_WRAP / RT_STENCIL_INVERT
+            union
+            {
+                rt_stencil_op_t spass = RT_STENCIL_KEEP; // RT_STENCIL_KEEP / RT_STENCIL_ZERO / RT_STENCIL_REPLACE / RT_STENCIL_INCR / RT_STENCIL_INCR_WRAP / RT_STENCIL_DECR / RT_STENCIL_DECR_WRAP / RT_STENCIL_INVERT
+                rt_stencil_op_t zpass; // RT_STENCIL_KEEP / RT_STENCIL_ZERO / RT_STENCIL_REPLACE / RT_STENCIL_INCR / RT_STENCIL_INCR_WRAP / RT_STENCIL_DECR / RT_STENCIL_DECR_WRAP / RT_STENCIL_INVERT
+            };
         } front, back;
     } stencil;
 
@@ -660,7 +664,11 @@ struct rt_module_render_t
             rt_compare_op_t func = RT_ALWAYS;
             rt_stencil_op_t sfail = RT_STENCIL_KEEP;
             rt_stencil_op_t zfail = RT_STENCIL_KEEP;
-            rt_stencil_op_t zpass = RT_STENCIL_KEEP;
+            union
+            {
+                rt_stencil_op_t spass = RT_STENCIL_KEEP; // RT_STENCIL_KEEP / RT_STENCIL_ZERO / RT_STENCIL_REPLACE / RT_STENCIL_INCR / RT_STENCIL_INCR_WRAP / RT_STENCIL_DECR / RT_STENCIL_DECR_WRAP / RT_STENCIL_INVERT
+                rt_stencil_op_t zpass; // RT_STENCIL_KEEP / RT_STENCIL_ZERO / RT_STENCIL_REPLACE / RT_STENCIL_INCR / RT_STENCIL_INCR_WRAP / RT_STENCIL_DECR / RT_STENCIL_DECR_WRAP / RT_STENCIL_INVERT
+            };
         } front, back;
     } stencil;
 
@@ -708,7 +716,7 @@ struct rt_pass_render_t
     struct
     {
         bool clear = false;
-        int32_t value = -1;
+        int32_t value = 0;
         int32_t refer = 0;
     } stencil;
 
@@ -747,7 +755,11 @@ struct rt_pass_render_t
             rt_compare_op_t func = RT_ALWAYS; // RT_NEVER / RT_LESS / RT_EQUAL / RT_LEQUAL / RT_GREATER / RT_NOTEQUAL / RT_GEQUAL / RT_ALWAYS
             rt_stencil_op_t sfail = RT_STENCIL_KEEP; // RT_STENCIL_KEEP / RT_STENCIL_ZERO / RT_STENCIL_REPLACE / RT_STENCIL_INCR / RT_STENCIL_INCR_WRAP / RT_STENCIL_DECR / RT_STENCIL_DECR_WRAP / RT_STENCIL_INVERT
             rt_stencil_op_t zfail = RT_STENCIL_KEEP; // RT_STENCIL_KEEP / RT_STENCIL_ZERO / RT_STENCIL_REPLACE / RT_STENCIL_INCR / RT_STENCIL_INCR_WRAP / RT_STENCIL_DECR / RT_STENCIL_DECR_WRAP / RT_STENCIL_INVERT
-            rt_stencil_op_t zpass = RT_STENCIL_KEEP; // RT_STENCIL_KEEP / RT_STENCIL_ZERO / RT_STENCIL_REPLACE / RT_STENCIL_INCR / RT_STENCIL_INCR_WRAP / RT_STENCIL_DECR / RT_STENCIL_DECR_WRAP / RT_STENCIL_INVERT
+            union
+            {
+                rt_stencil_op_t spass = RT_STENCIL_KEEP; // RT_STENCIL_KEEP / RT_STENCIL_ZERO / RT_STENCIL_REPLACE / RT_STENCIL_INCR / RT_STENCIL_INCR_WRAP / RT_STENCIL_DECR / RT_STENCIL_DECR_WRAP / RT_STENCIL_INVERT
+                rt_stencil_op_t zpass; // RT_STENCIL_KEEP / RT_STENCIL_ZERO / RT_STENCIL_REPLACE / RT_STENCIL_INCR / RT_STENCIL_INCR_WRAP / RT_STENCIL_DECR / RT_STENCIL_DECR_WRAP / RT_STENCIL_INVERT
+            };
         } stencil;
     } screen;
 
