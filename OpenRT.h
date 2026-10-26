@@ -839,6 +839,7 @@ struct rt_texture_data_t
 
 // ====================================================================
 
+OPENRT_API rt_backend_t rt_get_backend();
 OPENRT_API void rt_load_library(rt_load_info_t const& info = {});
 OPENRT_API void (*rt_unload_library)();
 

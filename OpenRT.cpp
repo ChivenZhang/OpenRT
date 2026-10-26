@@ -28,8 +28,16 @@
 #endif
 #include <string>
 
+static rt_backend_t g_backend = RT_OPENGL;
+
+rt_backend_t rt_get_backend()
+{
+    return g_backend;
+}
+
 void rt_load_library(rt_load_info_t const& info)
 {
+    g_backend = info.backend;
     switch (info.backend)
     {
     case RT_OPENGL:
