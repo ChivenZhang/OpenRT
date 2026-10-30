@@ -1594,6 +1594,9 @@ void gl_end_compute(rt_pass_compute_t& pass)
         fprintf(stderr, "Pipeline not end");
         abort();
     }
+
+    glMemoryBarrier(GL_UNIFORM_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT | GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_SHADER_STORAGE_BARRIER_BIT);
+
     opengl.computePasses.erase(pass.handle);
     pass.handle = 0;
     pass.native = nullptr;
