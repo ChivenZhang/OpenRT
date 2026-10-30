@@ -1595,8 +1595,6 @@ void gl_end_compute(rt_pass_compute_t& pass)
         abort();
     }
 
-    glMemoryBarrier(GL_UNIFORM_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT | GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_SHADER_STORAGE_BARRIER_BIT);
-
     opengl.computePasses.erase(pass.handle);
     pass.handle = 0;
     pass.native = nullptr;
@@ -1643,6 +1641,8 @@ void gl_dispatch_compute(uint32_t groupX, uint32_t groupY, uint32_t groupZ)
     }
 
     glDispatchCompute(std::max(1U, groupX), std::max(1U, groupY), std::max(1U, groupZ));
+
+    glMemoryBarrier(GL_UNIFORM_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT | GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_SHADER_STORAGE_BARRIER_BIT);
 }
 
 void gl_dispatch_compute_indirect(rt_buffer_t& indirect, size_t offset)
@@ -1665,6 +1665,8 @@ void gl_dispatch_compute_indirect(rt_buffer_t& indirect, size_t offset)
 
     glBindBuffer(GL_DISPATCH_INDIRECT_BUFFER, gl_buffer_name(indirect));
     glDispatchComputeIndirect((GLintptr)offset);
+
+    glMemoryBarrier(GL_UNIFORM_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT | GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_SHADER_STORAGE_BARRIER_BIT);
 }
 
 // ====================================================================
