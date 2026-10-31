@@ -212,12 +212,18 @@ int main()
         .pNext = &features13,
         .dynamicRenderingLocalRead = VK_TRUE,
     };
+    VkPhysicalDeviceMeshShaderFeaturesNV meshNV = {
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MESH_SHADER_FEATURES_NV,
+        .pNext = &features14,
+        .taskShader = VK_TRUE,
+        .meshShader = VK_TRUE,
+    };
     VkPhysicalDeviceFeatures2 features2 = {
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2,
-        .pNext = &features14,
+        .pNext = &meshNV,
     };
     const char* deviceExts[] = {
-        VK_KHR_SWAPCHAIN_EXTENSION_NAME, VK_KHR_SWAPCHAIN_MUTABLE_FORMAT_EXTENSION_NAME, VK_KHR_MAINTENANCE1_EXTENSION_NAME,
+        VK_KHR_SWAPCHAIN_EXTENSION_NAME, VK_KHR_SWAPCHAIN_MUTABLE_FORMAT_EXTENSION_NAME, VK_KHR_MAINTENANCE1_EXTENSION_NAME, VK_NV_MESH_SHADER_EXTENSION_NAME,
 #ifdef __APPLE__
         "VK_KHR_portability_subset",
 #endif

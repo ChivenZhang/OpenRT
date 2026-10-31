@@ -245,13 +245,23 @@ static VkFormat rt_to_vk_vertex_format(rt_vertex_format_t format)
     }
 }
 
+static VkShaderStageFlags const vk_default_shader_stages =
+    VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT |
+    VK_SHADER_STAGE_TASK_BIT_NV | VK_SHADER_STAGE_MESH_BIT_NV;
+
+static VkPipelineStageFlags const vk_default_shader_pipeline_stages =
+    VK_PIPELINE_STAGE_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT |
+    VK_PIPELINE_STAGE_TASK_SHADER_BIT_NV | VK_PIPELINE_STAGE_MESH_SHADER_BIT_NV;
+
 static VkShaderStageFlags vk_shader_stages(rt_stages_t stages)
 {
     VkShaderStageFlags flags = 0;
     if (stages & RT_STAGE_VERTEX) flags |= VK_SHADER_STAGE_VERTEX_BIT;
     if (stages & RT_STAGE_FRAGMENT) flags |= VK_SHADER_STAGE_FRAGMENT_BIT;
     if (stages & RT_STAGE_COMPUTE) flags |= VK_SHADER_STAGE_COMPUTE_BIT;
-    return flags ? flags : (VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT);
+    if (stages & RT_STAGE_TASK) flags |= VK_SHADER_STAGE_TASK_BIT_NV;
+    if (stages & RT_STAGE_MESH) flags |= VK_SHADER_STAGE_MESH_BIT_NV;
+    return flags ? flags : vk_default_shader_stages;
 }
 
 static VkDescriptorType rt_to_vk_descriptor(rt_binding_type_t bindingType)
@@ -610,7 +620,7 @@ struct vk_layout_native_t
 {
     VkDescriptorSetLayout setLayout = nullptr;
     VkPipelineLayout pipelineLayout = nullptr;
-    VkShaderStageFlags pushStages = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT;
+    VkShaderStageFlags pushStages = vk_default_shader_stages;
     rt_layout_entry_t entry[RT_MAX_BINDING_HANDLE_NUM] = {};
     VkDescriptorType types[RT_MAX_BINDING_HANDLE_NUM] = {};
     uint32_t bindings[RT_MAX_BINDING_HANDLE_NUM] = {};
@@ -877,7 +887,7 @@ static void vk_transition_image(vk_texture_native_t& image, VkImageLayout newLay
             break;
         case VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL:
             dstAccess = VK_ACCESS_SHADER_READ_BIT;
-            dstStage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
+            dstStage = vk_default_shader_pipeline_stages;
             break;
         case VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL:
             dstAccess = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_COLOR_ATTACHMENT_READ_BIT;
@@ -889,7 +899,7 @@ static void vk_transition_image(vk_texture_native_t& image, VkImageLayout newLay
             break;
         case VK_IMAGE_LAYOUT_GENERAL:
             dstAccess = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
-            dstStage = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+            dstStage = vk_default_shader_pipeline_stages;
             break;
         default:
             dstAccess = 0;
@@ -2410,7 +2420,7 @@ void vk_bind_binding(rt_binding_t& binding)
         return;
     auto* layout = native->layout;
     native->dynamicCount = 0;
-    VkPipelineStageFlags stage = VK_PIPELINE_STAGE_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
+    VkPipelineStageFlags stage = vk_default_shader_pipeline_stages;
     for (uint32_t i = 0; i < layout->count; ++i)
     {
         auto const& item = binding.entry[layout->entryIndex[i]];
