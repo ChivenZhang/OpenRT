@@ -529,7 +529,7 @@ struct dx_texture_native_t
     uint32_t width = 1, height = 1, depth = 1;
     rt_texture_target_t target = RT_TEXTURE_2D;
     rt_texture_format_t rtFormat = RT_TEXTURE_NONE;
-    rt_texture_usages_t usage = 0;
+    rt_texture_usages_t usages = 0;
     uint32_t samples = 1;
 };
 
@@ -537,11 +537,28 @@ struct dx_texture_view_native_t
 {
     D3D12_SHADER_RESOURCE_VIEW_DESC srv = {};
     dx_texture_native_t* texture = nullptr;
+    uint32_t bindless = 0;
 };
 
 struct dx_sampler_native_t
 {
     D3D12_SAMPLER_DESC desc = {};
+};
+
+struct dx_layout_native_t
+{
+    ComPtr<ID3D12RootSignature> rootSignature;
+    dx_binding_kind_t kinds[RT_MAX_BINDING_HANDLE_NUM] = {};
+    uint32_t bindings[RT_MAX_BINDING_HANDLE_NUM] = {};
+    uint32_t entryIndex[RT_MAX_BINDING_HANDLE_NUM] = {};
+    uint32_t count = 0;
+    uint32_t bindlessRoot = 0;
+};
+
+struct dx_binding_native_t
+{
+    dx_layout_native_t* layout = nullptr;
+    rt_binding_entry_t entry[RT_MAX_BINDING_HANDLE_NUM] = {};
 };
 
 struct dx_module_native_t
@@ -556,6 +573,7 @@ struct dx_module_native_t
     dx_binding_kind_t kinds[RT_MAX_BINDING_HANDLE_NUM] = {};
     uint32_t descriptorBindings[RT_MAX_BINDING_HANDLE_NUM] = {};
     uint32_t descriptorCount = 0;
+    uint32_t bindlessRoot = 0;
 };
 
 struct dx_mesh_native_t
@@ -580,13 +598,16 @@ struct dx_staging_t
 
 struct dx_native_t
 {
-    uint32_t bufferID = 0, textureID = 0, textureViewID = 0, samplerID = 0, moduleID = 0;
+    uint32_t bufferID = 0, textureID = 0, textureViewID = 0, samplerID = 0, layoutID = 0, bindingID = 0, moduleID = 0;
     uint32_t meshID = 0, meshletID = 0, passID = 0;
+    rt_limits_t limits;
 
     std::map<uint32_t, dx_buffer_native_t> buffers;
     std::map<uint32_t, dx_texture_native_t> textures;
     std::map<uint32_t, dx_texture_view_native_t> textureViews;
     std::map<uint32_t, dx_sampler_native_t> samplers;
+    std::map<uint32_t, dx_layout_native_t> layouts;
+    std::map<uint32_t, dx_binding_native_t> bindings;
     std::map<uint32_t, dx_module_native_t> modules;
     std::map<uint32_t, dx_mesh_native_t> meshes;
     std::map<uint32_t, dx_meshlet_native_t> meshlets;
@@ -612,6 +633,8 @@ struct dx_native_t
     uint64_t fenceValue = 0;
     uint32_t rtvSize = 0, dsvSize = 0, srvSize = 0, samplerSize = 0;
     uint32_t srvCursor = 0, samplerCursor = 0;
+    uint32_t bindlessCursor = 0;
+    std::vector<uint32_t> bindlessFree;
     std::vector<dx_staging_t> pendingStaging;
     uint8_t pushData[128] = {};
     uint32_t pushCount = 0;
@@ -639,6 +662,7 @@ struct dx_native_t
     };
     rt_module_render_t* currentRenderModule = nullptr;
     rt_module_compute_t* currentComputeModule = nullptr;
+    dx_binding_native_t* currentBindingGroup = nullptr;
 } static direct;
 
 static void dx_wait_gpu()
@@ -757,9 +781,44 @@ static void dx_destroy_module_native(uint32_t handle, void*& native)
     native = nullptr;
 }
 
+static constexpr uint32_t DX_DYNAMIC_SRV_COUNT = 2048;
+static constexpr uint32_t DX_BINDLESS_SRV_CAPACITY = 65536;
+
+static D3D12_CPU_DESCRIPTOR_HANDLE dx_srv_cpu_index(uint32_t index)
+{
+    D3D12_CPU_DESCRIPTOR_HANDLE cpu = direct.srvHeap->GetCPUDescriptorHandleForHeapStart();
+    cpu.ptr += (SIZE_T)index * direct.srvSize;
+    return cpu;
+}
+
+static uint32_t dx_alloc_bindless()
+{
+    if (!direct.bindlessFree.empty())
+    {
+        uint32_t index = direct.bindlessFree.back();
+        direct.bindlessFree.pop_back();
+        return index;
+    }
+    if (direct.bindlessCursor < DX_DYNAMIC_SRV_COUNT)
+        direct.bindlessCursor = DX_DYNAMIC_SRV_COUNT;
+    if (direct.bindlessCursor >= DX_BINDLESS_SRV_CAPACITY)
+    {
+        fprintf(stderr, "DirectX: bindless texture heap exhausted");
+        return 0;
+    }
+    return direct.bindlessCursor++;
+}
+
+static void dx_release_bindless(dx_texture_view_native_t& native)
+{
+    if (!native.bindless) return;
+    direct.bindlessFree.push_back(native.bindless);
+    native.bindless = 0;
+}
+
 static D3D12_GPU_DESCRIPTOR_HANDLE dx_alloc_srv()
 {
-    if (direct.srvCursor >= 2047) direct.srvCursor = 1;
+    if (direct.srvCursor >= DX_DYNAMIC_SRV_COUNT - 1) direct.srvCursor = 1;
     uint32_t index = direct.srvCursor++;
     D3D12_GPU_DESCRIPTOR_HANDLE handle = direct.srvHeap->GetGPUDescriptorHandleForHeapStart();
     handle.ptr += (SIZE_T)index * direct.srvSize;
@@ -793,22 +852,24 @@ static D3D12_CPU_DESCRIPTOR_HANDLE dx_sampler_cpu(D3D12_GPU_DESCRIPTOR_HANDLE gp
 
 static void dx_flush_descriptors()
 {
-    auto* mod = dx_current_module_native();
-    if (!mod || !mod->rootSignature) return;
+    auto* native = dx_current_module_native();
+    if (!native || !native->rootSignature) return;
 
     ID3D12DescriptorHeap* heaps[] = {direct.srvHeap.Get(), direct.samplerHeap.Get()};
     direct.cmd->SetDescriptorHeaps(2, heaps);
-    if (mod->cshader.BytecodeLength)
-        direct.cmd->SetComputeRootSignature(mod->rootSignature.Get());
+    if (native->cshader.BytecodeLength)
+        direct.cmd->SetComputeRootSignature(native->rootSignature.Get());
     else
-        direct.cmd->SetGraphicsRootSignature(mod->rootSignature.Get());
+        direct.cmd->SetGraphicsRootSignature(native->rootSignature.Get());
 
-    for (uint32_t i = 0; i < mod->descriptorCount; ++i)
+    auto* group = direct.currentBindingGroup;
+    if (group && group->layout)
     {
-        uint32_t binding = mod->descriptorBindings[i];
-        auto& slot = direct.currentBinding[binding];
+    for (uint32_t i = 0; i < group->layout->count; ++i)
+    {
+        auto const& slot = group->entry[group->layout->entryIndex[i]];
         uint32_t root = i + 1;
-        if (mod->kinds[i] == DX_KIND_CBV)
+        if (group->layout->kinds[i] == DX_KIND_CBV)
         {
             auto* buf = dx_buffer_native(slot.buffer);
             if (!buf) continue;
@@ -822,10 +883,10 @@ static void dx_flush_descriptors()
             cbv.BufferLocation = buf->handle->GetGPUVirtualAddress() + bindOffset;
             cbv.SizeInBytes = (UINT)((bindSize + 255ull) & ~255ull);
             direct.device->CreateConstantBufferView(&cbv, dx_srv_cpu(gpu));
-            if (mod->cshader.BytecodeLength) direct.cmd->SetComputeRootDescriptorTable(root, gpu);
+            if (native->cshader.BytecodeLength) direct.cmd->SetComputeRootDescriptorTable(root, gpu);
             else direct.cmd->SetGraphicsRootDescriptorTable(root, gpu);
         }
-        else if (mod->kinds[i] == DX_KIND_STORAGE)
+        else if (group->layout->kinds[i] == DX_KIND_STORAGE)
         {
             auto* buf = dx_buffer_native(slot.buffer);
             if (!buf) continue;
@@ -842,32 +903,32 @@ static void dx_flush_descriptors()
             uav.Buffer.NumElements = (UINT)(bindSize / 4);
             uav.Buffer.Flags = D3D12_BUFFER_UAV_FLAG_RAW;
             direct.device->CreateUnorderedAccessView(buf->handle.Get(), nullptr, &uav, dx_srv_cpu(gpu));
-            if (mod->cshader.BytecodeLength) direct.cmd->SetComputeRootDescriptorTable(root, gpu);
+            if (native->cshader.BytecodeLength) direct.cmd->SetComputeRootDescriptorTable(root, gpu);
             else direct.cmd->SetGraphicsRootDescriptorTable(root, gpu);
         }
-        else if (mod->kinds[i] == DX_KIND_SAMPLER)
+        else if (group->layout->kinds[i] == DX_KIND_SAMPLER)
         {
             auto* samp = dx_sampler_native(slot.sampler);
             if (!samp) continue;
             auto gpu = dx_alloc_sampler();
             direct.device->CreateSampler(&samp->desc, dx_sampler_cpu(gpu));
-            if (mod->cshader.BytecodeLength) direct.cmd->SetComputeRootDescriptorTable(root, gpu);
+            if (native->cshader.BytecodeLength) direct.cmd->SetComputeRootDescriptorTable(root, gpu);
             else direct.cmd->SetGraphicsRootDescriptorTable(root, gpu);
         }
-        else if (mod->kinds[i] == DX_KIND_SRV)
+        else if (group->layout->kinds[i] == DX_KIND_SRV)
         {
-            auto* view = dx_texture_view_native(slot.texture_view);
+            auto* view = dx_texture_view_native(slot.texture);
             if (!view || !view->texture || !view->texture->handle) continue;
             auto* tex = view->texture;
             dx_transition_image(*tex, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
             auto gpu = dx_alloc_srv();
             direct.device->CreateShaderResourceView(tex->handle.Get(), &view->srv, dx_srv_cpu(gpu));
-            if (mod->cshader.BytecodeLength) direct.cmd->SetComputeRootDescriptorTable(root, gpu);
+            if (native->cshader.BytecodeLength) direct.cmd->SetComputeRootDescriptorTable(root, gpu);
             else direct.cmd->SetGraphicsRootDescriptorTable(root, gpu);
         }
-        else if (mod->kinds[i] == DX_KIND_UAV)
+        else if (group->layout->kinds[i] == DX_KIND_UAV)
         {
-            auto* view = dx_texture_view_native(slot.storage_view);
+            auto* view = dx_texture_view_native(slot.texture_storage);
             if (!view || !view->texture || !view->texture->handle) continue;
             auto* tex = view->texture;
             dx_transition_image(*tex, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
@@ -875,15 +936,21 @@ static void dx_flush_descriptors()
             D3D12_UNORDERED_ACCESS_VIEW_DESC uav = {};
             uav.Format = dx_srv_format(tex->format);
             uav.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D;
-            uav.Texture2D.MipSlice = slot.storage_texture_bind.base_level;
+            uav.Texture2D.MipSlice = slot.texture_storage_bind.base_level;
             direct.device->CreateUnorderedAccessView(tex->handle.Get(), nullptr, &uav, dx_srv_cpu(gpu));
-            if (mod->cshader.BytecodeLength) direct.cmd->SetComputeRootDescriptorTable(root, gpu);
+            if (native->cshader.BytecodeLength) direct.cmd->SetComputeRootDescriptorTable(root, gpu);
             else direct.cmd->SetGraphicsRootDescriptorTable(root, gpu);
         }
     }
+    }
+    D3D12_GPU_DESCRIPTOR_HANDLE bindlessStart = direct.srvHeap->GetGPUDescriptorHandleForHeapStart();
+    if (native->cshader.BytecodeLength)
+        direct.cmd->SetComputeRootDescriptorTable(native->bindlessRoot, bindlessStart);
+    else
+        direct.cmd->SetGraphicsRootDescriptorTable(native->bindlessRoot, bindlessStart);
     if (direct.pushCount)
     {
-        if (mod->cshader.BytecodeLength)
+        if (native->cshader.BytecodeLength)
             direct.cmd->SetComputeRoot32BitConstants(0, direct.pushCount, direct.pushData, 0);
         else
             direct.cmd->SetGraphicsRoot32BitConstants(0, direct.pushCount, direct.pushData, 0);
@@ -920,7 +987,7 @@ void dx_load_library(ID3D12Device* device, ID3D12CommandQueue* queue)
     heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
     direct.device->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&direct.dsvHeap));
     heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-    heapDesc.NumDescriptors = 2048;
+    heapDesc.NumDescriptors = DX_BINDLESS_SRV_CAPACITY;
     heapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
     direct.device->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&direct.srvHeap));
     heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER;
@@ -933,11 +1000,14 @@ void dx_load_library(ID3D12Device* device, ID3D12CommandQueue* queue)
     direct.samplerSize = direct.device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER);
     direct.srvCursor = 1;
     direct.samplerCursor = 0;
+    direct.bindlessCursor = DX_DYNAMIC_SRV_COUNT;
 
     direct.device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&direct.fence));
     direct.fenceEvent = CreateEventW(nullptr, FALSE, FALSE, nullptr);
 
     rt_unload_library = dx_unload_library;
+    rt_get_backend = dx_get_backend;
+    rt_get_limits = dx_get_limits;
     rt_create_buffer = dx_create_buffer;
     rt_destroy_buffer = dx_destroy_buffer;
     rt_bind_buffer = dx_bind_buffer;
@@ -953,6 +1023,11 @@ void dx_load_library(ID3D12Device* device, ID3D12CommandQueue* queue)
     rt_create_sampler = dx_create_sampler;
     rt_destroy_sampler = dx_destroy_sampler;
     rt_bind_sampler = dx_bind_sampler;
+    rt_create_layout = dx_create_layout;
+    rt_destroy_layout = dx_destroy_layout;
+    rt_create_binding = dx_create_binding;
+    rt_destroy_binding = dx_destroy_binding;
+    rt_bind_binding = dx_bind_binding;
     rt_create_module_compute = dx_create_module_compute;
     rt_create_module_render = dx_create_module_render;
     rt_destroy_module_render = dx_destroy_module_render;
@@ -1000,10 +1075,72 @@ void dx_load_library(ID3D12Device* device, ID3D12CommandQueue* queue)
     rt_destroy_meshlet = dx_destroy_meshlet;
     rt_draw_meshlet = dx_draw_meshlet;
     rt_submit = dx_submit;
+
+    rt_limits_t limits = {};
+    limits.max_bindless_handle_size = (uint32_t)sizeof(uint32_t);
+    limits.max_texture_dimension_1d = D3D12_REQ_TEXTURE1D_U_DIMENSION;
+    limits.max_texture_dimension_2d = D3D12_REQ_TEXTURE2D_U_OR_V_DIMENSION;
+    limits.max_texture_dimension_3d = D3D12_REQ_TEXTURE3D_U_V_OR_W_DIMENSION;
+    limits.max_texture_array_layers = D3D12_REQ_TEXTURE2D_ARRAY_AXIS_DIMENSION;
+    limits.max_buffer_size = 1ull << 31;
+    limits.max_storage_buffer_binding_size = limits.max_buffer_size;
+    limits.max_uniform_buffer_binding_size = (uint64_t)D3D12_REQ_CONSTANT_BUFFER_ELEMENT_COUNT * 16;
+    limits.min_uniform_buffer_offset_alignment = D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT;
+    limits.min_storage_buffer_offset_alignment = D3D12_RAW_UAV_SRV_BYTE_ALIGNMENT;
+    limits.max_vertex_buffers = D3D12_IA_VERTEX_INPUT_RESOURCE_SLOT_COUNT;
+    limits.max_vertex_attributes = D3D12_IA_VERTEX_INPUT_STRUCTURE_ELEMENT_COUNT;
+    limits.max_vertex_buffer_array_stride = D3D12_REQ_MULTI_ELEMENT_STRUCTURE_SIZE_IN_BYTES;
+    limits.max_color_attachments = D3D12_SIMULTANEOUS_RENDER_TARGET_COUNT;
+    limits.max_color_attachment_bytes_per_sample = D3D12_SIMULTANEOUS_RENDER_TARGET_COUNT * 16;
+    limits.max_compute_workgroup_storage_size = 32768;
+    limits.max_compute_invocations_per_workgroup = D3D12_CS_THREAD_GROUP_MAX_THREADS_PER_GROUP;
+    limits.max_compute_workgroup_size_x = D3D12_CS_THREAD_GROUP_MAX_X;
+    limits.max_compute_workgroup_size_y = D3D12_CS_THREAD_GROUP_MAX_Y;
+    limits.max_compute_workgroup_size_z = D3D12_CS_THREAD_GROUP_MAX_Z;
+    limits.max_compute_workgroups_per_dimension = D3D12_CS_DISPATCH_MAX_THREAD_GROUPS_PER_DIMENSION;
+    limits.max_bindless_textures = DX_BINDLESS_SRV_CAPACITY - DX_DYNAMIC_SRV_COUNT;
+    limits.max_push_constant_size = (uint32_t)sizeof(direct.pushData);
+    limits.max_texture_samples = 1;
+    limits.max_uniform_buffers_per_shader_stage = 14;
+    limits.max_sampled_textures_per_shader_stage = 128;
+    limits.max_storage_buffers_per_shader_stage = 64;
+    limits.max_storage_textures_per_shader_stage = 64;
+    limits.max_samplers_per_shader_stage = 16;
+    if (direct.device)
+    {
+        D3D12_FEATURE_DATA_D3D12_OPTIONS options = {};
+        if (SUCCEEDED(direct.device->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS, &options, sizeof(options))))
+        {
+            if (options.ResourceBindingTier >= D3D12_RESOURCE_BINDING_TIER_2)
+            {
+                limits.max_uniform_buffers_per_shader_stage = 1000000;
+                limits.max_sampled_textures_per_shader_stage = 1000000;
+                limits.max_samplers_per_shader_stage = 2048;
+            }
+            if (options.ResourceBindingTier >= D3D12_RESOURCE_BINDING_TIER_3)
+            {
+                limits.max_storage_buffers_per_shader_stage = 1000000;
+                limits.max_storage_textures_per_shader_stage = 1000000;
+            }
+        }
+        for (uint32_t samples = 16; samples > 1; samples >>= 1)
+        {
+            D3D12_FEATURE_DATA_MULTISAMPLE_QUALITY_LEVELS quality = {};
+            quality.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+            quality.SampleCount = samples;
+            if (SUCCEEDED(direct.device->CheckFeatureSupport(D3D12_FEATURE_MULTISAMPLE_QUALITY_LEVELS, &quality, sizeof(quality))) && quality.NumQualityLevels > 0)
+            {
+                limits.max_texture_samples = samples;
+                break;
+            }
+        }
+    }
+    direct.limits = limits;
 }
 
 void dx_unload_library()
 {
+    direct.limits = {};
     if (!direct.device) return;
     if (direct.cmd) direct.cmd->Close();
     dx_wait_gpu();
@@ -1021,6 +1158,11 @@ void dx_unload_library()
         item.second.rootSignature.Reset();
     }
     direct.modules.clear();
+    direct.bindings.clear();
+    direct.currentBindingGroup = nullptr;
+    for (auto& item : direct.layouts)
+        item.second.rootSignature.Reset();
+    direct.layouts.clear();
     for (auto& item : direct.buffers)
     {
         if (item.second.mapped && item.second.handle)
@@ -1030,6 +1172,8 @@ void dx_unload_library()
     }
     direct.buffers.clear();
     direct.textureViews.clear();
+    direct.bindlessFree.clear();
+    direct.bindlessCursor = 0;
     for (auto& item : direct.textures)
         item.second.handle.Reset();
     direct.textures.clear();
@@ -1053,12 +1197,15 @@ void dx_unload_library()
     direct.fence.Reset();
     direct.queue.Reset();
     direct.device.Reset();
-    direct.bufferID = direct.textureID = direct.textureViewID = direct.samplerID = direct.moduleID = 0;
+    direct.bufferID = direct.textureID = direct.textureViewID = direct.samplerID = 0;
+    direct.layoutID = direct.bindingID = direct.moduleID = 0;
     direct.meshID = direct.meshletID = direct.passID = 0;
     direct.currentPassType = RT_MODULE_NONE;
     direct.currentPipeline = nullptr;
 
     if (rt_unload_library == dx_unload_library) rt_unload_library = nullptr;
+    if (rt_get_backend == dx_get_backend) rt_get_backend = nullptr;
+    if (rt_get_limits == dx_get_limits) rt_get_limits = nullptr;
     if (rt_create_buffer == dx_create_buffer) rt_create_buffer = nullptr;
     if (rt_destroy_buffer == dx_destroy_buffer) rt_destroy_buffer = nullptr;
     if (rt_bind_buffer == dx_bind_buffer) rt_bind_buffer = nullptr;
@@ -1074,6 +1221,11 @@ void dx_unload_library()
     if (rt_create_sampler == dx_create_sampler) rt_create_sampler = nullptr;
     if (rt_destroy_sampler == dx_destroy_sampler) rt_destroy_sampler = nullptr;
     if (rt_bind_sampler == dx_bind_sampler) rt_bind_sampler = nullptr;
+    if (rt_create_layout == dx_create_layout) rt_create_layout = nullptr;
+    if (rt_destroy_layout == dx_destroy_layout) rt_destroy_layout = nullptr;
+    if (rt_create_binding == dx_create_binding) rt_create_binding = nullptr;
+    if (rt_destroy_binding == dx_destroy_binding) rt_destroy_binding = nullptr;
+    if (rt_bind_binding == dx_bind_binding) rt_bind_binding = nullptr;
     if (rt_create_module_compute == dx_create_module_compute) rt_create_module_compute = nullptr;
     if (rt_create_module_render == dx_create_module_render) rt_create_module_render = nullptr;
     if (rt_destroy_module_render == dx_destroy_module_render) rt_destroy_module_render = nullptr;
@@ -1123,9 +1275,19 @@ void dx_unload_library()
     if (rt_submit == dx_submit) rt_submit = nullptr;
 }
 
+rt_backend_t dx_get_backend()
+{
+    return RT_DIRECTX;
+}
+
+rt_limits_t dx_get_limits()
+{
+    return direct.limits;
+}
+
 rt_buffer_t dx_create_buffer(rt_buffer_info_t const& info)
 {
-    if (info.usage == 0)
+    if (info.usages == 0)
     {
         fprintf(stderr, "Buffer usage must not be 0");
         abort();
@@ -1135,7 +1297,7 @@ rt_buffer_t dx_create_buffer(rt_buffer_info_t const& info)
 
     uint32_t handle = direct.bufferID + 1;
     auto& native = direct.buffers[handle];
-    bool hostVisible = (info.usage & (RT_BUFFER_USAGE_MAP_READ | RT_BUFFER_USAGE_MAP_WRITE)) || info.data;
+    bool hostVisible = (info.usages & (RT_BUFFER_USAGE_MAP_READ | RT_BUFFER_USAGE_MAP_WRITE)) || info.data;
     native.heap = hostVisible ? D3D12_HEAP_TYPE_UPLOAD : D3D12_HEAP_TYPE_DEFAULT;
 
     D3D12_HEAP_PROPERTIES heap = {};
@@ -1185,7 +1347,7 @@ rt_buffer_t dx_create_buffer(rt_buffer_info_t const& info)
     direct.bufferID = handle;
     result.handle = handle;
     result.size = info.size;
-    result.usage = info.usage;
+    result.usages = info.usages;
     result.native = &native;
     return result;
 }
@@ -1246,7 +1408,7 @@ void dx_unmap_buffer(rt_buffer_t& buffer)
 
 rt_texture_t dx_create_texture(rt_texture_info_t const& info)
 {
-    if (info.usage == 0)
+    if (info.usages == 0)
     {
         fprintf(stderr, "Texture usage must not be 0");
         abort();
@@ -1259,7 +1421,7 @@ rt_texture_t dx_create_texture(rt_texture_info_t const& info)
     auto& native = direct.textures[handle];
     native.format = rt_to_dx_texture_format(info.format);
     native.rtFormat = info.format;
-    native.usage = info.usage;
+    native.usages = info.usages;
     native.width = info.width;
     native.height = info.target == RT_TEXTURE_1D ? 1 : info.height;
     native.depth = info.depth ? info.depth : 1;
@@ -1292,17 +1454,17 @@ rt_texture_t dx_create_texture(rt_texture_info_t const& info)
     desc.Flags = D3D12_RESOURCE_FLAG_NONE;
     if (dx_is_depth(native.format))
     {
-        if (info.usage & RT_TEXTURE_USAGE_RENDER_ATTACHMENT)
+        if (info.usages & RT_TEXTURE_USAGE_RENDER_ATTACHMENT)
             desc.Flags |= D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL;
     }
     else
     {
-        if (info.usage & RT_TEXTURE_USAGE_STORAGE_BINDING)
+        if (info.usages & RT_TEXTURE_USAGE_STORAGE_BINDING)
             desc.Flags |= D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
-        if (info.usage & RT_TEXTURE_USAGE_RENDER_ATTACHMENT)
+        if (info.usages & RT_TEXTURE_USAGE_RENDER_ATTACHMENT)
             desc.Flags |= D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
     }
-    if ((info.usage & (RT_TEXTURE_USAGE_TEXTURE_BINDING | RT_TEXTURE_USAGE_STORAGE_BINDING)) == 0)
+    if ((info.usages & (RT_TEXTURE_USAGE_TEXTURE_BINDING | RT_TEXTURE_USAGE_STORAGE_BINDING)) == 0)
         desc.Flags |= D3D12_RESOURCE_FLAG_DENY_SHADER_RESOURCE;
 
     D3D12_CLEAR_VALUE clear = {};
@@ -1359,14 +1521,14 @@ rt_texture_t dx_create_texture(rt_texture_info_t const& info)
     result.target = native.target;
     result.format = native.rtFormat;
     result.samples = native.samples > 1 ? RT_TEXTURE_SAMPLE_4X : RT_TEXTURE_SAMPLE_1X;
-    result.usage = native.usage;
+    result.usages = native.usages;
     result.mipmaps = native.levels;
     result.native = &native;
     result.default_view = dx_create_texture_view(result, {
         .target = native.target,
         .format = native.rtFormat,
         .aspect = RT_TEXTURE_ASPECT_ALL,
-        .usage = native.usage,
+        .usages = info.usages,
         .layer_count = native.layers,
         .level_count = native.levels,
     });
@@ -1380,7 +1542,10 @@ void dx_destroy_texture(rt_texture_t& texture)
         for (auto it = direct.textureViews.begin(); it != direct.textureViews.end(); )
         {
             if (it->second.texture == native)
+            {
+                dx_release_bindless(it->second);
                 it = direct.textureViews.erase(it);
+            }
             else
                 ++it;
         }
@@ -1405,11 +1570,17 @@ rt_texture_view_t dx_create_texture_view(rt_texture_t& texture, rt_texture_view_
 {
     auto* tex = dx_texture_native(texture);
     rt_texture_format_t format = info.format != RT_TEXTURE_NONE ? info.format : (tex ? tex->rtFormat : RT_TEXTURE_NONE);
-    rt_texture_usages_t usage = info.usage ? info.usage : (tex ? tex->usage : 0);
+    rt_texture_usages_t usage = info.usages ? info.usages : (tex ? tex->usages : 0);
     rt_texture_view_t result{
-        0, info.target, format,
-        info.aspect, usage,
-        info.base_layer, info.layer_count, info.base_level, info.level_count, nullptr};
+        .target = info.target,
+        .format = format,
+        .aspect = info.aspect,
+        .usages = usage,
+        .base_layer = info.base_layer,
+        .layer_count = info.layer_count,
+        .base_level = info.base_level,
+        .level_count = info.level_count,
+    };
     if (!tex || !tex->handle) return result;
     uint32_t levelCount = info.level_count ? info.level_count : tex->levels - info.base_level;
     if (info.base_level >= tex->levels || levelCount == 0) return result;
@@ -1487,13 +1658,26 @@ rt_texture_view_t dx_create_texture_view(rt_texture_t& texture, rt_texture_view_
     direct.textureViewID = handle;
     result.handle = handle;
     result.native = &native;
+    if ((usage & RT_TEXTURE_USAGE_TEXTURE_BINDLESS) && tex->handle)
+    {
+        uint32_t index = dx_alloc_bindless();
+        if (index)
+        {
+            direct.device->CreateShaderResourceView(tex->handle.Get(), &srv, dx_srv_cpu_index(index));
+            native.bindless = index;
+            result.bindless = index;
+        }
+    }
     return result;
 }
 
 void dx_destroy_texture_view(rt_texture_view_t& view)
 {
-    if (dx_texture_view_native(view))
+    if (auto* native = dx_texture_view_native(view))
+    {
+        dx_release_bindless(*native);
         direct.textureViews.erase(view.handle);
+    }
     view = {};
 }
 
@@ -1558,6 +1742,190 @@ void dx_bind_sampler(rt_sampler_t& sampler, rt_sampler_bind_t bind)
     direct.currentBinding[bind.binding].sampler_bind = bind;
 }
 
+static dx_layout_native_t* dx_layout_native(rt_layout_t const& layout)
+{
+    if (!layout.native || layout.handle == 0) return nullptr;
+    return (dx_layout_native_t*)layout.native;
+}
+
+static dx_binding_native_t* dx_binding_native(rt_binding_t const& binding)
+{
+    if (!binding.native || binding.handle == 0) return nullptr;
+    return (dx_binding_native_t*)binding.native;
+}
+
+static void dx_use_layout(dx_module_native_t& native, rt_layout_t const& layout, rt_module_layout_t* dst)
+{
+    auto* src = dx_layout_native(layout);
+    if (!src || !src->rootSignature)
+    {
+        fprintf(stderr, "Module requires a layout");
+        abort();
+    }
+    native.rootSignature = src->rootSignature;
+    native.descriptorCount = src->count;
+    native.bindlessRoot = src->bindlessRoot;
+    for (uint32_t i = 0; i < src->count; ++i)
+    {
+        native.kinds[i] = src->kinds[i];
+        native.descriptorBindings[i] = src->bindings[i];
+    }
+    for (size_t i = 0; i < RT_MAX_BINDING_HANDLE_NUM; ++i)
+    {
+        dst[i].binding = layout.entry[i].binding;
+        dst[i].stages = layout.entry[i].stages;
+        dst[i].type = layout.entry[i].type;
+    }
+}
+
+rt_layout_t dx_create_layout(rt_layout_info_t const& info)
+{
+    rt_layout_t result = {};
+    if (!direct.device) return result;
+    auto handle = direct.layoutID + 1;
+    auto& native = direct.layouts[handle];
+    D3D12_DESCRIPTOR_RANGE ranges[RT_MAX_BINDING_HANDLE_NUM] = {};
+    D3D12_ROOT_PARAMETER params[2 + RT_MAX_BINDING_HANDLE_NUM] = {};
+    params[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
+    params[0].Constants.ShaderRegister = 16;
+    params[0].Constants.RegisterSpace = 0;
+    params[0].Constants.Num32BitValues = 32;
+    params[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+    uint32_t paramCount = 1;
+    for (uint32_t i = 0; i < RT_MAX_BINDING_HANDLE_NUM; ++i)
+    {
+        result.entry[i] = info.entry[i];
+        dx_binding_kind_t kind = DX_KIND_NONE;
+        D3D12_DESCRIPTOR_RANGE_TYPE rangeType = D3D12_DESCRIPTOR_RANGE_TYPE_CBV;
+        if (info.entry[i].type == RT_BINDING_UNIFORM_BUFFER)
+        {
+            kind = DX_KIND_CBV;
+            rangeType = D3D12_DESCRIPTOR_RANGE_TYPE_CBV;
+        }
+        else if (info.entry[i].type == RT_BINDING_STORAGE_BUFFER)
+        {
+            kind = DX_KIND_STORAGE;
+            rangeType = D3D12_DESCRIPTOR_RANGE_TYPE_UAV;
+        }
+        else if (info.entry[i].type == RT_BINDING_TEXTURE)
+        {
+            kind = DX_KIND_SRV;
+            rangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
+        }
+        else if (info.entry[i].type == RT_BINDING_STORAGE_TEXTURE)
+        {
+            kind = DX_KIND_UAV;
+            rangeType = D3D12_DESCRIPTOR_RANGE_TYPE_UAV;
+        }
+        else if (info.entry[i].type == RT_BINDING_SAMPLER)
+        {
+            kind = DX_KIND_SAMPLER;
+            rangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SAMPLER;
+        }
+        else continue;
+        native.kinds[native.count] = kind;
+        native.bindings[native.count] = info.entry[i].binding;
+        native.entryIndex[native.count] = i;
+        ranges[native.count].RangeType = rangeType;
+        ranges[native.count].NumDescriptors = 1;
+        ranges[native.count].BaseShaderRegister = info.entry[i].binding;
+        ranges[native.count].RegisterSpace = 0;
+        ranges[native.count].OffsetInDescriptorsFromTableStart = 0;
+        params[paramCount].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+        params[paramCount].DescriptorTable.NumDescriptorRanges = 1;
+        params[paramCount].DescriptorTable.pDescriptorRanges = &ranges[native.count];
+        params[paramCount].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+        native.count++;
+        paramCount++;
+    }
+    D3D12_DESCRIPTOR_RANGE bindlessRange = {};
+    bindlessRange.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
+    bindlessRange.NumDescriptors = DX_BINDLESS_SRV_CAPACITY;
+    bindlessRange.BaseShaderRegister = 0;
+    bindlessRange.RegisterSpace = 1;
+    params[paramCount].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+    params[paramCount].DescriptorTable.NumDescriptorRanges = 1;
+    params[paramCount].DescriptorTable.pDescriptorRanges = &bindlessRange;
+    params[paramCount].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+    native.bindlessRoot = paramCount;
+    paramCount++;
+    D3D12_ROOT_SIGNATURE_DESC desc = {};
+    desc.NumParameters = paramCount;
+    desc.pParameters = params;
+    desc.Flags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
+    ComPtr<ID3DBlob> blob, error;
+    if (FAILED(D3D12SerializeRootSignature(&desc, D3D_ROOT_SIGNATURE_VERSION_1, &blob, &error)) ||
+        FAILED(direct.device->CreateRootSignature(0, blob->GetBufferPointer(), blob->GetBufferSize(),
+            IID_PPV_ARGS(&native.rootSignature))))
+    {
+        direct.layouts.erase(handle);
+        return {};
+    }
+    direct.layoutID = handle;
+    result.handle = handle;
+    result.native = &native;
+    return result;
+}
+
+void dx_destroy_layout(rt_layout_t& layout)
+{
+    if (auto* native = dx_layout_native(layout))
+    {
+        native->rootSignature.Reset();
+        direct.layouts.erase(layout.handle);
+    }
+    layout = {};
+}
+
+rt_binding_t dx_create_binding(rt_binding_info_t const& info)
+{
+    auto* layout = dx_layout_native(info.layout);
+    if (!layout || !layout->rootSignature)
+    {
+        fprintf(stderr, "Binding requires a layout");
+        abort();
+    }
+    rt_binding_t result = {};
+    auto handle = direct.bindingID + 1;
+    auto& native = direct.bindings[handle];
+    native.layout = layout;
+    for (size_t i = 0; i < std::size(info.entry); ++i)
+    {
+        result.entry[i] = info.entry[i];
+        native.entry[i] = info.entry[i];
+    }
+    direct.bindingID = handle;
+    result.handle = handle;
+    result.native = &native;
+    return result;
+}
+
+void dx_destroy_binding(rt_binding_t& binding)
+{
+    if (auto* native = dx_binding_native(binding))
+    {
+        if (direct.currentBindingGroup == native)
+            direct.currentBindingGroup = nullptr;
+        direct.bindings.erase(binding.handle);
+    }
+    binding = {};
+}
+
+void dx_bind_binding(rt_binding_t& binding)
+{
+    if (direct.currentPipeline == nullptr)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    auto* native = dx_binding_native(binding);
+    if (!native || !native->layout)
+        return;
+    for (size_t i = 0; i < RT_MAX_BINDING_HANDLE_NUM; ++i)
+        native->entry[i] = binding.entry[i];
+    direct.currentBindingGroup = native;
+}
+
 rt_module_compute_t dx_create_module_compute(rt_module_compute_info_t const& info)
 {
     rt_module_compute_t result = {};
@@ -1567,71 +1935,7 @@ rt_module_compute_t dx_create_module_compute(rt_module_compute_info_t const& inf
     native.ccode.assign((const uint8_t*)info.cshader.code, (const uint8_t*)info.cshader.code + info.cshader.size);
     native.cshader.pShaderBytecode = native.ccode.data();
     native.cshader.BytecodeLength = native.ccode.size();
-    native.descriptorCount = 0;
-    D3D12_DESCRIPTOR_RANGE ranges[RT_MAX_BINDING_HANDLE_NUM] = {};
-    D3D12_ROOT_PARAMETER params[1 + RT_MAX_BINDING_HANDLE_NUM] = {};
-    params[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
-    params[0].Constants.ShaderRegister = 16;
-    params[0].Constants.RegisterSpace = 0;
-    params[0].Constants.Num32BitValues = 32;
-    params[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
-    uint32_t paramCount = 1;
-    for (uint32_t i = 0; i < RT_MAX_BINDING_HANDLE_NUM; ++i)
-    {
-        dx_binding_kind_t kind = DX_KIND_NONE;
-        D3D12_DESCRIPTOR_RANGE_TYPE rangeType = D3D12_DESCRIPTOR_RANGE_TYPE_CBV;
-        if (info.binding[i].type == RT_BINDING_UNIFORM_BUFFER)
-        {
-            kind = DX_KIND_CBV;
-            rangeType = D3D12_DESCRIPTOR_RANGE_TYPE_CBV;
-        }
-        else if (info.binding[i].type == RT_BINDING_STORAGE_BUFFER)
-        {
-            kind = DX_KIND_STORAGE;
-            rangeType = D3D12_DESCRIPTOR_RANGE_TYPE_UAV;
-        }
-        else if (info.binding[i].type == RT_BINDING_TEXTURE)
-        {
-            kind = DX_KIND_SRV;
-            rangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
-        }
-        else if (info.binding[i].type == RT_BINDING_STORAGE_TEXTURE)
-        {
-            kind = DX_KIND_UAV;
-            rangeType = D3D12_DESCRIPTOR_RANGE_TYPE_UAV;
-        }
-        else if (info.binding[i].type == RT_BINDING_SAMPLER)
-        {
-            kind = DX_KIND_SAMPLER;
-            rangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SAMPLER;
-        }
-        else continue;
-        native.kinds[native.descriptorCount] = kind;
-        native.descriptorBindings[native.descriptorCount] = info.binding[i].binding;
-        ranges[native.descriptorCount].RangeType = rangeType;
-        ranges[native.descriptorCount].NumDescriptors = 1;
-        ranges[native.descriptorCount].BaseShaderRegister = info.binding[i].binding;
-        ranges[native.descriptorCount].RegisterSpace = 0;
-        ranges[native.descriptorCount].OffsetInDescriptorsFromTableStart = 0;
-        params[paramCount].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
-        params[paramCount].DescriptorTable.NumDescriptorRanges = 1;
-        params[paramCount].DescriptorTable.pDescriptorRanges = &ranges[native.descriptorCount];
-        params[paramCount].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
-        native.descriptorCount++;
-        paramCount++;
-    }
-    D3D12_ROOT_SIGNATURE_DESC desc = {};
-    desc.NumParameters = paramCount;
-    desc.pParameters = params;
-    desc.Flags = D3D12_ROOT_SIGNATURE_FLAG_NONE;
-    ComPtr<ID3DBlob> blob, error;
-    if (FAILED(D3D12SerializeRootSignature(&desc, D3D_ROOT_SIGNATURE_VERSION_1, &blob, &error)) ||
-        FAILED(direct.device->CreateRootSignature(0, blob->GetBufferPointer(), blob->GetBufferSize(),
-            IID_PPV_ARGS(&native.rootSignature))))
-    {
-        direct.modules.erase(handle);
-        return {};
-    }
+    dx_use_layout(native, info.layout, result.layout);
     D3D12_COMPUTE_PIPELINE_STATE_DESC pso = {};
     pso.pRootSignature = native.rootSignature.Get();
     pso.CS = native.cshader;
@@ -1644,8 +1948,6 @@ rt_module_compute_t dx_create_module_compute(rt_module_compute_info_t const& inf
     direct.moduleID = handle;
     result.handle = handle;
     result.native = &native;
-    for (size_t i = 0; i < std::size(info.binding); ++i)
-        result.binding[i] = info.binding[i];
     return result;
 }
 
@@ -1685,72 +1987,7 @@ rt_module_render_t dx_create_module_render(rt_module_render_info_t const& info)
         native.fshader.pShaderBytecode = native.fcode.data();
         native.fshader.BytecodeLength = native.fcode.size();
     }
-    native.descriptorCount = 0;
-    D3D12_DESCRIPTOR_RANGE ranges[RT_MAX_BINDING_HANDLE_NUM] = {};
-    D3D12_ROOT_PARAMETER params[1 + RT_MAX_BINDING_HANDLE_NUM] = {};
-    params[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
-    params[0].Constants.ShaderRegister = 16;
-    params[0].Constants.RegisterSpace = 0;
-    params[0].Constants.Num32BitValues = 32;
-    params[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
-    uint32_t paramCount = 1;
-    for (uint32_t i = 0; i < RT_MAX_BINDING_HANDLE_NUM; ++i)
-    {
-        dx_binding_kind_t kind = DX_KIND_NONE;
-        D3D12_DESCRIPTOR_RANGE_TYPE rangeType = D3D12_DESCRIPTOR_RANGE_TYPE_CBV;
-        if (info.binding[i].type == RT_BINDING_UNIFORM_BUFFER)
-        {
-            kind = DX_KIND_CBV;
-            rangeType = D3D12_DESCRIPTOR_RANGE_TYPE_CBV;
-        }
-        else if (info.binding[i].type == RT_BINDING_STORAGE_BUFFER)
-        {
-            kind = DX_KIND_STORAGE;
-            rangeType = D3D12_DESCRIPTOR_RANGE_TYPE_UAV;
-        }
-        else if (info.binding[i].type == RT_BINDING_TEXTURE)
-        {
-            kind = DX_KIND_SRV;
-            rangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
-        }
-        else if (info.binding[i].type == RT_BINDING_STORAGE_TEXTURE)
-        {
-            kind = DX_KIND_UAV;
-            rangeType = D3D12_DESCRIPTOR_RANGE_TYPE_UAV;
-        }
-        else if (info.binding[i].type == RT_BINDING_SAMPLER)
-        {
-            kind = DX_KIND_SAMPLER;
-            rangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SAMPLER;
-        }
-        else continue;
-        native.kinds[native.descriptorCount] = kind;
-        native.descriptorBindings[native.descriptorCount] = info.binding[i].binding;
-        ranges[native.descriptorCount].RangeType = rangeType;
-        ranges[native.descriptorCount].NumDescriptors = 1;
-        ranges[native.descriptorCount].BaseShaderRegister = info.binding[i].binding;
-        ranges[native.descriptorCount].RegisterSpace = 0;
-        ranges[native.descriptorCount].OffsetInDescriptorsFromTableStart = 0;
-        params[paramCount].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
-        params[paramCount].DescriptorTable.NumDescriptorRanges = 1;
-        params[paramCount].DescriptorTable.pDescriptorRanges = &ranges[native.descriptorCount];
-        params[paramCount].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
-        native.descriptorCount++;
-        paramCount++;
-    }
-    D3D12_ROOT_SIGNATURE_DESC desc = {};
-    desc.NumParameters = paramCount;
-    desc.pParameters = params;
-    desc.Flags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
-    ComPtr<ID3DBlob> blob, error;
-    if (FAILED(D3D12SerializeRootSignature(&desc, D3D_ROOT_SIGNATURE_VERSION_1, &blob, &error)) ||
-        FAILED(direct.device->CreateRootSignature(0, blob->GetBufferPointer(), blob->GetBufferSize(),
-            IID_PPV_ARGS(&native.rootSignature))))
-    {
-        result.native = &native;
-        dx_destroy_module_native(handle, result.native);
-        return {};
-    }
+    dx_use_layout(native, info.layout, result.layout);
     D3D12_INPUT_ELEMENT_DESC elements[RT_MAX_VERTEX_BUFFER_NUM * RT_MAX_VERTEX_ATTRIB_NUM] = {};
     uint32_t attrCount = 0;
     for (uint32_t i = 0; i < RT_MAX_VERTEX_BUFFER_NUM; ++i)
@@ -1935,8 +2172,6 @@ rt_module_render_t dx_create_module_render(rt_module_render_info_t const& info)
     result.index_type = info.index_type;
     for (size_t i = 0; i < std::size(info.vertex); ++i)
         result.vertex[i] = info.vertex[i];
-    for (size_t i = 0; i < std::size(info.binding); ++i)
-        result.binding[i] = info.binding[i];
     result.cull_mode = info.cull_mode;
     result.wind_mode = info.wind_mode;
     result.fill_mode = info.fill_mode;
@@ -1997,6 +2232,7 @@ void dx_begin_compute(rt_pass_compute_t& pass)
     }
     for (auto& binding : direct.currentBinding)
         binding = {};
+    direct.currentBindingGroup = nullptr;
     direct.pushCount = 0;
     auto handle = direct.passID + 1;
     auto& native = direct.computePasses[handle];
@@ -2021,6 +2257,7 @@ void dx_end_compute(rt_pass_compute_t& pass)
     direct.currentPassType = RT_MODULE_NONE;
     direct.currentPipeline = nullptr;
     direct.currentComputeModule = nullptr;
+    direct.currentBindingGroup = nullptr;
     for (auto& binding : direct.currentBinding)
         binding = {};
     direct.pushCount = 0;
@@ -2033,16 +2270,16 @@ void dx_bind_module_compute(rt_module_compute_t& module)
         fprintf(stderr, "Pipeline not begin");
         abort();
     }
-    auto* mod = (dx_module_native_t*)module.native;
-    if (module.handle == 0 || !mod || !mod->pipeline)
+    auto* native = (dx_module_native_t*)module.native;
+    if (module.handle == 0 || !native || !native->pipeline)
     {
         fprintf(stderr, "Pipeline module is not created");
         abort();
     }
     direct.currentComputeModule = &module;
-    direct.cmd->SetPipelineState(mod->pipeline.Get());
-    if (mod->rootSignature)
-        direct.cmd->SetComputeRootSignature(mod->rootSignature.Get());
+    direct.cmd->SetPipelineState(native->pipeline.Get());
+    if (native->rootSignature)
+        direct.cmd->SetComputeRootSignature(native->rootSignature.Get());
 }
 
 void dx_dispatch_compute(uint32_t groupX, uint32_t groupY, uint32_t groupZ)
@@ -2125,6 +2362,7 @@ void dx_begin_render(rt_pass_render_t& pass)
     }
     for (auto& binding : direct.currentBinding)
         binding = {};
+    direct.currentBindingGroup = nullptr;
     direct.pushCount = 0;
     direct.currentPassType = RT_MODULE_RENDER;
     direct.currentRenderPass = &pass;
@@ -2215,6 +2453,7 @@ void dx_end_render(rt_pass_render_t& pass)
     direct.currentPassType = RT_MODULE_NONE;
     direct.currentPipeline = nullptr;
     direct.currentRenderModule = nullptr;
+    direct.currentBindingGroup = nullptr;
     for (auto& binding : direct.currentBinding)
         binding = {};
     direct.pushCount = 0;
@@ -2227,17 +2466,17 @@ void dx_bind_module_render(rt_module_render_t& module)
         fprintf(stderr, "Pipeline not begin");
         abort();
     }
-    auto* mod = (dx_module_native_t*)module.native;
-    if (module.handle == 0 || !mod || !mod->pipeline)
+    auto* native = (dx_module_native_t*)module.native;
+    if (module.handle == 0 || !native || !native->pipeline)
     {
         fprintf(stderr, "Pipeline module is not created");
         abort();
     }
     direct.currentRenderModule = &module;
-    direct.cmd->SetPipelineState(mod->pipeline.Get());
-    if (mod->rootSignature)
-        direct.cmd->SetGraphicsRootSignature(mod->rootSignature.Get());
-    direct.cmd->IASetPrimitiveTopology(mod->topology);
+    direct.cmd->SetPipelineState(native->pipeline.Get());
+    if (native->rootSignature)
+        direct.cmd->SetGraphicsRootSignature(native->rootSignature.Get());
+    direct.cmd->IASetPrimitiveTopology(native->topology);
 }
 
 void dx_set_viewport(float x, float y, float width, float height, float minDepth, float maxDepth)
@@ -2427,13 +2666,13 @@ void dx_push_constant(uint8_t const* buffer, size_t length)
         fprintf(stderr, "Pipeline not begin");
         abort();
     }
-    auto* mod = dx_current_module_native();
-    if (!buffer || length == 0 || !mod) return;
+    auto* native = dx_current_module_native();
+    if (!buffer || length == 0 || !native) return;
     uint32_t count = (uint32_t)((length + 3) / 4);
     if (count > 32) count = 32;
     std::memcpy(direct.pushData, buffer, (size_t)count * 4);
     direct.pushCount = count;
-    if (mod->cshader.BytecodeLength)
+    if (native->cshader.BytecodeLength)
         direct.cmd->SetComputeRoot32BitConstants(0, count, direct.pushData, 0);
     else
         direct.cmd->SetGraphicsRoot32BitConstants(0, count, direct.pushData, 0);
@@ -2779,13 +3018,13 @@ rt_mesh_t dx_create_mesh(const float* vertices, const float* normals, const floa
     native.vertexCount = (uint32_t)vertex_count;
     native.indexCount = (uint32_t)index_count;
     if (vertices)
-        result.vertex[0] = dx_create_buffer({.size = vertex_count * 3 * sizeof(float), .usage = RT_BUFFER_USAGE_VERTEX | RT_BUFFER_USAGE_COPY_DST, .data = vertices});
+        result.vertex[0] = dx_create_buffer({.size = vertex_count * 3 * sizeof(float), .usages = RT_BUFFER_USAGE_VERTEX | RT_BUFFER_USAGE_COPY_DST, .data = vertices});
     if (normals)
-        result.vertex[1] = dx_create_buffer({.size = vertex_count * 3 * sizeof(float), .usage = RT_BUFFER_USAGE_VERTEX | RT_BUFFER_USAGE_COPY_DST, .data = normals});
+        result.vertex[1] = dx_create_buffer({.size = vertex_count * 3 * sizeof(float), .usages = RT_BUFFER_USAGE_VERTEX | RT_BUFFER_USAGE_COPY_DST, .data = normals});
     if (uvs)
-        result.vertex[2] = dx_create_buffer({.size = vertex_count * 2 * sizeof(float), .usage = RT_BUFFER_USAGE_VERTEX | RT_BUFFER_USAGE_COPY_DST, .data = uvs});
+        result.vertex[2] = dx_create_buffer({.size = vertex_count * 2 * sizeof(float), .usages = RT_BUFFER_USAGE_VERTEX | RT_BUFFER_USAGE_COPY_DST, .data = uvs});
     if (indices)
-        result.index = dx_create_buffer({.size = index_count * sizeof(uint32_t), .usage = RT_BUFFER_USAGE_INDEX | RT_BUFFER_USAGE_COPY_DST, .data = indices});
+        result.index = dx_create_buffer({.size = index_count * sizeof(uint32_t), .usages = RT_BUFFER_USAGE_INDEX | RT_BUFFER_USAGE_COPY_DST, .data = indices});
     std::iota(result.location, result.location + std::size(result.location), 0);
     direct.meshID = handle;
     result.handle = handle;
@@ -2822,13 +3061,13 @@ rt_meshlet_t dx_create_meshlet(const float* vertices, const float* normals, cons
     native.vertexCount = (uint32_t)vertex_count;
     native.indexCount = (uint32_t)index_count;
     if (vertices)
-        result.vertex[0] = dx_create_buffer({.size = vertex_count * 4 * sizeof(float), .usage = RT_BUFFER_USAGE_STORAGE | RT_BUFFER_USAGE_COPY_DST, .data = vertices});
+        result.vertex[0] = dx_create_buffer({.size = vertex_count * 4 * sizeof(float), .usages = RT_BUFFER_USAGE_STORAGE | RT_BUFFER_USAGE_COPY_DST, .data = vertices});
     if (normals)
-        result.vertex[1] = dx_create_buffer({.size = vertex_count * 4 * sizeof(float), .usage = RT_BUFFER_USAGE_STORAGE | RT_BUFFER_USAGE_COPY_DST, .data = normals});
+        result.vertex[1] = dx_create_buffer({.size = vertex_count * 4 * sizeof(float), .usages = RT_BUFFER_USAGE_STORAGE | RT_BUFFER_USAGE_COPY_DST, .data = normals});
     if (uvs)
-        result.vertex[2] = dx_create_buffer({.size = vertex_count * 2 * sizeof(float), .usage = RT_BUFFER_USAGE_STORAGE | RT_BUFFER_USAGE_COPY_DST, .data = uvs});
+        result.vertex[2] = dx_create_buffer({.size = vertex_count * 2 * sizeof(float), .usages = RT_BUFFER_USAGE_STORAGE | RT_BUFFER_USAGE_COPY_DST, .data = uvs});
     if (indices)
-        result.index = dx_create_buffer({.size = index_count * sizeof(uint32_t), .usage = RT_BUFFER_USAGE_STORAGE | RT_BUFFER_USAGE_COPY_DST, .data = indices});
+        result.index = dx_create_buffer({.size = index_count * sizeof(uint32_t), .usages = RT_BUFFER_USAGE_STORAGE | RT_BUFFER_USAGE_COPY_DST, .data = indices});
     std::iota(result.location, result.location + std::size(result.location), 0);
     direct.meshletID = handle;
     result.handle = handle;

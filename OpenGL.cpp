@@ -13,6 +13,7 @@
 #include <iostream>
 #include <map>
 #include <numeric>
+#include <vector>
 
 static GLenum rt_to_gl_texture_target(rt_texture_target_t target)
 {
@@ -471,7 +472,7 @@ struct gl_texture_native_t
     uint32_t width = 1, height = 1, depth = 1;
     rt_texture_target_t target = RT_TEXTURE_2D;
     rt_texture_format_t format = RT_TEXTURE_NONE;
-    rt_texture_usages_t usage = 0;
+    rt_texture_usages_t usages = 0;
     uint32_t levels = 1;
     rt_texture_sample_t samples = RT_TEXTURE_SAMPLE_1X;
 };
@@ -479,6 +480,7 @@ struct gl_texture_native_t
 struct gl_texture_view_native_t
 {
     GLuint handle = 0;
+    GLuint64 bindlessHandle = 0;
     gl_texture_native_t* texture = nullptr;
 };
 
@@ -487,11 +489,21 @@ struct gl_sampler_native_t
     GLuint handle = 0;
 };
 
+struct gl_layout_native_t
+{
+    uint32_t count = 0;
+};
+
+struct gl_binding_native_t
+{
+    rt_layout_entry_t entry[RT_MAX_BINDING_HANDLE_NUM] = {};
+};
+
 struct gl_module_native_t
 {
     GLuint program = 0;
     GLuint vao = 0;
-    rt_binding_t bindings[RT_MAX_BINDING_HANDLE_NUM] = {};
+    rt_module_layout_t layouts[RT_MAX_BINDING_HANDLE_NUM] = {};
 };
 
 struct gl_mesh_native_t
@@ -515,15 +527,20 @@ struct OpenGL
     uint32_t textureID = 0;
     uint32_t textureViewID = 0;
     uint32_t samplerID = 0;
+    uint32_t layoutID = 0;
+    uint32_t bindingID = 0;
     uint32_t moduleID = 0;
     uint32_t meshID = 0;
     uint32_t meshletID = 0;
     uint32_t passID = 0;
+    rt_limits_t limits;
 
     std::map<uint32_t, gl_buffer_native_t> buffers;
     std::map<uint32_t, gl_texture_native_t> textures;
     std::map<uint32_t, gl_texture_view_native_t> textureViews;
     std::map<uint32_t, gl_sampler_native_t> samplers;
+    std::map<uint32_t, gl_layout_native_t> layouts;
+    std::map<uint32_t, gl_binding_native_t> bindings;
     std::map<uint32_t, gl_module_native_t> modules;
     std::map<uint32_t, gl_mesh_native_t> meshes;
     std::map<uint32_t, gl_meshlet_native_t> meshlets;
@@ -601,12 +618,12 @@ static gl_module_native_t* gl_current_module_native()
 
 static rt_binding_type_t gl_query_buffer_binding_type(uint32_t binding)
 {
-    auto* mod = gl_current_module_native();
-    if (mod)
+    auto* native = gl_current_module_native();
+    if (native)
     {
         for (uint32_t i = 0; i < RT_MAX_BINDING_HANDLE_NUM; ++i)
         {
-            auto const& item = mod->bindings[i];
+            auto const& item = native->layouts[i];
             if (item.binding == binding &&
                 (item.type == RT_BINDING_UNIFORM_BUFFER || item.type == RT_BINDING_STORAGE_BUFFER))
                 return item.type;
@@ -639,6 +656,11 @@ static GLuint gl_sampler_name(rt_sampler_t const& sampler)
     return native ? native->handle : 0;
 }
 
+static void gl_release_bindless(gl_texture_view_native_t& native);
+
+static uint32_t gl_limit(GLenum name);
+static uint32_t gl_limit3(GLenum a, GLenum b, GLenum c);
+
 void gl_load_library()
 {
     glewExperimental = GL_TRUE;
@@ -663,6 +685,8 @@ void gl_load_library()
     // ====================================================================
 
     rt_unload_library = gl_unload_library;
+    rt_get_backend = gl_get_backend;
+    rt_get_limits = gl_get_limits;
     rt_create_buffer = gl_create_buffer;
     rt_destroy_buffer = gl_destroy_buffer;
     rt_bind_buffer = gl_bind_buffer;
@@ -678,6 +702,11 @@ void gl_load_library()
     rt_create_sampler = gl_create_sampler;
     rt_destroy_sampler = gl_destroy_sampler;
     rt_bind_sampler = gl_bind_sampler;
+    rt_create_layout = gl_create_layout;
+    rt_destroy_layout = gl_destroy_layout;
+    rt_create_binding = gl_create_binding;
+    rt_destroy_binding = gl_destroy_binding;
+    rt_bind_binding = gl_bind_binding;
     rt_create_module_compute = gl_create_module_compute;
     rt_create_module_render = gl_create_module_render;
     rt_destroy_module_render = gl_destroy_module_render;
@@ -725,10 +754,54 @@ void gl_load_library()
     rt_destroy_meshlet = gl_destroy_meshlet;
     rt_draw_meshlet = gl_draw_meshlet;
     rt_submit = gl_submit;
+
+    rt_limits_t limits = {};
+    limits.max_texture_dimension_1d = gl_limit(GL_MAX_TEXTURE_SIZE);
+    limits.max_texture_dimension_2d = limits.max_texture_dimension_1d;
+    limits.max_texture_dimension_3d = gl_limit(GL_MAX_3D_TEXTURE_SIZE);
+    limits.max_texture_array_layers = gl_limit(GL_MAX_ARRAY_TEXTURE_LAYERS);
+    limits.max_texture_samples = gl_limit(GL_MAX_SAMPLES);
+    limits.max_uniform_buffer_binding_size = gl_limit(GL_MAX_UNIFORM_BLOCK_SIZE);
+    limits.max_storage_buffer_binding_size = gl_limit(GL_MAX_SHADER_STORAGE_BLOCK_SIZE);
+    limits.max_buffer_size = limits.max_storage_buffer_binding_size;
+    limits.min_uniform_buffer_offset_alignment = gl_limit(GL_UNIFORM_BUFFER_OFFSET_ALIGNMENT);
+    limits.min_storage_buffer_offset_alignment = gl_limit(GL_SHADER_STORAGE_BUFFER_OFFSET_ALIGNMENT);
+    limits.max_uniform_buffers_per_shader_stage = gl_limit3(GL_MAX_VERTEX_UNIFORM_BLOCKS, GL_MAX_FRAGMENT_UNIFORM_BLOCKS, GL_MAX_COMPUTE_UNIFORM_BLOCKS);
+    limits.max_storage_buffers_per_shader_stage = gl_limit3(GL_MAX_VERTEX_SHADER_STORAGE_BLOCKS, GL_MAX_FRAGMENT_SHADER_STORAGE_BLOCKS, GL_MAX_COMPUTE_SHADER_STORAGE_BLOCKS);
+    limits.max_sampled_textures_per_shader_stage = gl_limit3(GL_MAX_VERTEX_TEXTURE_IMAGE_UNITS, GL_MAX_TEXTURE_IMAGE_UNITS, GL_MAX_COMPUTE_TEXTURE_IMAGE_UNITS);
+    limits.max_storage_textures_per_shader_stage = gl_limit3(GL_MAX_VERTEX_IMAGE_UNIFORMS, GL_MAX_FRAGMENT_IMAGE_UNIFORMS, GL_MAX_COMPUTE_IMAGE_UNIFORMS);
+    limits.max_samplers_per_shader_stage = limits.max_sampled_textures_per_shader_stage;
+    limits.max_vertex_buffers = gl_limit(GL_MAX_VERTEX_ATTRIB_BINDINGS);
+    limits.max_vertex_attributes = gl_limit(GL_MAX_VERTEX_ATTRIBS);
+    limits.max_vertex_buffer_array_stride = gl_limit(GL_MAX_VERTEX_ATTRIB_STRIDE);
+    limits.max_color_attachments = gl_limit(GL_MAX_COLOR_ATTACHMENTS);
+    limits.max_color_attachment_bytes_per_sample = limits.max_color_attachments * 16;
+    limits.max_compute_workgroup_storage_size = gl_limit(GL_MAX_COMPUTE_SHARED_MEMORY_SIZE);
+    limits.max_compute_invocations_per_workgroup = gl_limit(GL_MAX_COMPUTE_WORK_GROUP_INVOCATIONS);
+    GLint workgroup[3] = {};
+    glGetIntegeri_v(GL_MAX_COMPUTE_WORK_GROUP_SIZE, 0, &workgroup[0]);
+    glGetIntegeri_v(GL_MAX_COMPUTE_WORK_GROUP_SIZE, 1, &workgroup[1]);
+    glGetIntegeri_v(GL_MAX_COMPUTE_WORK_GROUP_SIZE, 2, &workgroup[2]);
+    limits.max_compute_workgroup_size_x = workgroup[0] > 0 ? (uint32_t)workgroup[0] : 0;
+    limits.max_compute_workgroup_size_y = workgroup[1] > 0 ? (uint32_t)workgroup[1] : 0;
+    limits.max_compute_workgroup_size_z = workgroup[2] > 0 ? (uint32_t)workgroup[2] : 0;
+    GLint groups[3] = {};
+    glGetIntegeri_v(GL_MAX_COMPUTE_WORK_GROUP_COUNT, 0, &groups[0]);
+    glGetIntegeri_v(GL_MAX_COMPUTE_WORK_GROUP_COUNT, 1, &groups[1]);
+    glGetIntegeri_v(GL_MAX_COMPUTE_WORK_GROUP_COUNT, 2, &groups[2]);
+    uint32_t perDimension = groups[0] > 0 ? (uint32_t)groups[0] : 0;
+    if (groups[1] > 0 && (uint32_t)groups[1] < perDimension) perDimension = (uint32_t)groups[1];
+    if (groups[2] > 0 && (uint32_t)groups[2] < perDimension) perDimension = (uint32_t)groups[2];
+    limits.max_compute_workgroups_per_dimension = perDimension;
+    limits.max_bindless_handle_size = (uint32_t)sizeof(GLuint64);
+    limits.max_bindless_textures = GLEW_ARB_bindless_texture ? 1048576u : 0u;
+    limits.max_push_constant_size = gl_limit3(GL_MAX_VERTEX_UNIFORM_COMPONENTS, GL_MAX_FRAGMENT_UNIFORM_COMPONENTS, GL_MAX_COMPUTE_UNIFORM_COMPONENTS) * 4;
+    opengl.limits = limits;
 }
 
 void gl_unload_library()
 {
+    opengl.limits = {};
     glUseProgram(0);
     glBindVertexArray(0);
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
@@ -752,8 +825,11 @@ void gl_unload_library()
             glDeleteSamplers(1, &item.second.handle);
     }
     opengl.samplers.clear();
+    opengl.layouts.clear();
+    opengl.bindings.clear();
     for (auto& item : opengl.textureViews)
     {
+        gl_release_bindless(item.second);
         if (item.second.handle)
             glDeleteTextures(1, &item.second.handle);
     }
@@ -774,7 +850,8 @@ void gl_unload_library()
     opengl.meshlets.clear();
     opengl.computePasses.clear();
     opengl.transferPasses.clear();
-    opengl.bufferID = opengl.textureID = opengl.textureViewID = opengl.samplerID = opengl.moduleID = 0;
+    opengl.bufferID = opengl.textureID = opengl.textureViewID = opengl.samplerID = 0;
+    opengl.layoutID = opengl.bindingID = opengl.moduleID = 0;
     opengl.meshID = opengl.meshletID = opengl.passID = 0;
 
     opengl.currentPassType = RT_MODULE_NONE;
@@ -783,6 +860,8 @@ void gl_unload_library()
     // ====================================================================
 
     if(rt_unload_library == gl_unload_library) rt_unload_library = nullptr;
+    if(rt_get_backend == gl_get_backend) rt_get_backend = nullptr;
+    if(rt_get_limits == gl_get_limits) rt_get_limits = nullptr;
     if(rt_create_buffer == gl_create_buffer) rt_create_buffer = nullptr;
     if(rt_destroy_buffer == gl_destroy_buffer) rt_destroy_buffer = nullptr;
     if(rt_bind_buffer == gl_bind_buffer) rt_bind_buffer = nullptr;
@@ -798,6 +877,11 @@ void gl_unload_library()
     if(rt_create_sampler == gl_create_sampler) rt_create_sampler = nullptr;
     if(rt_destroy_sampler == gl_destroy_sampler) rt_destroy_sampler = nullptr;
     if(rt_bind_sampler == gl_bind_sampler) rt_bind_sampler = nullptr;
+    if(rt_create_layout == gl_create_layout) rt_create_layout = nullptr;
+    if(rt_destroy_layout == gl_destroy_layout) rt_destroy_layout = nullptr;
+    if(rt_create_binding == gl_create_binding) rt_create_binding = nullptr;
+    if(rt_destroy_binding == gl_destroy_binding) rt_destroy_binding = nullptr;
+    if(rt_bind_binding == gl_bind_binding) rt_bind_binding = nullptr;
     if(rt_create_module_compute == gl_create_module_compute) rt_create_module_compute = nullptr;
     if(rt_create_module_render == gl_create_module_render) rt_create_module_render = nullptr;
     if(rt_destroy_module_render == gl_destroy_module_render) rt_destroy_module_render = nullptr;
@@ -846,11 +930,38 @@ void gl_unload_library()
     if(rt_submit == gl_submit) rt_submit = nullptr;
 }
 
+static uint32_t gl_limit(GLenum name)
+{
+    GLint value = 0;
+    glGetIntegerv(name, &value);
+    return value > 0 ? (uint32_t)value : 0;
+}
+
+static uint32_t gl_limit3(GLenum a, GLenum b, GLenum c)
+{
+    uint32_t value = gl_limit(a);
+    uint32_t other = gl_limit(b);
+    if (other < value) value = other;
+    other = gl_limit(c);
+    if (other < value) value = other;
+    return value;
+}
+
+rt_backend_t gl_get_backend()
+{
+    return RT_OPENGL;
+}
+
+rt_limits_t gl_get_limits()
+{
+    return opengl.limits;
+}
+
 // ====================================================================
 
 rt_buffer_t gl_create_buffer(rt_buffer_info_t const& info)
 {
-    if (info.usage == 0)
+    if (info.usages == 0)
     {
         fprintf(stderr, "Buffer usage must not be 0");
         abort();
@@ -863,9 +974,9 @@ rt_buffer_t gl_create_buffer(rt_buffer_info_t const& info)
     glBindBuffer(GL_ARRAY_BUFFER, native.handle);
 
     GLbitfield flags = GL_DYNAMIC_STORAGE_BIT;
-    if (info.usage & RT_BUFFER_USAGE_MAP_READ)
+    if (info.usages & RT_BUFFER_USAGE_MAP_READ)
         flags |= GL_MAP_READ_BIT;
-    if (info.usage & RT_BUFFER_USAGE_MAP_WRITE)
+    if (info.usages & RT_BUFFER_USAGE_MAP_WRITE)
         flags |= GL_MAP_WRITE_BIT;
 
     glBufferStorage(GL_ARRAY_BUFFER, (GLsizeiptr)info.size, info.data, flags);
@@ -874,7 +985,7 @@ rt_buffer_t gl_create_buffer(rt_buffer_info_t const& info)
     opengl.bufferID = handle;
     result.handle = handle;
     result.size = info.size;
-    result.usage = info.usage;
+    result.usages = info.usages;
     result.native = &native;
     return result;
 }
@@ -951,9 +1062,39 @@ void gl_unmap_buffer(rt_buffer_t& buffer)
 
 // ====================================================================
 
+static void gl_release_bindless(gl_texture_view_native_t& native)
+{
+    if (native.bindlessHandle)
+    {
+        glMakeTextureHandleNonResidentARB(native.bindlessHandle);
+        native.bindlessHandle = 0;
+    }
+}
+
+static void gl_make_texture_view_bindless(gl_texture_view_native_t& native, rt_texture_view_t& result)
+{
+    if (!GLEW_ARB_bindless_texture || !native.handle || result.target == RT_TEXTURE_2D_MULTISAMPLE)
+        return;
+    bool depth = rt_texture_has_depth(result.format) || rt_texture_has_stencil(result.format);
+    GLint filter = depth ? GL_NEAREST : GL_LINEAR;
+    glTextureParameteri(native.handle, GL_TEXTURE_MIN_FILTER, filter);
+    glTextureParameteri(native.handle, GL_TEXTURE_MAG_FILTER, filter);
+    glTextureParameteri(native.handle, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTextureParameteri(native.handle, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    glTextureParameteri(native.handle, GL_TEXTURE_WRAP_R, GL_REPEAT);
+    glTextureParameteri(native.handle, GL_TEXTURE_BASE_LEVEL, 0);
+    glTextureParameteri(native.handle, GL_TEXTURE_MAX_LEVEL, result.level_count ? (GLint)result.level_count - 1 : 0);
+    GLuint64 handle = glGetTextureHandleARB(native.handle);
+    if (!handle)
+        return;
+    glMakeTextureHandleResidentARB(handle);
+    native.bindlessHandle = handle;
+    result.bindless = handle;
+}
+
 rt_texture_t gl_create_texture(rt_texture_info_t const& info)
 {
-    if (info.usage == 0)
+    if (info.usages == 0)
     {
         fprintf(stderr, "Texture usage must not be 0");
         abort();
@@ -1114,7 +1255,7 @@ rt_texture_t gl_create_texture(rt_texture_info_t const& info)
     native.depth = depth;
     native.target = target;
     native.format = info.format;
-    native.usage = info.usage;
+    native.usages = info.usages;
     native.levels = mipmaps ? mipmaps : 1;
     native.samples = samples;
     opengl.textureID = handle;
@@ -1125,7 +1266,7 @@ rt_texture_t gl_create_texture(rt_texture_info_t const& info)
     result.target = native.target;
     result.format = native.format;
     result.samples = native.samples;
-    result.usage = native.usage;
+    result.usages = native.usages;
     result.mipmaps = native.levels;
     result.native = &native;
     uint32_t layers = (target == RT_TEXTURE_2D_ARRAY && depth) ? depth : 1;
@@ -1133,7 +1274,7 @@ rt_texture_t gl_create_texture(rt_texture_info_t const& info)
         .target = native.target,
         .format = native.format,
         .aspect = RT_TEXTURE_ASPECT_ALL,
-        .usage = native.usage,
+        .usages = info.usages,
         .layer_count = layers,
         .level_count = native.levels,
     });
@@ -1148,6 +1289,7 @@ void gl_destroy_texture(rt_texture_t& texture)
         {
             if (it->second.texture == native)
             {
+                gl_release_bindless(it->second);
                 if (it->second.handle)
                     glDeleteTextures(1, &it->second.handle);
                 it = opengl.textureViews.erase(it);
@@ -1181,11 +1323,17 @@ rt_texture_view_t gl_create_texture_view(rt_texture_t& texture, rt_texture_view_
     auto* parentTex = gl_texture_native(texture);
     rt_texture_format_t parentFormat = parentTex ? parentTex->format : RT_TEXTURE_NONE;
     rt_texture_format_t format = info.format != RT_TEXTURE_NONE ? info.format : parentFormat;
-    rt_texture_usages_t usage = info.usage ? info.usage : (parentTex ? parentTex->usage : 0);
+    rt_texture_usages_t usage = info.usages ? info.usages : (parentTex ? parentTex->usages : 0);
     rt_texture_view_t result{
-        0, info.target, format,
-        info.aspect, usage,
-        info.base_layer, info.layer_count, info.base_level, info.level_count, nullptr};
+        .target = info.target,
+        .format = format,
+        .aspect = info.aspect,
+        .usages = usage,
+        .base_layer = info.base_layer,
+        .layer_count = info.layer_count,
+        .base_level = info.base_level,
+        .level_count = info.level_count,
+    };
     if (!parentTex || !parentTex->handle) return result;
     uint32_t levels = parentTex->levels ? parentTex->levels : 1;
     uint32_t layers = parentTex->target == RT_TEXTURE_2D_ARRAY && parentTex->depth ? parentTex->depth : 1;
@@ -1229,6 +1377,8 @@ rt_texture_view_t gl_create_texture_view(rt_texture_t& texture, rt_texture_view_
     opengl.textureViewID = handle;
     result.handle = handle;
     result.native = &native;
+    if (usage & RT_TEXTURE_USAGE_TEXTURE_BINDLESS)
+        gl_make_texture_view_bindless(native, result);
     return result;
 }
 
@@ -1236,6 +1386,7 @@ void gl_destroy_texture_view(rt_texture_view_t& view)
 {
     if (auto* native = gl_texture_view_native(view))
     {
+        gl_release_bindless(*native);
         if (native->handle)
             glDeleteTextures(1, &native->handle);
         opengl.textureViews.erase(view.handle);
@@ -1312,6 +1463,138 @@ void gl_bind_sampler(rt_sampler_t& sampler, rt_sampler_bind_t bind)
 
 // ====================================================================
 
+static gl_layout_native_t* gl_layout_native(rt_layout_t const& layout)
+{
+    if (!layout.native || layout.handle == 0) return nullptr;
+    return (gl_layout_native_t*)layout.native;
+}
+
+static gl_binding_native_t* gl_binding_native(rt_binding_t const& binding)
+{
+    if (!binding.native || binding.handle == 0) return nullptr;
+    return (gl_binding_native_t*)binding.native;
+}
+
+static void gl_copy_module_layout(rt_layout_t const& layout, rt_module_layout_t* dst, rt_module_layout_t* native)
+{
+    for (size_t i = 0; i < RT_MAX_BINDING_HANDLE_NUM; ++i)
+    {
+        dst[i].binding = layout.entry[i].binding;
+        dst[i].stages = layout.entry[i].stages;
+        dst[i].type = layout.entry[i].type;
+        native[i] = dst[i];
+    }
+}
+
+rt_layout_t gl_create_layout(rt_layout_info_t const& info)
+{
+    rt_layout_t result = {};
+    auto handle = opengl.layoutID + 1;
+    auto& native = opengl.layouts[handle];
+    uint32_t count = 0;
+    for (size_t i = 0; i < std::size(info.entry); ++i)
+    {
+        result.entry[i] = info.entry[i];
+        if (info.entry[i].type != RT_BINDING_NONE)
+            count++;
+    }
+    native.count = count;
+    opengl.layoutID = handle;
+    result.handle = handle;
+    result.native = &native;
+    return result;
+}
+
+void gl_destroy_layout(rt_layout_t& layout)
+{
+    if (gl_layout_native(layout))
+        opengl.layouts.erase(layout.handle);
+    layout = {};
+}
+
+rt_binding_t gl_create_binding(rt_binding_info_t const& info)
+{
+    if (!info.layout.handle)
+    {
+        fprintf(stderr, "Binding requires a layout");
+        abort();
+    }
+
+    rt_binding_t result = {};
+    auto handle = opengl.bindingID + 1;
+    auto& native = opengl.bindings[handle];
+    for (size_t i = 0; i < std::size(info.entry); ++i)
+    {
+        result.entry[i] = info.entry[i];
+        native.entry[i] = info.layout.entry[i];
+    }
+    opengl.bindingID = handle;
+    result.handle = handle;
+    result.native = &native;
+    return result;
+}
+
+void gl_destroy_binding(rt_binding_t& binding)
+{
+    if (gl_binding_native(binding))
+        opengl.bindings.erase(binding.handle);
+    binding = {};
+}
+
+void gl_bind_binding(rt_binding_t& binding)
+{
+    if (opengl.currentPipeline == nullptr)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    auto* native = gl_binding_native(binding);
+    if (!native)
+        return;
+
+    for (size_t i = 0; i < RT_MAX_BINDING_HANDLE_NUM; ++i)
+    {
+        auto const& slot = native->entry[i];
+        if (slot.type == RT_BINDING_NONE)
+            continue;
+        auto const& item = binding.entry[i];
+        uint32_t index = slot.binding;
+        if (slot.type == RT_BINDING_UNIFORM_BUFFER || slot.type == RT_BINDING_STORAGE_BUFFER)
+        {
+            if (!item.buffer.handle)
+                continue;
+            GLenum target = slot.type == RT_BINDING_STORAGE_BUFFER ? GL_SHADER_STORAGE_BUFFER : GL_UNIFORM_BUFFER;
+            size_t size = item.buffer_bind.size;
+            if (size == (size_t)-1U)
+                size = item.buffer.size > item.buffer_bind.offset ? item.buffer.size - item.buffer_bind.offset : 0;
+            glBindBufferRange(target, index, gl_buffer_name(item.buffer), (GLintptr)item.buffer_bind.offset, (GLsizeiptr)size);
+        }
+        else if (slot.type == RT_BINDING_TEXTURE)
+        {
+            if (!item.texture.handle)
+                continue;
+            glActiveTexture(GL_TEXTURE0 + index);
+            glBindTexture(rt_to_gl_texture_target(item.texture.target), gl_texture_view_name(item.texture));
+        }
+        else if (slot.type == RT_BINDING_STORAGE_TEXTURE)
+        {
+            if (!item.texture_storage.handle)
+                continue;
+            auto const& image = item.texture_storage_bind;
+            glBindImageTexture(index, gl_texture_view_name(item.texture_storage), (GLint)image.base_level, 1 < image.layer_count,
+                               (GLint)image.base_layer, rt_to_gl_access(image.access), rt_to_gl_texture_format(item.texture_storage.format));
+        }
+        else if (slot.type == RT_BINDING_SAMPLER)
+        {
+            if (!item.sampler.handle)
+                continue;
+            glBindSampler(index, gl_sampler_name(item.sampler));
+        }
+    }
+}
+
+// ====================================================================
+
 rt_module_compute_t gl_create_module_compute(rt_module_compute_info_t const& info)
 {
     rt_module_compute_t result = {};
@@ -1356,12 +1639,7 @@ rt_module_compute_t gl_create_module_compute(rt_module_compute_info_t const& inf
     opengl.moduleID = handle;
     result.handle = handle;
     result.native = &native;
-    for (size_t i = 0; i < std::size(info.binding); ++i)
-    {
-        result.binding[i].binding = info.binding[i].binding;
-        result.binding[i].type = info.binding[i].type;
-        native.bindings[i] = info.binding[i];
-    }
+    gl_copy_module_layout(info.layout, result.layout, native.layouts);
     return result;
 }
 
@@ -1526,12 +1804,7 @@ rt_module_render_t gl_create_module_render(rt_module_render_info_t const& info)
     {
         result.vertex[i] = info.vertex[i];
     }
-    for (size_t i = 0; i < std::size(info.binding); ++i)
-    {
-        result.binding[i].binding = info.binding[i].binding;
-        result.binding[i].type = info.binding[i].type;
-        native.bindings[i] = info.binding[i];
-    }
+    gl_copy_module_layout(info.layout, result.layout, native.layouts);
     result.cull_mode = info.cull_mode;
     result.wind_mode = info.wind_mode;
     result.fill_mode = info.fill_mode;
@@ -1612,14 +1885,14 @@ void gl_bind_module_compute(rt_module_compute_t& module)
         fprintf(stderr, "Pipeline not begin");
         abort();
     }
-    auto* moduleNative = gl_module_native(module.handle, module.native);
-    if (module.handle == 0 || !moduleNative)
+    auto* native = gl_module_native(module.handle, module.native);
+    if (module.handle == 0 || !native)
     {
         fprintf(stderr, "Pipeline module is not created");
         abort();
     }
     opengl.currentComputeModule = &module;
-    glUseProgram(moduleNative->program);
+    glUseProgram(native->program);
 }
 
 void gl_dispatch_compute(uint32_t groupX, uint32_t groupY, uint32_t groupZ)
@@ -1968,8 +2241,8 @@ void gl_bind_module_render(rt_module_render_t& module)
         fprintf(stderr, "Pipeline not begin");
         abort();
     }
-    auto* moduleNative = gl_module_native(module.handle, module.native);
-    if (module.handle == 0 || !moduleNative)
+    auto* native = gl_module_native(module.handle, module.native);
+    if (module.handle == 0 || !native)
     {
         fprintf(stderr, "Pipeline module is not created");
         abort();
@@ -1977,8 +2250,8 @@ void gl_bind_module_render(rt_module_render_t& module)
     rt_pass_render_t const& pass = *opengl.currentRenderPass;
     opengl.currentRenderModule = &module;
 
-    glUseProgram(moduleNative->program);
-    glBindVertexArray(moduleNative->vao);
+    glUseProgram(native->program);
+    glBindVertexArray(native->vao);
 
     bool offscreen = pass.depth.texture_view.handle;
     for (size_t i = 0; i < std::size(pass.colors) && !offscreen; ++i)
@@ -2881,16 +3154,16 @@ rt_mesh_t gl_create_mesh(const float* vertices, // vec3
     rt_mesh_t result = {};
 
     if (vertices)
-        result.vertex[0] = gl_create_buffer({.size = vertex_count * 3 * sizeof(float), .usage = RT_BUFFER_USAGE_VERTEX | RT_BUFFER_USAGE_COPY_DST, .data = vertices,});
+        result.vertex[0] = gl_create_buffer({.size = vertex_count * 3 * sizeof(float), .usages = RT_BUFFER_USAGE_VERTEX | RT_BUFFER_USAGE_COPY_DST, .data = vertices,});
 
     if (normals)
-        result.vertex[1] = gl_create_buffer({.size = vertex_count * 3 * sizeof(float), .usage = RT_BUFFER_USAGE_VERTEX | RT_BUFFER_USAGE_COPY_DST, .data = normals,});
+        result.vertex[1] = gl_create_buffer({.size = vertex_count * 3 * sizeof(float), .usages = RT_BUFFER_USAGE_VERTEX | RT_BUFFER_USAGE_COPY_DST, .data = normals,});
 
     if (uvs)
-        result.vertex[2] = gl_create_buffer({.size = vertex_count * 2 * sizeof(float), .usage = RT_BUFFER_USAGE_VERTEX | RT_BUFFER_USAGE_COPY_DST, .data = uvs,});
+        result.vertex[2] = gl_create_buffer({.size = vertex_count * 2 * sizeof(float), .usages = RT_BUFFER_USAGE_VERTEX | RT_BUFFER_USAGE_COPY_DST, .data = uvs,});
 
     if (indices)
-        result.index = gl_create_buffer({.size = index_count * sizeof(uint32_t), .usage = RT_BUFFER_USAGE_INDEX | RT_BUFFER_USAGE_COPY_DST, .data = indices,});
+        result.index = gl_create_buffer({.size = index_count * sizeof(uint32_t), .usages = RT_BUFFER_USAGE_INDEX | RT_BUFFER_USAGE_COPY_DST, .data = indices,});
 
     std::iota(result.location, result.location + std::size(result.location), 0);
     auto handle = opengl.meshID + 1;
@@ -3033,16 +3306,16 @@ rt_meshlet_t gl_create_meshlet(const float* vertices, // vec4
     rt_meshlet_t result = {};
 
     if (vertices)
-        result.vertex[0] = gl_create_buffer({.size = vertex_count * 4 * sizeof(float), .usage = RT_BUFFER_USAGE_STORAGE | RT_BUFFER_USAGE_COPY_DST, .data = vertices,});
+        result.vertex[0] = gl_create_buffer({.size = vertex_count * 4 * sizeof(float), .usages = RT_BUFFER_USAGE_STORAGE | RT_BUFFER_USAGE_COPY_DST, .data = vertices,});
 
     if (normals)
-        result.vertex[1] = gl_create_buffer({.size = vertex_count * 4 * sizeof(float), .usage = RT_BUFFER_USAGE_STORAGE | RT_BUFFER_USAGE_COPY_DST, .data = normals,});
+        result.vertex[1] = gl_create_buffer({.size = vertex_count * 4 * sizeof(float), .usages = RT_BUFFER_USAGE_STORAGE | RT_BUFFER_USAGE_COPY_DST, .data = normals,});
 
     if (uvs)
-        result.vertex[2] = gl_create_buffer({.size = vertex_count * 2 * sizeof(float), .usage = RT_BUFFER_USAGE_STORAGE | RT_BUFFER_USAGE_COPY_DST, .data = uvs,});
+        result.vertex[2] = gl_create_buffer({.size = vertex_count * 2 * sizeof(float), .usages = RT_BUFFER_USAGE_STORAGE | RT_BUFFER_USAGE_COPY_DST, .data = uvs,});
 
     if (indices)
-        result.index = gl_create_buffer({.size = index_count * sizeof(uint32_t), .usage = RT_BUFFER_USAGE_STORAGE | RT_BUFFER_USAGE_COPY_DST, .data = indices,});
+        result.index = gl_create_buffer({.size = index_count * sizeof(uint32_t), .usages = RT_BUFFER_USAGE_STORAGE | RT_BUFFER_USAGE_COPY_DST, .data = indices,});
 
     std::iota(result.location, result.location + std::size(result.location), 0);
     auto handle = opengl.meshletID + 1;
@@ -3165,7 +3438,8 @@ void gl_draw_screen(int width, int height, rt_color_t clear, rt_texture_t& textu
             final = texture(texture0, uv);
         }
     )";
-    static auto module = gl_create_module_render({.vshader = {.code = VS}, .fshader = {.code = FS}, .vertex = {rt_vertex_vertex, {}, rt_vertex_uv,},});
+    static auto layout = gl_create_layout({.entry = {{.binding = 0, .stages = RT_STAGE_FRAGMENT, .type = RT_BINDING_TEXTURE}}});
+    static auto module = gl_create_module_render({.layout = layout, .vshader = {.code = VS}, .fshader = {.code = FS}, .vertex = {rt_vertex_vertex, {}, rt_vertex_uv,},});
     rt_pass_render_t pass = {.screen = {.color = { .clear = true, .value = clear,}, .depth = {.clear = true,}, .stencil = {.clear = true,}}};
     gl_begin_render(pass);
     gl_bind_module_render(module);

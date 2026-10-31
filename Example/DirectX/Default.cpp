@@ -100,7 +100,9 @@ static void present(rt_texture_t& color)
 void frame(int width, int height)
 {
     wait_present();
+    static auto layout = rt_create_layout({});
     static auto module = rt_create_module_render({
+        .layout = layout,
         .vshader = {.code = (const char*)VS, .size = sizeof(VS), .entry = VS_ENTRY},
         .fshader = {.code = (const char*)FS, .size = sizeof(FS), .entry = FS_ENTRY},
         .colors = {{.format = RT_TEXTURE_RGBA8UNORM,}},

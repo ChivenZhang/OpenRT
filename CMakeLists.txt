@@ -93,6 +93,14 @@ target_link_libraries(OpenGL-Transfer PRIVATE SDL3::SDL3)
 find_package(glm CONFIG REQUIRED)
 target_link_libraries(OpenGL-Transfer PRIVATE glm::glm)
 
+add_executable(OpenGL-Bindless Example/OpenGL/Bindless.cpp)
+add_dependencies(OpenGL-Bindless OpenRT)
+target_link_libraries(OpenGL-Bindless PRIVATE OpenRT)
+find_package(SDL3 CONFIG REQUIRED)
+target_link_libraries(OpenGL-Bindless PRIVATE SDL3::SDL3)
+find_package(glm CONFIG REQUIRED)
+target_link_libraries(OpenGL-Bindless PRIVATE glm::glm)
+
 #=======================Vulkan==========================
 
 add_executable(Vulkan-Default Example/Vulkan/Default.cpp)
@@ -110,6 +118,15 @@ target_link_libraries(Vulkan-Render PRIVATE SDL3::SDL3)
 find_package(glm CONFIG REQUIRED)
 target_link_libraries(Vulkan-Render PRIVATE glm::glm)
 target_link_libraries(Vulkan-Render PRIVATE Vulkan::Vulkan)
+
+add_executable(Vulkan-Bindless Example/Vulkan/Bindless.cpp)
+add_dependencies(Vulkan-Bindless OpenRT)
+target_link_libraries(Vulkan-Bindless PRIVATE OpenRT)
+find_package(SDL3 CONFIG REQUIRED)
+target_link_libraries(Vulkan-Bindless PRIVATE SDL3::SDL3)
+find_package(glm CONFIG REQUIRED)
+target_link_libraries(Vulkan-Bindless PRIVATE glm::glm)
+target_link_libraries(Vulkan-Bindless PRIVATE Vulkan::Vulkan)
 
 #=======================DirectX==========================
 
@@ -129,6 +146,15 @@ target_link_libraries(DirectX-Render PRIVATE SDL3::SDL3)
 find_package(glm CONFIG REQUIRED)
 target_link_libraries(DirectX-Render PRIVATE glm::glm)
 target_link_libraries(DirectX-Render PRIVATE d3d12 dxgi d3dcompiler)
+
+add_executable(DirectX-Bindless Example/DirectX/Bindless.cpp)
+add_dependencies(DirectX-Bindless OpenRT)
+target_link_libraries(DirectX-Bindless PRIVATE OpenRT)
+find_package(SDL3 CONFIG REQUIRED)
+target_link_libraries(DirectX-Bindless PRIVATE SDL3::SDL3)
+find_package(glm CONFIG REQUIRED)
+target_link_libraries(DirectX-Bindless PRIVATE glm::glm)
+target_link_libraries(DirectX-Bindless PRIVATE d3d12 dxgi d3dcompiler)
 endif()
 
 #=======================Metal==========================
@@ -154,6 +180,17 @@ target_link_libraries(Metal-Render PRIVATE SDL3::SDL3)
 find_package(glm CONFIG REQUIRED)
 target_link_libraries(Metal-Render PRIVATE glm::glm)
 target_link_libraries(Metal-Render PRIVATE "-framework Metal" "-framework QuartzCore" "-framework Foundation")
+
+add_executable(Metal-Bindless Example/Metal/Bindless.cpp)
+add_dependencies(Metal-Bindless OpenRT)
+target_compile_definitions(Metal-Bindless PRIVATE METAL_IMPLEMENTATION)
+target_include_directories(Metal-Bindless PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/metal-cpp)
+target_link_libraries(Metal-Bindless PRIVATE OpenRT)
+find_package(SDL3 CONFIG REQUIRED)
+target_link_libraries(Metal-Bindless PRIVATE SDL3::SDL3)
+find_package(glm CONFIG REQUIRED)
+target_link_libraries(Metal-Bindless PRIVATE glm::glm)
+target_link_libraries(Metal-Bindless PRIVATE "-framework Metal" "-framework QuartzCore" "-framework Foundation")
 endif()
 endif()
 
@@ -188,4 +225,23 @@ target_link_options(WebGPU-Render PRIVATE
     "SHELL:--preload-file ${CMAKE_SOURCE_DIR}/Earth.png@Earth.png"
 )
 set_target_properties(WebGPU-Render PROPERTIES SUFFIX ".html")
+
+add_executable(WebGPU-Bindless Example/WebGPU/Bindless.cpp)
+add_dependencies(WebGPU-Bindless OpenRT)
+target_compile_definitions(WebGPU-Bindless PRIVATE WEBGPU_IMPLEMENTATION)
+target_include_directories(WebGPU-Bindless PRIVATE ${Stb_INCLUDE_DIR})
+target_compile_options(WebGPU-Bindless PRIVATE "SHELL:-sUSE_SDL=3" "SHELL:--use-port=emdawnwebgpu")
+target_link_libraries(WebGPU-Bindless PRIVATE OpenRT)
+find_package(glm CONFIG REQUIRED)
+target_link_libraries(WebGPU-Bindless PRIVATE glm::glm)
+target_link_options(WebGPU-Bindless PRIVATE
+    "SHELL:-sUSE_SDL=3"
+    "SHELL:--use-port=emdawnwebgpu"
+    "SHELL:-sALLOW_MEMORY_GROWTH=1"
+    "SHELL:--preload-file ${CMAKE_SOURCE_DIR}/Example/OpenGL/Default.png@Example/OpenGL/Default.png"
+    "SHELL:--preload-file ${CMAKE_SOURCE_DIR}/Example/OpenGL/Example.png@Example/OpenGL/Example.png"
+    "SHELL:--preload-file ${CMAKE_SOURCE_DIR}/Example/OpenGL/Meshlet.png@Example/OpenGL/Meshlet.png"
+    "SHELL:--preload-file ${CMAKE_SOURCE_DIR}/Example/OpenGL/Render.png@Example/OpenGL/Render.png"
+)
+set_target_properties(WebGPU-Bindless PROPERTIES SUFFIX ".html")
 endif()

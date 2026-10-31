@@ -188,13 +188,16 @@ void frame(int width, int height)
     wait_present();
     static auto vs = compile_shader(VS, "vs_5_1");
     static auto fs = compile_shader(FS, "ps_5_1");
+    static auto layout = rt_create_layout({
+        .entry = {{.binding = 0, .type = RT_BINDING_TEXTURE}, {.binding = 1, .type = RT_BINDING_SAMPLER}},
+    });
     static auto module = rt_create_module_render({
+        .layout = layout,
         .vshader = {.code = (const char*)vs.data(), .size = (uint32_t)vs.size()},
         .fshader = {.code = (const char*)fs.data(), .size = (uint32_t)fs.size()},
         .colors = {{.format = RT_TEXTURE_RGBA8UNORM,}},
         .depth = {.write = true, .func = RT_LEQUAL,},
         .vertex = {rt_vertex_vertex, rt_vertex_normal, rt_vertex_uv,},
-        .binding = {{.binding = 0, .type = RT_BINDING_TEXTURE}, {.binding = 1, .type = RT_BINDING_SAMPLER}},
     });
     static auto pass_color = rt_create_texture_color(width, height);
     static auto pass_depth = rt_create_texture_depth(width, height);
@@ -210,9 +213,15 @@ void frame(int width, int height)
         rt_push_constant((const uint8_t*)push, sizeof(push));
 
         static auto texture0 = rt_load_texture_file("../../Earth.png", true);
-        rt_bind_texture(texture0, {.binding = 0,});
         static auto sampler0 = rt_create_sampler({.min_filter = RT_LINEAR, .mag_filter = RT_LINEAR, .address_u = RT_REPEAT, .address_v = RT_REPEAT,});
-        rt_bind_sampler(sampler0, {.binding = 1,});
+        static auto binding = rt_create_binding({
+            .layout = layout,
+            .entry = {
+                {.binding = 0, .texture = texture0.default_view},
+                {.binding = 1, .sampler = sampler0},
+            },
+        });
+        rt_bind_binding(binding);
 
         static auto mesh = rt_create_mesh_sphere(2, 64, 32);
         // rt_draw_mesh(mesh);

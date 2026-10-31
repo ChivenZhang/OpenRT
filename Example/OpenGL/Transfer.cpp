@@ -54,7 +54,11 @@ void frame(int width, int height)
         }
     )";
 
+    static auto layout = rt_create_layout({
+        .entry = {{.binding = 0, .type = RT_BINDING_TEXTURE}},
+    });
     static auto module = rt_create_module_render({
+        .layout = layout,
         .vshader = {VS}, .fshader = {FS},
         .colors = {{.format = RT_TEXTURE_RGBA8UNORM,}},
         .depth = {.write = true, .func = RT_LEQUAL,},
@@ -99,6 +103,10 @@ void frame(int width, int height)
 
         return texture;
     }();
+    static auto binding = rt_create_binding({
+        .layout = layout,
+        .entry = {{.binding = 0, .texture = texture0.default_view}},
+    });
 
     static auto pass_color = rt_create_texture_color(width, height);
     {
@@ -106,7 +114,7 @@ void frame(int width, int height)
         rt_begin_render(pass);
         rt_bind_module_render(module);
 
-        rt_bind_texture(texture0, {.binding = 0,});
+        rt_bind_binding(binding);
 
         static auto mesh = rt_create_mesh_screen();
         rt_draw_mesh(mesh);

@@ -129,7 +129,9 @@ static void present(rt_texture_t& color, uint32_t width, uint32_t height)
 
 void frame(int width, int height)
 {
+    static auto layout = rt_create_layout({});
     static auto module = rt_create_module_render({
+        .layout = layout,
         .vshader = {.code = VS, .size = (uint32_t)strlen(VS), .entry = VS_ENTRY},
         .fshader = {.code = FS, .size = (uint32_t)strlen(FS), .entry = FS_ENTRY},
         .colors = {{.format = colorFormat,}},

@@ -62,6 +62,7 @@ enum rt_texture_usage_t : uint32_t
     RT_TEXTURE_USAGE_TEXTURE_BINDING   = 0x0004,
     RT_TEXTURE_USAGE_STORAGE_BINDING   = 0x0008,
     RT_TEXTURE_USAGE_RENDER_ATTACHMENT = 0x0010,
+    RT_TEXTURE_USAGE_TEXTURE_BINDLESS  = 0x0020 | RT_TEXTURE_USAGE_TEXTURE_BINDING,    // Only used by texture view
 };
 using rt_texture_usages_t = uint32_t;
 
@@ -343,6 +344,16 @@ enum rt_primitive_t : uint32_t
     RT_TRIANGLE_STRIP,
 };
 
+enum rt_stage_t
+{
+    RT_STAGE_VERTEX = 1 << 0,
+    RT_STAGE_FRAGMENT = 1 << 1,
+    RT_STAGE_COMPUTE = 1 << 2,
+    RT_STAGE_TASK = 1 << 3,
+    RT_STAGE_MESH = 1 << 4,
+};
+using rt_stages_t = uint32_t;
+
 enum rt_module_type_t : uint32_t
 {
     RT_MODULE_NONE = 0,
@@ -404,14 +415,14 @@ struct rt_buffer_t
 {
     uint32_t handle = 0;
     size_t size = 0;
-    rt_buffer_usages_t usage = 0;
+    rt_buffer_usages_t usages = 0;
     void* native = nullptr;
 };
 
 struct rt_buffer_info_t
 {
     size_t size = 0;                    // 缓冲区大小（字节）
-    rt_buffer_usages_t usage = RT_BUFFER_USAGE_MAP_READ | RT_BUFFER_USAGE_MAP_WRITE | RT_BUFFER_USAGE_COPY_SRC | RT_BUFFER_USAGE_COPY_DST; // rt_buffer_usage_t
+    rt_buffer_usages_t usages = RT_BUFFER_USAGE_MAP_READ | RT_BUFFER_USAGE_MAP_WRITE | RT_BUFFER_USAGE_COPY_SRC | RT_BUFFER_USAGE_COPY_DST; // rt_buffer_usage_t
     const void* data = nullptr;         // 初始数据指针，可为 nullptr
 };
 
@@ -431,11 +442,12 @@ struct rt_texture_view_t
     rt_texture_target_t target = RT_TEXTURE_2D;
     rt_texture_format_t format = RT_TEXTURE_NONE;
     rt_texture_aspect_t aspect = RT_TEXTURE_ASPECT_ALL;
-    rt_texture_usages_t usage = 0;
+    rt_texture_usages_t usages = 0;
     uint32_t base_layer = 0;
     uint32_t layer_count = 1;
     uint32_t base_level = 0;
     uint32_t level_count = 1;
+    uint64_t bindless = 0; // Native handle. Cast with rt_limits_t::max_bindless_handle_size before writing an SSBO
     void* native = nullptr;
 };
 
@@ -444,7 +456,7 @@ struct rt_texture_view_info_t
     rt_texture_target_t target = RT_TEXTURE_2D; // RT_TEXTURE_1D / RT_TEXTURE_2D / RT_TEXTURE_3D / RT_TEXTURE_2D_ARRAY / RT_TEXTURE_2D_MULTISAMPLE
     rt_texture_format_t format = RT_TEXTURE_RGBA8UNORM;
     rt_texture_aspect_t aspect = RT_TEXTURE_ASPECT_ALL; // RT_TEXTURE_ASPECT_ALL / RT_TEXTURE_ASPECT_STENCIL / RT_TEXTURE_ASPECT_DEPTH
-    rt_texture_usages_t usage = RT_TEXTURE_USAGE_COPY_SRC | RT_TEXTURE_USAGE_COPY_DST | RT_TEXTURE_USAGE_TEXTURE_BINDING | RT_TEXTURE_USAGE_STORAGE_BINDING | RT_TEXTURE_USAGE_RENDER_ATTACHMENT; // rt_texture_usage_t
+    rt_texture_usages_t usages = RT_TEXTURE_USAGE_COPY_SRC | RT_TEXTURE_USAGE_COPY_DST | RT_TEXTURE_USAGE_TEXTURE_BINDING | RT_TEXTURE_USAGE_STORAGE_BINDING | RT_TEXTURE_USAGE_RENDER_ATTACHMENT; // rt_texture_usage_t
     uint32_t base_layer = 0;
     uint32_t layer_count = 1;
     uint32_t base_level = 0;
@@ -465,7 +477,7 @@ struct rt_texture_t
     rt_texture_target_t target = RT_TEXTURE_2D;
     rt_texture_format_t format = RT_TEXTURE_NONE;
     rt_texture_sample_t samples = RT_TEXTURE_SAMPLE_1X;
-    rt_texture_usages_t usage = 0;
+    rt_texture_usages_t usages = 0;
     uint32_t mipmaps = 0;
     rt_texture_view_t default_view = {};
     void* native = nullptr;
@@ -476,7 +488,7 @@ struct rt_texture_info_t
     uint32_t width = 0, height = 0, depth = 1;
     rt_texture_target_t target = RT_TEXTURE_2D;          // RT_TEXTURE_1D / RT_TEXTURE_2D / RT_TEXTURE_3D / RT_TEXTURE_2D_ARRAY / RT_TEXTURE_2D_MULTISAMPLE
     rt_texture_format_t format = RT_TEXTURE_RGBA8UNORM;
-    rt_texture_usages_t usage = RT_TEXTURE_USAGE_COPY_SRC | RT_TEXTURE_USAGE_COPY_DST | RT_TEXTURE_USAGE_TEXTURE_BINDING | RT_TEXTURE_USAGE_STORAGE_BINDING | RT_TEXTURE_USAGE_RENDER_ATTACHMENT; // rt_texture_usage_t
+    rt_texture_usages_t usages = RT_TEXTURE_USAGE_COPY_SRC | RT_TEXTURE_USAGE_COPY_DST | RT_TEXTURE_USAGE_TEXTURE_BINDING | RT_TEXTURE_USAGE_STORAGE_BINDING | RT_TEXTURE_USAGE_RENDER_ATTACHMENT; // rt_texture_usage_t
     rt_filter_t min_filter = RT_LINEAR_MIPMAP_LINEAR;  // RT_NEAREST / RT_LINEAR / RT_NEAREST_MIPMAP_NEAREST / RT_LINEAR_MIPMAP_NEAREST / RT_NEAREST_MIPMAP_LINEAR / RT_LINEAR_MIPMAP_LINEAR
     rt_filter_t mag_filter = RT_LINEAR;                // RT_NEAREST / RT_LINEAR
     rt_address_t address_u = RT_REPEAT;                    // RT_REPEAT / RT_MIRRORED_REPEAT / RT_CLAMP_TO_EDGE / RT_CLAMP_TO_BORDER / RT_MIRROR_CLAMP_TO_EDGE
@@ -527,29 +539,88 @@ struct rt_sampler_bind_t
 
 // ====================================================================
 
-struct rt_binding_t
+struct rt_layout_entry_t
 {
     uint32_t binding = 0;
+    rt_stages_t stages = RT_STAGE_VERTEX | RT_STAGE_FRAGMENT | RT_STAGE_COMPUTE | RT_STAGE_TASK | RT_STAGE_MESH;
     rt_binding_type_t type = {};  // RT_BINDING_UNIFORM_BUFFER / RT_BINDING_STORAGE_BUFFER / RT_BINDING_TEXTURE / RT_BINDING_STORAGE_TEXTURE / RT_BINDING_SAMPLER
 };
 
+struct rt_layout_info_t
+{
+    rt_layout_entry_t entry[RT_MAX_BINDING_HANDLE_NUM];
+};
+
+struct rt_layout_t
+{
+    uint32_t handle = 0;
+
+    rt_layout_entry_t entry[RT_MAX_BINDING_HANDLE_NUM];
+
+    void* native = nullptr;
+};
+
+// ====================================================================
+
+struct rt_binding_entry_t
+{
+    uint32_t binding = 0;
+
+    rt_buffer_t buffer;
+    rt_buffer_bind_t buffer_bind;
+
+    rt_texture_view_t texture;
+    rt_texture_bind_t texture_bind;
+
+    rt_texture_view_t texture_storage;
+    rt_texture_storage_bind_t texture_storage_bind;
+
+    rt_sampler_t sampler;
+    rt_sampler_bind_t sampler_bind;
+};
+
+struct rt_binding_info_t
+{
+    rt_layout_t& layout;
+
+    rt_binding_entry_t entry[RT_MAX_BINDING_HANDLE_NUM];
+};
+
+struct rt_binding_t
+{
+    uint32_t handle = 0;
+
+    rt_binding_entry_t entry[RT_MAX_BINDING_HANDLE_NUM];
+
+    void* native = nullptr;
+};
+
+// ====================================================================
+
 struct rt_module_compute_info_t
 {
+    rt_layout_t& layout;
+
     struct
     {
         const char* code = nullptr;
         uint32_t size = 0;
         const char* entry = "main";
     } cshader;
+};
 
-    rt_binding_t binding[RT_MAX_BINDING_HANDLE_NUM];
+struct rt_module_layout_t
+{
+    uint32_t binding = 0;
+    rt_stages_t stages = 0;
+    rt_binding_type_t type = {};  // RT_BINDING_UNIFORM_BUFFER / RT_BINDING_STORAGE_BUFFER / RT_BINDING_TEXTURE / RT_BINDING_STORAGE_TEXTURE / RT_BINDING_SAMPLER
 };
 
 struct rt_module_compute_t
 {
     uint32_t handle = 0;
 
-    rt_binding_t binding[RT_MAX_BINDING_HANDLE_NUM];
+    rt_module_layout_t layout[RT_MAX_BINDING_HANDLE_NUM];
     
     void* native = nullptr;
 };
@@ -573,6 +644,8 @@ inline rt_vertex_t rt_vertex_uv{.stride = 8, .instance = false, .attrib = {{.loc
 
 struct rt_module_render_info_t
 {
+    rt_layout_t& layout;
+
     struct
     {
         const char* code = nullptr;
@@ -621,7 +694,6 @@ struct rt_module_render_info_t
 
     rt_index_type_t index_type = RT_INDEX_UINT32; // RT_INDEX_UINT16 / RT_INDEX_UINT32
     rt_vertex_t vertex[RT_MAX_VERTEX_BUFFER_NUM];
-    rt_binding_t binding[RT_MAX_BINDING_HANDLE_NUM];
 
     rt_cull_mode_t cull_mode = RT_CULL_BACK; // RT_CULL_NONE / RT_CULL_FRONT / RT_CULL_BACK / RT_CULL_FRONT_AND_BACK
     rt_wind_mode_t wind_mode = RT_CCW; // RT_CW / RT_CCW
@@ -674,7 +746,7 @@ struct rt_module_render_t
 
     rt_index_type_t index_type = RT_INDEX_UINT32;
     rt_vertex_t vertex[RT_MAX_VERTEX_BUFFER_NUM];
-    rt_binding_t binding[RT_MAX_BINDING_HANDLE_NUM];
+    rt_module_layout_t layout[RT_MAX_BINDING_HANDLE_NUM];
 
     rt_cull_mode_t cull_mode = RT_CULL_BACK;
     rt_wind_mode_t wind_mode = RT_CCW;
@@ -837,11 +909,50 @@ struct rt_texture_data_t
     uint32_t rowsPerImage = 0;
 };
 
+struct rt_limits_t
+{
+    uint32_t max_texture_dimension_1d = 0;
+    uint32_t max_texture_dimension_2d = 0;
+    uint32_t max_texture_dimension_3d = 0;
+    uint32_t max_texture_array_layers = 0;
+    uint32_t max_texture_samples = 0;
+
+    uint64_t max_buffer_size = 0;
+    uint64_t max_uniform_buffer_binding_size = 0;
+    uint64_t max_storage_buffer_binding_size = 0;
+    uint32_t min_uniform_buffer_offset_alignment = 0;
+    uint32_t min_storage_buffer_offset_alignment = 0;
+
+    uint32_t max_uniform_buffers_per_shader_stage = 0;
+    uint32_t max_storage_buffers_per_shader_stage = 0;
+    uint32_t max_sampled_textures_per_shader_stage = 0;
+    uint32_t max_storage_textures_per_shader_stage = 0;
+    uint32_t max_samplers_per_shader_stage = 0;
+
+    uint32_t max_vertex_buffers = 0;
+    uint32_t max_vertex_attributes = 0;
+    uint32_t max_vertex_buffer_array_stride = 0;
+    uint32_t max_color_attachments = 0;
+    uint32_t max_color_attachment_bytes_per_sample = 0;
+
+    uint32_t max_compute_workgroup_storage_size = 0;
+    uint32_t max_compute_invocations_per_workgroup = 0;
+    uint32_t max_compute_workgroup_size_x = 0;
+    uint32_t max_compute_workgroup_size_y = 0;
+    uint32_t max_compute_workgroup_size_z = 0;
+    uint32_t max_compute_workgroups_per_dimension = 0;
+
+    uint32_t max_bindless_textures = 0;
+    uint32_t max_push_constant_size = 0;
+    uint32_t max_bindless_handle_size = 0;
+};
+
 // ====================================================================
 
-OPENRT_API rt_backend_t rt_get_backend();
 OPENRT_API void rt_load_library(rt_load_info_t const& info = {});
 OPENRT_API void (*rt_unload_library)();
+OPENRT_API rt_backend_t (*rt_get_backend)();
+OPENRT_API rt_limits_t (*rt_get_limits)();
 
 OPENRT_API rt_buffer_t (*rt_create_buffer)(rt_buffer_info_t const& info);
 OPENRT_API void (*rt_destroy_buffer)(rt_buffer_t& buffer);
@@ -861,6 +972,13 @@ OPENRT_API void (*rt_bind_texture_storage)(rt_texture_view_t& view, rt_texture_s
 OPENRT_API rt_sampler_t (*rt_create_sampler)(rt_sampler_info_t const& info);
 OPENRT_API void (*rt_destroy_sampler)(rt_sampler_t& sampler);
 OPENRT_API void (*rt_bind_sampler)(rt_sampler_t& sampler, rt_sampler_bind_t bind);
+
+OPENRT_API rt_layout_t (*rt_create_layout)(rt_layout_info_t const& info);
+OPENRT_API void (*rt_destroy_layout)(rt_layout_t& layout);
+
+OPENRT_API rt_binding_t (*rt_create_binding)(rt_binding_info_t const& info);
+OPENRT_API void (*rt_destroy_binding)(rt_binding_t& binding);
+OPENRT_API void (*rt_bind_binding)(rt_binding_t& binding);
 
 OPENRT_API rt_module_compute_t (*rt_create_module_compute)(rt_module_compute_info_t const& info);
 OPENRT_API rt_module_render_t (*rt_create_module_render)(rt_module_render_info_t const& info);

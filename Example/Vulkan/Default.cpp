@@ -39,7 +39,9 @@ static VkFence fence = nullptr;
 
 void frame(int width, int height)
 {
+    static auto layout = rt_create_layout({});
     static auto module = rt_create_module_render({
+        .layout = layout,
         .vshader = {.code = (const char*)VS, .size = sizeof(VS), .entry = VS_ENTRY},
         .fshader = {.code = (const char*)FS, .size = sizeof(FS), .entry = FS_ENTRY},
         .colors = {{.format = RT_TEXTURE_RGBA8UNORM,}},
@@ -191,9 +193,18 @@ int main()
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES,
         .shaderDrawParameters = VK_TRUE,
     };
+    VkPhysicalDeviceVulkan12Features features12 = {
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES,
+        .pNext = &features11,
+        .descriptorIndexing = VK_TRUE,
+        .shaderSampledImageArrayNonUniformIndexing = VK_TRUE,
+        .descriptorBindingSampledImageUpdateAfterBind = VK_TRUE,
+        .descriptorBindingPartiallyBound = VK_TRUE,
+        .runtimeDescriptorArray = VK_TRUE,
+    };
     VkPhysicalDeviceVulkan13Features features13 = {
         .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES,
-        .pNext = &features11,
+        .pNext = &features12,
         .dynamicRendering = VK_TRUE,
     };
     VkPhysicalDeviceVulkan14Features features14 = {

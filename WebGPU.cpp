@@ -42,6 +42,17 @@ enum wg_binding_kind_t : uint32_t
     WG_KIND_SAMPLER,
 };
 
+static WGPUShaderStage wg_stage_visibility(rt_stages_t stages)
+{
+    uint32_t flags = 0;
+    if (stages & RT_STAGE_VERTEX) flags |= WGPUShaderStage_Vertex;
+    if (stages & RT_STAGE_FRAGMENT) flags |= WGPUShaderStage_Fragment;
+    if (stages & RT_STAGE_COMPUTE) flags |= WGPUShaderStage_Compute;
+    if (!flags)
+        flags = WGPUShaderStage_Vertex | WGPUShaderStage_Fragment | WGPUShaderStage_Compute;
+    return (WGPUShaderStage)flags;
+}
+
 static bool rt_has_mipmap_filter(rt_filter_t minFilter)
 {
     switch (minFilter)
@@ -473,7 +484,7 @@ struct wg_texture_native_t
     uint32_t width = 1, height = 1, depth = 1;
     rt_texture_target_t target = RT_TEXTURE_2D;
     rt_texture_format_t rtFormat = RT_TEXTURE_NONE;
-    rt_texture_usages_t usage = 0;
+    rt_texture_usages_t usages = 0;
     rt_texture_sample_t samples = RT_TEXTURE_SAMPLE_1X;
     ~wg_texture_native_t()
     {
@@ -513,6 +524,24 @@ struct wg_sampler_native_t
     ~wg_sampler_native_t() { if (handle) wgpuSamplerRelease(handle); }
 };
 
+struct wg_layout_native_t
+{
+    WGPUBindGroupLayout bindGroupLayout = nullptr;
+    WGPUPipelineLayout pipelineLayout = nullptr;
+    wg_binding_kind_t kinds[RT_MAX_BINDING_HANDLE_NUM] = {};
+    uint32_t bindings[RT_MAX_BINDING_HANDLE_NUM] = {};
+    uint32_t entryIndex[RT_MAX_BINDING_HANDLE_NUM] = {};
+    uint32_t count = 0;
+};
+
+struct wg_binding_native_t
+{
+    WGPUBindGroup bindGroup = nullptr;
+    wg_layout_native_t* layout = nullptr;
+    uint32_t dynamicOffsets[RT_MAX_BINDING_HANDLE_NUM] = {};
+    uint32_t dynamicCount = 0;
+};
+
 struct wg_module_native_t
 {
     WGPUShaderModule vshader = nullptr;
@@ -538,13 +567,16 @@ struct wg_pass_transfer_native_t { uint32_t dummy = 0; };
 
 struct wg_native_t
 {
-    uint32_t bufferID = 0, textureID = 0, textureViewID = 0, samplerID = 0, moduleID = 0;
+    uint32_t bufferID = 0, textureID = 0, textureViewID = 0, samplerID = 0, layoutID = 0, bindingID = 0, moduleID = 0;
     uint32_t meshID = 0, meshletID = 0, passID = 0;
+    rt_limits_t limits;
 
     std::map<uint32_t, wg_buffer_native_t> buffers;
     std::map<uint32_t, wg_texture_native_t> textures;
     std::map<uint32_t, wg_texture_view_native_t> textureViews;
     std::map<uint32_t, wg_sampler_native_t> samplers;
+    std::map<uint32_t, wg_layout_native_t> layouts;
+    std::map<uint32_t, wg_binding_native_t> bindings;
     std::map<uint32_t, wg_module_native_t> modules;
     std::map<uint32_t, wg_mesh_native_t> meshes;
     std::map<uint32_t, wg_meshlet_native_t> meshlets;
@@ -583,6 +615,7 @@ struct wg_native_t
     };
     rt_module_render_t* currentRenderModule = nullptr;
     rt_module_compute_t* currentComputeModule = nullptr;
+    wg_binding_native_t* currentBindingGroup = nullptr;
 } static webgpu;
 
 static WGPUStringView wg_string(char const* text)
@@ -757,85 +790,13 @@ static rt_module_render_t const& wg_current_render_module()
     return *webgpu.currentRenderModule;
 }
 
-static bool wg_create_pipeline_layout(wg_module_native_t& native, rt_binding_t const* bindings)
-{
-    WGPUBindGroupLayoutEntry entries[RT_MAX_BINDING_HANDLE_NUM + 1] = {};
-    native.descriptorCount = 0;
-    WGPUShaderStage visibility = (WGPUShaderStage)(WGPUShaderStage_Vertex | WGPUShaderStage_Fragment | WGPUShaderStage_Compute);
-    if (bindings)
-    {
-        for (uint32_t i = 0; i < RT_MAX_BINDING_HANDLE_NUM; ++i)
-        {
-            if (bindings[i].type == RT_BINDING_NONE) continue;
-            auto& entry = entries[native.descriptorCount];
-            entry.binding = bindings[i].binding;
-            entry.visibility = visibility;
-            if (bindings[i].type == RT_BINDING_UNIFORM_BUFFER)
-            {
-                native.kinds[native.descriptorCount] = WG_KIND_UNIFORM;
-                entry.buffer.type = WGPUBufferBindingType_Uniform;
-                entry.buffer.hasDynamicOffset = WGPU_TRUE;
-            }
-            else if (bindings[i].type == RT_BINDING_STORAGE_BUFFER)
-            {
-                native.kinds[native.descriptorCount] = WG_KIND_STORAGE;
-                entry.buffer.type = WGPUBufferBindingType_Storage;
-                entry.buffer.hasDynamicOffset = WGPU_TRUE;
-            }
-            else if (bindings[i].type == RT_BINDING_TEXTURE)
-            {
-                native.kinds[native.descriptorCount] = WG_KIND_TEXTURE;
-                entry.texture.sampleType = WGPUTextureSampleType_Float;
-                entry.texture.viewDimension = WGPUTextureViewDimension_2D;
-            }
-            else if (bindings[i].type == RT_BINDING_STORAGE_TEXTURE)
-            {
-                native.kinds[native.descriptorCount] = WG_KIND_STORAGE_TEXTURE;
-                entry.storageTexture.access = WGPUStorageTextureAccess_WriteOnly;
-                entry.storageTexture.format = WGPUTextureFormat_RGBA8Unorm;
-                entry.storageTexture.viewDimension = WGPUTextureViewDimension_2D;
-            }
-            else if (bindings[i].type == RT_BINDING_SAMPLER)
-            {
-                native.kinds[native.descriptorCount] = WG_KIND_SAMPLER;
-                entry.sampler.type = WGPUSamplerBindingType_Filtering;
-            }
-            else
-                continue;
-            native.descriptorBindings[native.descriptorCount] = bindings[i].binding;
-            native.descriptorCount++;
-        }
-    }
-    auto& push = entries[native.descriptorCount];
-    push.binding = 16;
-    push.visibility = visibility;
-    push.buffer.type = WGPUBufferBindingType_Uniform;
-    push.buffer.minBindingSize = 256;
-    uint32_t entryCount = native.descriptorCount + 1;
-
-    WGPUBindGroupLayoutDescriptor layoutDesc = {};
-    layoutDesc.entryCount = entryCount;
-    layoutDesc.entries = entries;
-    native.bindGroupLayout = wgpuDeviceCreateBindGroupLayout(webgpu.device, &layoutDesc);
-    if (!native.bindGroupLayout) return false;
-
-    WGPUPipelineLayoutDescriptor pipeDesc = {};
-    pipeDesc.bindGroupLayoutCount = 1;
-    pipeDesc.bindGroupLayouts = &native.bindGroupLayout;
-    native.pipelineLayout = wgpuDeviceCreatePipelineLayout(webgpu.device, &pipeDesc);
-    return native.pipelineLayout != nullptr;
-}
-
 static void wg_destroy_module_native(uint32_t handle, void*& native)
 {
     if (native && handle != 0)
     {
         auto& module = *(wg_module_native_t*)native;
-        if (module.bindGroup) wgpuBindGroupRelease(module.bindGroup);
         if (module.renderPipeline) wgpuRenderPipelineRelease(module.renderPipeline);
         if (module.computePipeline) wgpuComputePipelineRelease(module.computePipeline);
-        if (module.pipelineLayout) wgpuPipelineLayoutRelease(module.pipelineLayout);
-        if (module.bindGroupLayout) wgpuBindGroupLayoutRelease(module.bindGroupLayout);
         if (module.vshader) wgpuShaderModuleRelease(module.vshader);
         if (module.tshader) wgpuShaderModuleRelease(module.tshader);
         if (module.mshader) wgpuShaderModuleRelease(module.mshader);
@@ -848,99 +809,13 @@ static void wg_destroy_module_native(uint32_t handle, void*& native)
 
 static void wg_flush_descriptors()
 {
-    auto* mod = wg_current_module_native();
-    if (!mod || !mod->bindGroupLayout) return;
-    if (mod->bindGroup)
-    {
-        wgpuBindGroupRelease(mod->bindGroup);
-        mod->bindGroup = nullptr;
-    }
-
-    WGPUBindGroupEntry entries[RT_MAX_BINDING_HANDLE_NUM + 1] = {};
-    uint32_t dynamicBinding[RT_MAX_BINDING_HANDLE_NUM];
-    uint32_t dynamicOffsets[RT_MAX_BINDING_HANDLE_NUM];
-    uint32_t dynamicCount = 0;
-    uint32_t count = 0;
-    for (uint32_t i = 0; i < mod->descriptorCount; ++i)
-    {
-        uint32_t binding = mod->descriptorBindings[i];
-        auto& slot = webgpu.currentBinding[binding];
-        entries[count].binding = binding;
-        if (mod->kinds[i] == WG_KIND_UNIFORM || mod->kinds[i] == WG_KIND_STORAGE)
-        {
-            auto* buf = wg_buffer_native(slot.buffer);
-            if (!buf) continue;
-            bool storage = (mod->kinds[i] == WG_KIND_STORAGE);
-            wg_transition_buffer(*buf, storage ? WG_STATE_SHADER_WRITE : WG_STATE_SHADER_READ);
-            size_t bindOffset = slot.buffer_bind.offset;
-            size_t bindSize = slot.buffer_bind.size;
-            if (bindSize == (size_t)-1U)
-                bindSize = slot.buffer.size > bindOffset ? slot.buffer.size - bindOffset : 0;
-            entries[count].buffer = buf->handle;
-            entries[count].offset = 0;
-            entries[count].size = bindSize;
-            dynamicBinding[dynamicCount] = binding;
-            dynamicOffsets[dynamicCount] = (uint32_t)bindOffset;
-            dynamicCount++;
-        }
-        else if (mod->kinds[i] == WG_KIND_TEXTURE)
-        {
-            auto* view = wg_texture_view_native(slot.texture_view);
-            if (!view || !view->handle || !view->texture) continue;
-            auto* tex = view->texture;
-            WGPUTextureView gpuView = view->handle;
-            wg_transition_image(*tex, WG_STATE_SHADER_READ);
-            entries[count].textureView = gpuView;
-        }
-        else if (mod->kinds[i] == WG_KIND_STORAGE_TEXTURE)
-        {
-            auto* view = wg_texture_view_native(slot.storage_view);
-            if (!view || !view->handle || !view->texture) continue;
-            auto* tex = view->texture;
-            wg_transition_image(*tex, WG_STATE_SHADER_WRITE);
-            entries[count].textureView = view->handle;
-        }
-        else if (mod->kinds[i] == WG_KIND_SAMPLER)
-        {
-            auto* samp = wg_sampler_native(slot.sampler);
-            if (!samp || !samp->handle) continue;
-            entries[count].sampler = samp->handle;
-        }
-        else
-            continue;
-        count++;
-    }
-    entries[count].binding = 16;
-    entries[count].buffer = webgpu.pushBuffer;
-    entries[count].offset = 0;
-    entries[count].size = 256;
-    count++;
-
-    WGPUBindGroupDescriptor desc = {};
-    desc.layout = mod->bindGroupLayout;
-    desc.entryCount = count;
-    desc.entries = entries;
-    mod->bindGroup = wgpuDeviceCreateBindGroup(webgpu.device, &desc);
-    if (!mod->bindGroup) return;
-    for (uint32_t a = 1; a < dynamicCount; ++a)
-    {
-        uint32_t binding = dynamicBinding[a];
-        uint32_t offset = dynamicOffsets[a];
-        uint32_t b = a;
-        while (b > 0 && dynamicBinding[b - 1] > binding)
-        {
-            dynamicBinding[b] = dynamicBinding[b - 1];
-            dynamicOffsets[b] = dynamicOffsets[b - 1];
-            --b;
-        }
-        dynamicBinding[b] = binding;
-        dynamicOffsets[b] = offset;
-    }
-    uint32_t const* offsets = dynamicCount ? dynamicOffsets : nullptr;
+    auto* group = webgpu.currentBindingGroup;
+    if (!group || !group->bindGroup) return;
+    uint32_t const* offsets = group->dynamicCount ? group->dynamicOffsets : nullptr;
     if (webgpu.renderPass)
-        wgpuRenderPassEncoderSetBindGroup(webgpu.renderPass, 0, mod->bindGroup, dynamicCount, offsets);
+        wgpuRenderPassEncoderSetBindGroup(webgpu.renderPass, 0, group->bindGroup, group->dynamicCount, offsets);
     if (webgpu.computePass)
-        wgpuComputePassEncoderSetBindGroup(webgpu.computePass, 0, mod->bindGroup, dynamicCount, offsets);
+        wgpuComputePassEncoderSetBindGroup(webgpu.computePass, 0, group->bindGroup, group->dynamicCount, offsets);
 }
 
 void wg_load_library(WGPUDevice device, WGPUQueue queue)
@@ -965,6 +840,8 @@ void wg_load_library(WGPUDevice device, WGPUQueue queue)
     webgpu.pushBuffer = wgpuDeviceCreateBuffer(webgpu.device, &push);
 
     rt_unload_library = wg_unload_library;
+    rt_get_backend = wg_get_backend;
+    rt_get_limits = wg_get_limits;
     rt_create_buffer = wg_create_buffer;
     rt_destroy_buffer = wg_destroy_buffer;
     rt_bind_buffer = wg_bind_buffer;
@@ -980,6 +857,11 @@ void wg_load_library(WGPUDevice device, WGPUQueue queue)
     rt_create_sampler = wg_create_sampler;
     rt_destroy_sampler = wg_destroy_sampler;
     rt_bind_sampler = wg_bind_sampler;
+    rt_create_layout = wg_create_layout;
+    rt_destroy_layout = wg_destroy_layout;
+    rt_create_binding = wg_create_binding;
+    rt_destroy_binding = wg_destroy_binding;
+    rt_bind_binding = wg_bind_binding;
     rt_create_module_compute = wg_create_module_compute;
     rt_create_module_render = wg_create_module_render;
     rt_destroy_module_render = wg_destroy_module_render;
@@ -1027,10 +909,50 @@ void wg_load_library(WGPUDevice device, WGPUQueue queue)
     rt_destroy_meshlet = wg_destroy_meshlet;
     rt_draw_meshlet = wg_draw_meshlet;
     rt_submit = wg_submit;
+
+    rt_limits_t result = {};
+    result.max_bindless_handle_size = 0;
+    result.max_bindless_textures = 0;
+    result.max_push_constant_size = (uint32_t)sizeof(webgpu.pushData);
+    result.max_texture_samples = 4;
+    if (webgpu.device)
+    {
+        WGPULimits gpu = {};
+        if (wgpuDeviceGetLimits(webgpu.device, &gpu) == WGPUStatus_Success)
+        {
+            result.max_texture_dimension_1d = gpu.maxTextureDimension1D;
+            result.max_texture_dimension_2d = gpu.maxTextureDimension2D;
+            result.max_texture_dimension_3d = gpu.maxTextureDimension3D;
+            result.max_texture_array_layers = gpu.maxTextureArrayLayers;
+            result.max_buffer_size = gpu.maxBufferSize;
+            result.max_uniform_buffer_binding_size = gpu.maxUniformBufferBindingSize;
+            result.max_storage_buffer_binding_size = gpu.maxStorageBufferBindingSize;
+            result.min_uniform_buffer_offset_alignment = gpu.minUniformBufferOffsetAlignment;
+            result.min_storage_buffer_offset_alignment = gpu.minStorageBufferOffsetAlignment;
+            result.max_uniform_buffers_per_shader_stage = gpu.maxUniformBuffersPerShaderStage;
+            result.max_storage_buffers_per_shader_stage = gpu.maxStorageBuffersPerShaderStage;
+            result.max_sampled_textures_per_shader_stage = gpu.maxSampledTexturesPerShaderStage;
+            result.max_storage_textures_per_shader_stage = gpu.maxStorageTexturesPerShaderStage;
+            result.max_samplers_per_shader_stage = gpu.maxSamplersPerShaderStage;
+            result.max_vertex_buffers = gpu.maxVertexBuffers;
+            result.max_vertex_attributes = gpu.maxVertexAttributes;
+            result.max_vertex_buffer_array_stride = gpu.maxVertexBufferArrayStride;
+            result.max_color_attachments = gpu.maxColorAttachments;
+            result.max_color_attachment_bytes_per_sample = gpu.maxColorAttachmentBytesPerSample;
+            result.max_compute_workgroup_storage_size = gpu.maxComputeWorkgroupStorageSize;
+            result.max_compute_invocations_per_workgroup = gpu.maxComputeInvocationsPerWorkgroup;
+            result.max_compute_workgroup_size_x = gpu.maxComputeWorkgroupSizeX;
+            result.max_compute_workgroup_size_y = gpu.maxComputeWorkgroupSizeY;
+            result.max_compute_workgroup_size_z = gpu.maxComputeWorkgroupSizeZ;
+            result.max_compute_workgroups_per_dimension = gpu.maxComputeWorkgroupsPerDimension;
+        }
+    }
+    webgpu.limits = result;
 }
 
 void wg_unload_library()
 {
+    webgpu.limits = {};
     wg_end_pass_encoders();
     if (webgpu.encoder)
     {
@@ -1043,6 +965,24 @@ void wg_unload_library()
         void* dummy = nullptr;
         wg_destroy_module_native(handle, dummy);
     }
+    for (auto& item : webgpu.bindings)
+    {
+        if (item.second.bindGroup)
+            wgpuBindGroupRelease(item.second.bindGroup);
+        item.second.bindGroup = nullptr;
+    }
+    webgpu.bindings.clear();
+    webgpu.currentBindingGroup = nullptr;
+    for (auto& item : webgpu.layouts)
+    {
+        if (item.second.pipelineLayout)
+            wgpuPipelineLayoutRelease(item.second.pipelineLayout);
+        if (item.second.bindGroupLayout)
+            wgpuBindGroupLayoutRelease(item.second.bindGroupLayout);
+        item.second.pipelineLayout = nullptr;
+        item.second.bindGroupLayout = nullptr;
+    }
+    webgpu.layouts.clear();
     for (auto& item : webgpu.buffers)
     {
         if (item.second.handle)
@@ -1078,12 +1018,15 @@ void wg_unload_library()
     if (webgpu.pushBuffer) { wgpuBufferRelease(webgpu.pushBuffer); webgpu.pushBuffer = nullptr; }
     webgpu.queue = nullptr;
     webgpu.device = nullptr;
-    webgpu.bufferID = webgpu.textureID = webgpu.textureViewID = webgpu.samplerID = webgpu.moduleID = 0;
+    webgpu.bufferID = webgpu.textureID = webgpu.textureViewID = webgpu.samplerID = 0;
+    webgpu.layoutID = webgpu.bindingID = webgpu.moduleID = 0;
     webgpu.meshID = webgpu.meshletID = webgpu.passID = 0;
     webgpu.currentPassType = RT_MODULE_NONE;
     webgpu.currentPipeline = nullptr;
 
     if (rt_unload_library == wg_unload_library) rt_unload_library = nullptr;
+    if (rt_get_backend == wg_get_backend) rt_get_backend = nullptr;
+    if (rt_get_limits == wg_get_limits) rt_get_limits = nullptr;
     if (rt_create_buffer == wg_create_buffer) rt_create_buffer = nullptr;
     if (rt_destroy_buffer == wg_destroy_buffer) rt_destroy_buffer = nullptr;
     if (rt_bind_buffer == wg_bind_buffer) rt_bind_buffer = nullptr;
@@ -1099,6 +1042,11 @@ void wg_unload_library()
     if (rt_create_sampler == wg_create_sampler) rt_create_sampler = nullptr;
     if (rt_destroy_sampler == wg_destroy_sampler) rt_destroy_sampler = nullptr;
     if (rt_bind_sampler == wg_bind_sampler) rt_bind_sampler = nullptr;
+    if (rt_create_layout == wg_create_layout) rt_create_layout = nullptr;
+    if (rt_destroy_layout == wg_destroy_layout) rt_destroy_layout = nullptr;
+    if (rt_create_binding == wg_create_binding) rt_create_binding = nullptr;
+    if (rt_destroy_binding == wg_destroy_binding) rt_destroy_binding = nullptr;
+    if (rt_bind_binding == wg_bind_binding) rt_bind_binding = nullptr;
     if (rt_create_module_compute == wg_create_module_compute) rt_create_module_compute = nullptr;
     if (rt_create_module_render == wg_create_module_render) rt_create_module_render = nullptr;
     if (rt_destroy_module_render == wg_destroy_module_render) rt_destroy_module_render = nullptr;
@@ -1148,9 +1096,19 @@ void wg_unload_library()
     if (rt_submit == wg_submit) rt_submit = nullptr;
 }
 
+rt_backend_t wg_get_backend()
+{
+    return RT_WEBGPU;
+}
+
+rt_limits_t wg_get_limits()
+{
+    return webgpu.limits;
+}
+
 rt_buffer_t wg_create_buffer(rt_buffer_info_t const& info)
 {
-    if (info.usage == 0)
+    if (info.usages == 0)
     {
         fprintf(stderr, "Buffer usage must not be 0");
         abort();
@@ -1161,7 +1119,7 @@ rt_buffer_t wg_create_buffer(rt_buffer_info_t const& info)
     auto& native = webgpu.buffers[handle];
     WGPUBufferDescriptor desc = {};
     desc.size = info.size;
-    desc.usage = wg_buffer_usage(info.usage);
+    desc.usage = wg_buffer_usage(info.usages);
     if (info.data)
         desc.usage = (WGPUBufferUsage)(desc.usage | WGPUBufferUsage_CopyDst);
     desc.mappedAtCreation = info.data ? 1 : 0;
@@ -1178,13 +1136,13 @@ rt_buffer_t wg_create_buffer(rt_buffer_info_t const& info)
         wgpuBufferUnmap(native.handle);
         native.state = WG_STATE_HOST;
     }
-    if (info.usage & (RT_BUFFER_USAGE_MAP_READ | RT_BUFFER_USAGE_MAP_WRITE))
+    if (info.usages & (RT_BUFFER_USAGE_MAP_READ | RT_BUFFER_USAGE_MAP_WRITE))
         native.mappedCpu.resize(info.size);
 
     webgpu.bufferID = handle;
     result.handle = handle;
     result.size = info.size;
-    result.usage = info.usage;
+    result.usages = info.usages;
     result.native = &native;
     return result;
 }
@@ -1237,7 +1195,7 @@ void wg_unmap_buffer(rt_buffer_t& buffer)
 
 rt_texture_t wg_create_texture(rt_texture_info_t const& info)
 {
-    if (info.usage == 0)
+    if (info.usages == 0)
     {
         fprintf(stderr, "Texture usage must not be 0");
         abort();
@@ -1250,7 +1208,7 @@ rt_texture_t wg_create_texture(rt_texture_info_t const& info)
     auto& native = webgpu.textures[handle];
     native.format = rt_to_wg_texture_format(info.format);
     native.rtFormat = info.format;
-    native.usage = info.usage;
+    native.usages = info.usages;
     native.width = info.width;
     native.height = info.target == RT_TEXTURE_1D ? 1 : info.height;
     native.depth = info.depth ? info.depth : 1;
@@ -1279,7 +1237,7 @@ rt_texture_t wg_create_texture(rt_texture_info_t const& info)
                      (info.target == RT_TEXTURE_1D) ? WGPUTextureDimension_1D :
                      WGPUTextureDimension_2D;
     desc.format = native.format;
-    desc.usage = wg_texture_usage(info.usage, native.format, samples);
+    desc.usage = wg_texture_usage(info.usages, native.format, samples);
     if (info.data && samples == RT_TEXTURE_SAMPLE_1X)
         desc.usage = (WGPUTextureUsage)(desc.usage | WGPUTextureUsage_CopyDst);
     native.handle = wgpuDeviceCreateTexture(webgpu.device, &desc);
@@ -1315,14 +1273,14 @@ rt_texture_t wg_create_texture(rt_texture_info_t const& info)
     result.target = native.target;
     result.format = native.rtFormat;
     result.samples = native.samples;
-    result.usage = native.usage;
+    result.usages = native.usages;
     result.mipmaps = native.levels;
     result.native = &native;
     result.default_view = wg_create_texture_view(result, {
         .target = native.target,
         .format = native.rtFormat,
         .aspect = RT_TEXTURE_ASPECT_ALL,
-        .usage = native.usage,
+        .usages = info.usages,
         .layer_count = native.layers,
         .level_count = native.levels,
     });
@@ -1361,11 +1319,17 @@ rt_texture_view_t wg_create_texture_view(rt_texture_t& texture, rt_texture_view_
 {
     auto* tex = wg_texture_native(texture);
     rt_texture_format_t format = info.format != RT_TEXTURE_NONE ? info.format : (tex ? tex->rtFormat : RT_TEXTURE_NONE);
-    rt_texture_usages_t usage = info.usage ? info.usage : (tex ? tex->usage : 0);
+    rt_texture_usages_t usage = info.usages ? info.usages : (tex ? tex->usages : 0);
     rt_texture_view_t result{
-        0, info.target, format,
-        info.aspect, usage,
-        info.base_layer, info.layer_count, info.base_level, info.level_count, nullptr};
+        .target = info.target,
+        .format = format,
+        .aspect = info.aspect,
+        .usages = usage,
+        .base_layer = info.base_layer,
+        .layer_count = info.layer_count,
+        .base_level = info.base_level,
+        .level_count = info.level_count,
+    };
     if (!tex || !tex->handle) return result;
     uint32_t levelCount = info.level_count ? info.level_count : tex->levels - info.base_level;
     if (info.base_level >= tex->levels || levelCount == 0) return result;
@@ -1482,6 +1446,310 @@ void wg_bind_sampler(rt_sampler_t& sampler, rt_sampler_bind_t bind)
     webgpu.currentBinding[bind.binding].sampler_bind = bind;
 }
 
+static wg_layout_native_t* wg_layout_native(rt_layout_t const& layout)
+{
+    if (!layout.native || layout.handle == 0) return nullptr;
+    return (wg_layout_native_t*)layout.native;
+}
+
+static wg_binding_native_t* wg_binding_native(rt_binding_t const& binding)
+{
+    if (!binding.native || binding.handle == 0) return nullptr;
+    return (wg_binding_native_t*)binding.native;
+}
+
+static void wg_collect_offsets(wg_binding_native_t& native, rt_binding_t const& binding)
+{
+    auto* layout = native.layout;
+    native.dynamicCount = 0;
+    if (!layout) return;
+    uint32_t dynamicBinding[RT_MAX_BINDING_HANDLE_NUM] = {};
+    for (uint32_t i = 0; i < layout->count; ++i)
+    {
+        if (layout->kinds[i] != WG_KIND_UNIFORM && layout->kinds[i] != WG_KIND_STORAGE)
+            continue;
+        auto const& item = binding.entry[layout->entryIndex[i]];
+        dynamicBinding[native.dynamicCount] = layout->bindings[i];
+        native.dynamicOffsets[native.dynamicCount] = (uint32_t)item.buffer_bind.offset;
+        native.dynamicCount++;
+    }
+    for (uint32_t a = 1; a < native.dynamicCount; ++a)
+    {
+        uint32_t bindingNum = dynamicBinding[a];
+        uint32_t offset = native.dynamicOffsets[a];
+        uint32_t b = a;
+        while (b > 0 && dynamicBinding[b - 1] > bindingNum)
+        {
+            dynamicBinding[b] = dynamicBinding[b - 1];
+            native.dynamicOffsets[b] = native.dynamicOffsets[b - 1];
+            --b;
+        }
+        dynamicBinding[b] = bindingNum;
+        native.dynamicOffsets[b] = offset;
+    }
+}
+
+static void wg_use_layout(wg_module_native_t& native, rt_layout_t const& layout, rt_module_layout_t* dst)
+{
+    auto* src = wg_layout_native(layout);
+    if (!src || !src->pipelineLayout)
+    {
+        fprintf(stderr, "Module requires a layout");
+        abort();
+    }
+    native.pipelineLayout = src->pipelineLayout;
+    native.bindGroupLayout = src->bindGroupLayout;
+    native.descriptorCount = src->count;
+    for (uint32_t i = 0; i < src->count; ++i)
+    {
+        native.kinds[i] = src->kinds[i];
+        native.descriptorBindings[i] = src->bindings[i];
+    }
+    for (size_t i = 0; i < RT_MAX_BINDING_HANDLE_NUM; ++i)
+    {
+        dst[i].binding = layout.entry[i].binding;
+        dst[i].stages = layout.entry[i].stages;
+        dst[i].type = layout.entry[i].type;
+    }
+}
+
+rt_layout_t wg_create_layout(rt_layout_info_t const& info)
+{
+    rt_layout_t result = {};
+    if (!webgpu.device) return result;
+    auto handle = webgpu.layoutID + 1;
+    auto& native = webgpu.layouts[handle];
+    WGPUBindGroupLayoutEntry entries[RT_MAX_BINDING_HANDLE_NUM + 1] = {};
+    WGPUShaderStage pushStage = (WGPUShaderStage)(WGPUShaderStage_Vertex | WGPUShaderStage_Fragment | WGPUShaderStage_Compute);
+    for (uint32_t i = 0; i < RT_MAX_BINDING_HANDLE_NUM; ++i)
+    {
+        result.entry[i] = info.entry[i];
+        if (info.entry[i].type == RT_BINDING_NONE)
+            continue;
+        auto& entry = entries[native.count];
+        entry.binding = info.entry[i].binding;
+        entry.visibility = wg_stage_visibility(info.entry[i].stages);
+        if (info.entry[i].type == RT_BINDING_UNIFORM_BUFFER)
+        {
+            native.kinds[native.count] = WG_KIND_UNIFORM;
+            entry.buffer.type = WGPUBufferBindingType_Uniform;
+            entry.buffer.hasDynamicOffset = WGPU_TRUE;
+        }
+        else if (info.entry[i].type == RT_BINDING_STORAGE_BUFFER)
+        {
+            native.kinds[native.count] = WG_KIND_STORAGE;
+            entry.buffer.type = WGPUBufferBindingType_Storage;
+            entry.buffer.hasDynamicOffset = WGPU_TRUE;
+        }
+        else if (info.entry[i].type == RT_BINDING_TEXTURE)
+        {
+            native.kinds[native.count] = WG_KIND_TEXTURE;
+            entry.texture.sampleType = WGPUTextureSampleType_Float;
+            entry.texture.viewDimension = WGPUTextureViewDimension_2D;
+        }
+        else if (info.entry[i].type == RT_BINDING_STORAGE_TEXTURE)
+        {
+            native.kinds[native.count] = WG_KIND_STORAGE_TEXTURE;
+            entry.storageTexture.access = WGPUStorageTextureAccess_WriteOnly;
+            entry.storageTexture.format = WGPUTextureFormat_RGBA8Unorm;
+            entry.storageTexture.viewDimension = WGPUTextureViewDimension_2D;
+        }
+        else if (info.entry[i].type == RT_BINDING_SAMPLER)
+        {
+            native.kinds[native.count] = WG_KIND_SAMPLER;
+            entry.sampler.type = WGPUSamplerBindingType_Filtering;
+        }
+        else
+            continue;
+        native.bindings[native.count] = info.entry[i].binding;
+        native.entryIndex[native.count] = i;
+        native.count++;
+    }
+    auto& push = entries[native.count];
+    push.binding = 16;
+    push.visibility = pushStage;
+    push.buffer.type = WGPUBufferBindingType_Uniform;
+    push.buffer.minBindingSize = 256;
+    WGPUBindGroupLayoutDescriptor layoutDesc = {};
+    layoutDesc.entryCount = native.count + 1;
+    layoutDesc.entries = entries;
+    native.bindGroupLayout = wgpuDeviceCreateBindGroupLayout(webgpu.device, &layoutDesc);
+    if (!native.bindGroupLayout)
+    {
+        webgpu.layouts.erase(handle);
+        return {};
+    }
+    WGPUPipelineLayoutDescriptor pipeDesc = {};
+    pipeDesc.bindGroupLayoutCount = 1;
+    pipeDesc.bindGroupLayouts = &native.bindGroupLayout;
+    native.pipelineLayout = wgpuDeviceCreatePipelineLayout(webgpu.device, &pipeDesc);
+    if (!native.pipelineLayout)
+    {
+        wgpuBindGroupLayoutRelease(native.bindGroupLayout);
+        native.bindGroupLayout = nullptr;
+        webgpu.layouts.erase(handle);
+        return {};
+    }
+    webgpu.layoutID = handle;
+    result.handle = handle;
+    result.native = &native;
+    return result;
+}
+
+void wg_destroy_layout(rt_layout_t& layout)
+{
+    if (auto* native = wg_layout_native(layout))
+    {
+        if (native->pipelineLayout)
+            wgpuPipelineLayoutRelease(native->pipelineLayout);
+        if (native->bindGroupLayout)
+            wgpuBindGroupLayoutRelease(native->bindGroupLayout);
+        native->pipelineLayout = nullptr;
+        native->bindGroupLayout = nullptr;
+        webgpu.layouts.erase(layout.handle);
+    }
+    layout = {};
+}
+
+rt_binding_t wg_create_binding(rt_binding_info_t const& info)
+{
+    auto* layout = wg_layout_native(info.layout);
+    if (!layout || !layout->bindGroupLayout || !webgpu.pushBuffer)
+    {
+        fprintf(stderr, "Binding requires a layout");
+        abort();
+    }
+    rt_binding_t result = {};
+    auto handle = webgpu.bindingID + 1;
+    auto& native = webgpu.bindings[handle];
+    native.layout = layout;
+    WGPUBindGroupEntry entries[RT_MAX_BINDING_HANDLE_NUM + 1] = {};
+    uint32_t count = 0;
+    for (uint32_t i = 0; i < layout->count; ++i)
+    {
+        auto const& item = info.entry[layout->entryIndex[i]];
+        result.entry[layout->entryIndex[i]] = item;
+        entries[count].binding = layout->bindings[i];
+        if (layout->kinds[i] == WG_KIND_UNIFORM || layout->kinds[i] == WG_KIND_STORAGE)
+        {
+            auto* buf = wg_buffer_native(item.buffer);
+            if (!buf) continue;
+            size_t bindOffset = item.buffer_bind.offset;
+            size_t bindSize = item.buffer_bind.size;
+            if (bindSize == (size_t)-1U)
+                bindSize = item.buffer.size > bindOffset ? item.buffer.size - bindOffset : 0;
+            entries[count].buffer = buf->handle;
+            entries[count].offset = 0;
+            entries[count].size = bindSize;
+        }
+        else if (layout->kinds[i] == WG_KIND_TEXTURE)
+        {
+            auto* view = wg_texture_view_native(item.texture);
+            if (!view || !view->handle) continue;
+            entries[count].textureView = view->handle;
+        }
+        else if (layout->kinds[i] == WG_KIND_STORAGE_TEXTURE)
+        {
+            auto* view = wg_texture_view_native(item.texture_storage);
+            if (!view || !view->handle) continue;
+            entries[count].textureView = view->handle;
+        }
+        else if (layout->kinds[i] == WG_KIND_SAMPLER)
+        {
+            auto* samp = wg_sampler_native(item.sampler);
+            if (!samp || !samp->handle) continue;
+            entries[count].sampler = samp->handle;
+        }
+        else
+            continue;
+        count++;
+    }
+    for (size_t i = 0; i < RT_MAX_BINDING_HANDLE_NUM; ++i)
+        result.entry[i] = info.entry[i];
+    entries[count].binding = 16;
+    entries[count].buffer = webgpu.pushBuffer;
+    entries[count].offset = 0;
+    entries[count].size = 256;
+    count++;
+    if (count != layout->count + 1)
+    {
+        webgpu.bindings.erase(handle);
+        fprintf(stderr, "WebGPU: binding group is missing a resource");
+        return {};
+    }
+    WGPUBindGroupDescriptor desc = {};
+    desc.layout = layout->bindGroupLayout;
+    desc.entryCount = count;
+    desc.entries = entries;
+    native.bindGroup = wgpuDeviceCreateBindGroup(webgpu.device, &desc);
+    if (!native.bindGroup)
+    {
+        webgpu.bindings.erase(handle);
+        fprintf(stderr, "WebGPU: failed to create bind group");
+        return {};
+    }
+    webgpu.bindingID = handle;
+    result.handle = handle;
+    result.native = &native;
+    wg_collect_offsets(native, result);
+    return result;
+}
+
+void wg_destroy_binding(rt_binding_t& binding)
+{
+    if (auto* native = wg_binding_native(binding))
+    {
+        if (webgpu.currentBindingGroup == native)
+            webgpu.currentBindingGroup = nullptr;
+        if (native->bindGroup)
+            wgpuBindGroupRelease(native->bindGroup);
+        native->bindGroup = nullptr;
+        webgpu.bindings.erase(binding.handle);
+    }
+    binding = {};
+}
+
+void wg_bind_binding(rt_binding_t& binding)
+{
+    if (webgpu.currentPipeline == nullptr)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    auto* native = wg_binding_native(binding);
+    if (!native || !native->bindGroup || !native->layout)
+        return;
+    auto* layout = native->layout;
+    for (uint32_t i = 0; i < layout->count; ++i)
+    {
+        auto const& item = binding.entry[layout->entryIndex[i]];
+        if (layout->kinds[i] == WG_KIND_UNIFORM || layout->kinds[i] == WG_KIND_STORAGE)
+        {
+            if (auto* buf = wg_buffer_native(item.buffer))
+                wg_transition_buffer(*buf, layout->kinds[i] == WG_KIND_STORAGE ? WG_STATE_SHADER_WRITE : WG_STATE_SHADER_READ);
+        }
+        else if (layout->kinds[i] == WG_KIND_TEXTURE)
+        {
+            if (auto* view = wg_texture_view_native(item.texture))
+                if (view->texture)
+                    wg_transition_image(*view->texture, WG_STATE_SHADER_READ);
+        }
+        else if (layout->kinds[i] == WG_KIND_STORAGE_TEXTURE)
+        {
+            if (auto* view = wg_texture_view_native(item.texture_storage))
+                if (view->texture)
+                    wg_transition_image(*view->texture, WG_STATE_SHADER_WRITE);
+        }
+    }
+    wg_collect_offsets(*native, binding);
+    webgpu.currentBindingGroup = native;
+    uint32_t const* offsets = native->dynamicCount ? native->dynamicOffsets : nullptr;
+    if (webgpu.renderPass)
+        wgpuRenderPassEncoderSetBindGroup(webgpu.renderPass, 0, native->bindGroup, native->dynamicCount, offsets);
+    if (webgpu.computePass)
+        wgpuComputePassEncoderSetBindGroup(webgpu.computePass, 0, native->bindGroup, native->dynamicCount, offsets);
+}
+
 rt_module_compute_t wg_create_module_compute(rt_module_compute_info_t const& info)
 {
     rt_module_compute_t result = {};
@@ -1489,12 +1757,13 @@ rt_module_compute_t wg_create_module_compute(rt_module_compute_info_t const& inf
     uint32_t handle = webgpu.moduleID + 1;
     auto& native = webgpu.modules[handle];
     native.cshader = wg_create_shader(info.cshader.code, info.cshader.size);
-    if (!native.cshader || !wg_create_pipeline_layout(native, info.binding))
+    if (!native.cshader)
     {
         result.native = &native;
         wg_destroy_module_native(handle, result.native);
         return {};
     }
+    wg_use_layout(native, info.layout, result.layout);
     WGPUComputePipelineDescriptor desc = {};
     desc.layout = native.pipelineLayout;
     desc.compute.module = native.cshader;
@@ -1509,8 +1778,6 @@ rt_module_compute_t wg_create_module_compute(rt_module_compute_info_t const& inf
     webgpu.moduleID = handle;
     result.handle = handle;
     result.native = &native;
-    for (size_t i = 0; i < std::size(info.binding); ++i)
-        result.binding[i] = info.binding[i];
     return result;
 }
 
@@ -1537,12 +1804,13 @@ rt_module_render_t wg_create_module_render(rt_module_render_info_t const& info)
         abort();
     }
     if (info.fshader.code) native.fshader = wg_create_shader(info.fshader.code, info.fshader.size);
-    if (!wg_create_pipeline_layout(native, info.binding) || !native.vshader)
+    if (!native.vshader)
     {
         result.native = &native;
         wg_destroy_module_native(handle, result.native);
         return {};
     }
+    wg_use_layout(native, info.layout, result.layout);
     WGPUVertexAttribute attributes[RT_MAX_VERTEX_BUFFER_NUM][RT_MAX_VERTEX_ATTRIB_NUM] = {};
     WGPUVertexBufferLayout layouts[RT_MAX_VERTEX_BUFFER_NUM] = {};
     uint32_t bufferCount = 0;
@@ -1668,8 +1936,6 @@ rt_module_render_t wg_create_module_render(rt_module_render_info_t const& info)
     result.index_type = info.index_type;
     for (size_t i = 0; i < std::size(info.vertex); ++i)
         result.vertex[i] = info.vertex[i];
-    for (size_t i = 0; i < std::size(info.binding); ++i)
-        result.binding[i] = info.binding[i];
     result.cull_mode = info.cull_mode;
     result.wind_mode = info.wind_mode;
     result.fill_mode = info.fill_mode;
@@ -1698,6 +1964,7 @@ void wg_begin_compute(rt_pass_compute_t& pass)
     }
     for (auto& binding : webgpu.currentBinding)
         binding = {};
+    webgpu.currentBindingGroup = nullptr;
     auto handle = webgpu.passID + 1;
     auto& native = webgpu.computePasses[handle];
     pass.handle = handle;
@@ -1730,6 +1997,7 @@ void wg_end_compute(rt_pass_compute_t& pass)
     webgpu.currentPassType = RT_MODULE_NONE;
     webgpu.currentPipeline = nullptr;
     webgpu.currentComputeModule = nullptr;
+    webgpu.currentBindingGroup = nullptr;
     for (auto& binding : webgpu.currentBinding)
         binding = {};
 }
@@ -1741,15 +2009,15 @@ void wg_bind_module_compute(rt_module_compute_t& module)
         fprintf(stderr, "Pipeline not begin");
         abort();
     }
-    auto* mod = (wg_module_native_t*)module.native;
-    if (module.handle == 0 || !mod || !mod->computePipeline)
+    auto* native = (wg_module_native_t*)module.native;
+    if (module.handle == 0 || !native || !native->computePipeline)
     {
         fprintf(stderr, "Pipeline module is not created");
         abort();
     }
     webgpu.currentComputeModule = &module;
     if (webgpu.computePass)
-        wgpuComputePassEncoderSetPipeline(webgpu.computePass, mod->computePipeline);
+        wgpuComputePassEncoderSetPipeline(webgpu.computePass, native->computePipeline);
 }
 
 void wg_dispatch_compute(uint32_t groupX, uint32_t groupY, uint32_t groupZ)
@@ -1827,6 +2095,7 @@ void wg_begin_render(rt_pass_render_t& pass)
     }
     for (auto& binding : webgpu.currentBinding)
         binding = {};
+    webgpu.currentBindingGroup = nullptr;
     webgpu.currentPassType = RT_MODULE_RENDER;
     webgpu.currentRenderPass = &pass;
     webgpu.currentRenderModule = nullptr;
@@ -1923,6 +2192,7 @@ void wg_end_render(rt_pass_render_t& pass)
     webgpu.currentPassType = RT_MODULE_NONE;
     webgpu.currentPipeline = nullptr;
     webgpu.currentRenderModule = nullptr;
+    webgpu.currentBindingGroup = nullptr;
     for (auto& binding : webgpu.currentBinding)
         binding = {};
 }
@@ -1934,15 +2204,15 @@ void wg_bind_module_render(rt_module_render_t& module)
         fprintf(stderr, "Pipeline not begin");
         abort();
     }
-    auto* mod = (wg_module_native_t*)module.native;
-    if (module.handle == 0 || !mod || !mod->renderPipeline)
+    auto* native = (wg_module_native_t*)module.native;
+    if (module.handle == 0 || !native || !native->renderPipeline)
     {
         fprintf(stderr, "Pipeline module is not created");
         abort();
     }
     webgpu.currentRenderModule = &module;
     if (webgpu.renderPass)
-        wgpuRenderPassEncoderSetPipeline(webgpu.renderPass, mod->renderPipeline);
+        wgpuRenderPassEncoderSetPipeline(webgpu.renderPass, native->renderPipeline);
 }
 
 void wg_set_viewport(float x, float y, float width, float height, float minDepth, float maxDepth)
@@ -2422,13 +2692,13 @@ rt_mesh_t wg_create_mesh(const float* vertices, const float* normals, const floa
     native.vertexCount = (uint32_t)vertex_count;
     native.indexCount = (uint32_t)index_count;
     if (vertices)
-        result.vertex[0] = wg_create_buffer({.size = vertex_count * 3 * sizeof(float), .usage = RT_BUFFER_USAGE_VERTEX | RT_BUFFER_USAGE_COPY_DST, .data = vertices});
+        result.vertex[0] = wg_create_buffer({.size = vertex_count * 3 * sizeof(float), .usages = RT_BUFFER_USAGE_VERTEX | RT_BUFFER_USAGE_COPY_DST, .data = vertices});
     if (normals)
-        result.vertex[1] = wg_create_buffer({.size = vertex_count * 3 * sizeof(float), .usage = RT_BUFFER_USAGE_VERTEX | RT_BUFFER_USAGE_COPY_DST, .data = normals});
+        result.vertex[1] = wg_create_buffer({.size = vertex_count * 3 * sizeof(float), .usages = RT_BUFFER_USAGE_VERTEX | RT_BUFFER_USAGE_COPY_DST, .data = normals});
     if (uvs)
-        result.vertex[2] = wg_create_buffer({.size = vertex_count * 2 * sizeof(float), .usage = RT_BUFFER_USAGE_VERTEX | RT_BUFFER_USAGE_COPY_DST, .data = uvs});
+        result.vertex[2] = wg_create_buffer({.size = vertex_count * 2 * sizeof(float), .usages = RT_BUFFER_USAGE_VERTEX | RT_BUFFER_USAGE_COPY_DST, .data = uvs});
     if (indices)
-        result.index = wg_create_buffer({.size = index_count * sizeof(uint32_t), .usage = RT_BUFFER_USAGE_INDEX | RT_BUFFER_USAGE_COPY_DST, .data = indices});
+        result.index = wg_create_buffer({.size = index_count * sizeof(uint32_t), .usages = RT_BUFFER_USAGE_INDEX | RT_BUFFER_USAGE_COPY_DST, .data = indices});
     std::iota(result.location, result.location + std::size(result.location), 0);
     webgpu.meshID = handle;
     result.handle = handle;
@@ -2465,13 +2735,13 @@ rt_meshlet_t wg_create_meshlet(const float* vertices, const float* normals, cons
     native.vertexCount = (uint32_t)vertex_count;
     native.indexCount = (uint32_t)index_count;
     if (vertices)
-        result.vertex[0] = wg_create_buffer({.size = vertex_count * 4 * sizeof(float), .usage = RT_BUFFER_USAGE_STORAGE | RT_BUFFER_USAGE_COPY_DST, .data = vertices});
+        result.vertex[0] = wg_create_buffer({.size = vertex_count * 4 * sizeof(float), .usages = RT_BUFFER_USAGE_STORAGE | RT_BUFFER_USAGE_COPY_DST, .data = vertices});
     if (normals)
-        result.vertex[1] = wg_create_buffer({.size = vertex_count * 4 * sizeof(float), .usage = RT_BUFFER_USAGE_STORAGE | RT_BUFFER_USAGE_COPY_DST, .data = normals});
+        result.vertex[1] = wg_create_buffer({.size = vertex_count * 4 * sizeof(float), .usages = RT_BUFFER_USAGE_STORAGE | RT_BUFFER_USAGE_COPY_DST, .data = normals});
     if (uvs)
-        result.vertex[2] = wg_create_buffer({.size = vertex_count * 2 * sizeof(float), .usage = RT_BUFFER_USAGE_STORAGE | RT_BUFFER_USAGE_COPY_DST, .data = uvs});
+        result.vertex[2] = wg_create_buffer({.size = vertex_count * 2 * sizeof(float), .usages = RT_BUFFER_USAGE_STORAGE | RT_BUFFER_USAGE_COPY_DST, .data = uvs});
     if (indices)
-        result.index = wg_create_buffer({.size = index_count * sizeof(uint32_t), .usage = RT_BUFFER_USAGE_STORAGE | RT_BUFFER_USAGE_COPY_DST, .data = indices});
+        result.index = wg_create_buffer({.size = index_count * sizeof(uint32_t), .usages = RT_BUFFER_USAGE_STORAGE | RT_BUFFER_USAGE_COPY_DST, .data = indices});
     std::iota(result.location, result.location + std::size(result.location), 0);
     webgpu.meshletID = handle;
     result.handle = handle;

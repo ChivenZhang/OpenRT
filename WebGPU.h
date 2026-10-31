@@ -16,6 +16,8 @@
 
 void wg_load_library(WGPUDevice device, WGPUQueue queue);
 void wg_unload_library();
+rt_backend_t wg_get_backend();
+rt_limits_t wg_get_limits();
 
 rt_buffer_t wg_create_buffer(rt_buffer_info_t const& info);
 void wg_destroy_buffer(rt_buffer_t& buffer);
@@ -35,6 +37,13 @@ void wg_bind_texture_storage(rt_texture_view_t& view, rt_texture_storage_bind_t 
 rt_sampler_t wg_create_sampler(rt_sampler_info_t const& info);
 void wg_destroy_sampler(rt_sampler_t& sampler);
 void wg_bind_sampler(rt_sampler_t& sampler, rt_sampler_bind_t bind = {});
+
+rt_layout_t wg_create_layout(rt_layout_info_t const& info);
+void wg_destroy_layout(rt_layout_t& layout);
+
+rt_binding_t wg_create_binding(rt_binding_info_t const& info);
+void wg_destroy_binding(rt_binding_t& binding);
+void wg_bind_binding(rt_binding_t& binding);
 
 rt_module_compute_t wg_create_module_compute(rt_module_compute_info_t const& info);
 rt_module_render_t wg_create_module_render(rt_module_render_info_t const& info);

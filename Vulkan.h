@@ -15,6 +15,8 @@
 
 void vk_load_library(VkInstance instance, VkPhysicalDevice physical, VkDevice device, VkQueue queue, VkCommandBuffer cmdbuf, uint32_t family);
 void vk_unload_library();
+rt_backend_t vk_get_backend();
+rt_limits_t vk_get_limits();
 
 rt_buffer_t vk_create_buffer(rt_buffer_info_t const& info);
 void vk_destroy_buffer(rt_buffer_t& buffer);
@@ -34,6 +36,13 @@ void vk_bind_texture_storage(rt_texture_view_t& view, rt_texture_storage_bind_t 
 rt_sampler_t vk_create_sampler(rt_sampler_info_t const& info);
 void vk_destroy_sampler(rt_sampler_t& sampler);
 void vk_bind_sampler(rt_sampler_t& sampler, rt_sampler_bind_t bind = {});
+
+rt_layout_t vk_create_layout(rt_layout_info_t const& info);
+void vk_destroy_layout(rt_layout_t& layout);
+
+rt_binding_t vk_create_binding(rt_binding_info_t const& info);
+void vk_destroy_binding(rt_binding_t& binding);
+void vk_bind_binding(rt_binding_t& binding);
 
 rt_module_compute_t vk_create_module_compute(rt_module_compute_info_t const& info);
 rt_module_render_t vk_create_module_render(rt_module_render_info_t const& info);

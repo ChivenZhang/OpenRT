@@ -15,6 +15,8 @@
 
 void mt_load_library(MTL::Device* device, MTL::CommandQueue* queue);
 void mt_unload_library();
+rt_backend_t mt_get_backend();
+rt_limits_t mt_get_limits();
 
 rt_buffer_t mt_create_buffer(rt_buffer_info_t const& info);
 void mt_destroy_buffer(rt_buffer_t& buffer);
@@ -34,6 +36,13 @@ void mt_bind_texture_storage(rt_texture_view_t& view, rt_texture_storage_bind_t 
 rt_sampler_t mt_create_sampler(rt_sampler_info_t const& info);
 void mt_destroy_sampler(rt_sampler_t& sampler);
 void mt_bind_sampler(rt_sampler_t& sampler, rt_sampler_bind_t bind = {});
+
+rt_layout_t mt_create_layout(rt_layout_info_t const& info);
+void mt_destroy_layout(rt_layout_t& layout);
+
+rt_binding_t mt_create_binding(rt_binding_info_t const& info);
+void mt_destroy_binding(rt_binding_t& binding);
+void mt_bind_binding(rt_binding_t& binding);
 
 rt_module_compute_t mt_create_module_compute(rt_module_compute_info_t const& info);
 rt_module_render_t mt_create_module_render(rt_module_render_info_t const& info);

@@ -23,7 +23,9 @@ static void present(int width, int height, rt_texture_t& color)
 
 void frame(int width, int height)
 {
+    static auto layout = rt_create_layout({});
     static auto module = rt_create_module_render({
+        .layout = layout,
         .vshader = {VS}, .fshader = {FS},
         .colors = {{.format = RT_TEXTURE_RGBA8UNORM,}},
         .vertex = {rt_vertex_vertex, rt_vertex_normal, rt_vertex_uv,},

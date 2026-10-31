@@ -142,7 +142,7 @@ rt_texture_t rt_create_texture_color(uint32_t width, uint32_t height)
     return rt_create_texture({
         .width = width, .height = height, .depth = 1, .target = RT_TEXTURE_2D,
         .format = RT_TEXTURE_RGBA8UNORM,
-        .usage = RT_TEXTURE_USAGE_COPY_SRC | RT_TEXTURE_USAGE_COPY_DST | RT_TEXTURE_USAGE_TEXTURE_BINDING | RT_TEXTURE_USAGE_STORAGE_BINDING | RT_TEXTURE_USAGE_RENDER_ATTACHMENT,
+        .usages = RT_TEXTURE_USAGE_COPY_SRC | RT_TEXTURE_USAGE_COPY_DST | RT_TEXTURE_USAGE_TEXTURE_BINDING | RT_TEXTURE_USAGE_STORAGE_BINDING | RT_TEXTURE_USAGE_RENDER_ATTACHMENT,
         .min_filter = RT_LINEAR, .mag_filter = RT_LINEAR,
         .address_u = RT_CLAMP_TO_EDGE, .address_v = RT_CLAMP_TO_EDGE, .address_w = RT_CLAMP_TO_EDGE,
         .mipmaps = 1,
@@ -154,7 +154,7 @@ rt_texture_t rt_create_texture_color_float(uint32_t width, uint32_t height)
     return rt_create_texture({
         .width = width, .height = height, .depth = 1, .target = RT_TEXTURE_2D,
         .format = RT_TEXTURE_RGBA32FLOAT,
-        .usage = RT_TEXTURE_USAGE_COPY_SRC | RT_TEXTURE_USAGE_COPY_DST | RT_TEXTURE_USAGE_TEXTURE_BINDING | RT_TEXTURE_USAGE_STORAGE_BINDING | RT_TEXTURE_USAGE_RENDER_ATTACHMENT,
+        .usages = RT_TEXTURE_USAGE_COPY_SRC | RT_TEXTURE_USAGE_COPY_DST | RT_TEXTURE_USAGE_TEXTURE_BINDING | RT_TEXTURE_USAGE_STORAGE_BINDING | RT_TEXTURE_USAGE_RENDER_ATTACHMENT,
         .min_filter = RT_LINEAR, .mag_filter = RT_LINEAR,
         .address_u = RT_CLAMP_TO_EDGE, .address_v = RT_CLAMP_TO_EDGE, .address_w = RT_CLAMP_TO_EDGE,
         .mipmaps = 1,
@@ -166,7 +166,7 @@ rt_texture_t rt_create_texture_depth(uint32_t width, uint32_t height)
     return rt_create_texture({
         .width = width, .height = height, .depth = 1, .target = RT_TEXTURE_2D,
         .format = RT_TEXTURE_DEPTH32FLOAT,
-        .usage = RT_TEXTURE_USAGE_COPY_SRC | RT_TEXTURE_USAGE_COPY_DST | RT_TEXTURE_USAGE_TEXTURE_BINDING | RT_TEXTURE_USAGE_STORAGE_BINDING | RT_TEXTURE_USAGE_RENDER_ATTACHMENT,
+        .usages = RT_TEXTURE_USAGE_COPY_SRC | RT_TEXTURE_USAGE_COPY_DST | RT_TEXTURE_USAGE_TEXTURE_BINDING | RT_TEXTURE_USAGE_STORAGE_BINDING | RT_TEXTURE_USAGE_RENDER_ATTACHMENT,
         .min_filter = RT_LINEAR, .mag_filter = RT_LINEAR,
         .address_u = RT_CLAMP_TO_EDGE, .address_v = RT_CLAMP_TO_EDGE, .address_w = RT_CLAMP_TO_EDGE,
         .mipmaps = 1,
@@ -178,7 +178,7 @@ rt_texture_t rt_create_texture_depth_stencil(uint32_t width, uint32_t height)
     return rt_create_texture({
         .width = width, .height = height, .depth = 1, .target = RT_TEXTURE_2D,
         .format = RT_TEXTURE_DEPTH24PLUS_STENCIL8,
-        .usage = RT_TEXTURE_USAGE_COPY_SRC | RT_TEXTURE_USAGE_COPY_DST | RT_TEXTURE_USAGE_TEXTURE_BINDING | RT_TEXTURE_USAGE_STORAGE_BINDING | RT_TEXTURE_USAGE_RENDER_ATTACHMENT,
+        .usages = RT_TEXTURE_USAGE_COPY_SRC | RT_TEXTURE_USAGE_COPY_DST | RT_TEXTURE_USAGE_TEXTURE_BINDING | RT_TEXTURE_USAGE_STORAGE_BINDING | RT_TEXTURE_USAGE_RENDER_ATTACHMENT,
         .min_filter = RT_LINEAR, .mag_filter = RT_LINEAR,
         .address_u = RT_CLAMP_TO_EDGE, .address_v = RT_CLAMP_TO_EDGE, .address_w = RT_CLAMP_TO_EDGE,
         .mipmaps = 1,
@@ -190,7 +190,7 @@ rt_texture_t rt_create_texture_color_ms(uint32_t width, uint32_t height)
     return rt_create_texture({
         .width = width, .height = height, .depth = 1, .target = RT_TEXTURE_2D_MULTISAMPLE,
         .format = RT_TEXTURE_RGBA8UNORM,
-        .usage = RT_TEXTURE_USAGE_COPY_SRC | RT_TEXTURE_USAGE_COPY_DST | RT_TEXTURE_USAGE_TEXTURE_BINDING | RT_TEXTURE_USAGE_STORAGE_BINDING | RT_TEXTURE_USAGE_RENDER_ATTACHMENT,
+        .usages = RT_TEXTURE_USAGE_COPY_SRC | RT_TEXTURE_USAGE_COPY_DST | RT_TEXTURE_USAGE_TEXTURE_BINDING | RT_TEXTURE_USAGE_STORAGE_BINDING | RT_TEXTURE_USAGE_RENDER_ATTACHMENT,
         .min_filter = RT_NEAREST, .mag_filter = RT_NEAREST,
         .address_u = RT_CLAMP_TO_EDGE, .address_v = RT_CLAMP_TO_EDGE, .address_w = RT_CLAMP_TO_EDGE,
         .mipmaps = 1, .samples = RT_TEXTURE_SAMPLE_4X,
@@ -202,7 +202,7 @@ rt_texture_t rt_create_texture_color_float_ms(uint32_t width, uint32_t height)
     return rt_create_texture({
         .width = width, .height = height, .depth = 1, .target = RT_TEXTURE_2D_MULTISAMPLE,
         .format = RT_TEXTURE_RGBA32FLOAT,
-        .usage = RT_TEXTURE_USAGE_COPY_SRC | RT_TEXTURE_USAGE_COPY_DST | RT_TEXTURE_USAGE_TEXTURE_BINDING | RT_TEXTURE_USAGE_STORAGE_BINDING | RT_TEXTURE_USAGE_RENDER_ATTACHMENT,
+        .usages = RT_TEXTURE_USAGE_COPY_SRC | RT_TEXTURE_USAGE_COPY_DST | RT_TEXTURE_USAGE_TEXTURE_BINDING | RT_TEXTURE_USAGE_STORAGE_BINDING | RT_TEXTURE_USAGE_RENDER_ATTACHMENT,
         .min_filter = RT_NEAREST, .mag_filter = RT_NEAREST,
         .address_u = RT_CLAMP_TO_EDGE, .address_v = RT_CLAMP_TO_EDGE, .address_w = RT_CLAMP_TO_EDGE,
         .mipmaps = 1, .samples = RT_TEXTURE_SAMPLE_4X,
@@ -214,7 +214,7 @@ rt_texture_t rt_create_texture_depth_ms(uint32_t width, uint32_t height)
     return rt_create_texture({
         .width = width, .height = height, .depth = 1, .target = RT_TEXTURE_2D_MULTISAMPLE,
         .format = RT_TEXTURE_DEPTH32FLOAT,
-        .usage = RT_TEXTURE_USAGE_COPY_SRC | RT_TEXTURE_USAGE_COPY_DST | RT_TEXTURE_USAGE_TEXTURE_BINDING | RT_TEXTURE_USAGE_STORAGE_BINDING | RT_TEXTURE_USAGE_RENDER_ATTACHMENT,
+        .usages = RT_TEXTURE_USAGE_COPY_SRC | RT_TEXTURE_USAGE_COPY_DST | RT_TEXTURE_USAGE_TEXTURE_BINDING | RT_TEXTURE_USAGE_STORAGE_BINDING | RT_TEXTURE_USAGE_RENDER_ATTACHMENT,
         .min_filter = RT_NEAREST, .mag_filter = RT_NEAREST,
         .address_u = RT_CLAMP_TO_EDGE, .address_v = RT_CLAMP_TO_EDGE, .address_w = RT_CLAMP_TO_EDGE,
         .mipmaps = 1, .samples = RT_TEXTURE_SAMPLE_4X,
@@ -226,7 +226,7 @@ rt_texture_t rt_create_texture_depth_stencil_ms(uint32_t width, uint32_t height)
     return rt_create_texture({
         .width = width, .height = height, .depth = 1, .target = RT_TEXTURE_2D_MULTISAMPLE,
         .format = RT_TEXTURE_DEPTH24PLUS_STENCIL8,
-        .usage = RT_TEXTURE_USAGE_COPY_SRC | RT_TEXTURE_USAGE_COPY_DST | RT_TEXTURE_USAGE_TEXTURE_BINDING | RT_TEXTURE_USAGE_STORAGE_BINDING | RT_TEXTURE_USAGE_RENDER_ATTACHMENT,
+        .usages = RT_TEXTURE_USAGE_COPY_SRC | RT_TEXTURE_USAGE_COPY_DST | RT_TEXTURE_USAGE_TEXTURE_BINDING | RT_TEXTURE_USAGE_STORAGE_BINDING | RT_TEXTURE_USAGE_RENDER_ATTACHMENT,
         .min_filter = RT_NEAREST, .mag_filter = RT_NEAREST,
         .address_u = RT_CLAMP_TO_EDGE, .address_v = RT_CLAMP_TO_EDGE, .address_w = RT_CLAMP_TO_EDGE,
         .mipmaps = 1, .samples = RT_TEXTURE_SAMPLE_4X,

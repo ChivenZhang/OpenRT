@@ -257,7 +257,10 @@ void frame(int width, int height)
         }
     )";
 
-    static auto module = rt_create_module_render({.mshader = {MS}, .fshader = {FS}, .colors = {{.format = RT_TEXTURE_RGBA8UNORM,}}, .depth = {.write = true, .func = RT_LEQUAL,}, .vertex = {rt_vertex_vertex, rt_vertex_normal, rt_vertex_uv,}, .fill_mode = RT_FILL,});
+    static auto layout = rt_create_layout({
+        .entry = {{.binding = 0, .type = RT_BINDING_TEXTURE}, {.binding = 1, .type = RT_BINDING_TEXTURE}},
+    });
+    static auto module = rt_create_module_render({.layout = layout, .mshader = {MS}, .fshader = {FS}, .colors = {{.format = RT_TEXTURE_RGBA8UNORM,}}, .depth = {.write = true, .func = RT_LEQUAL,}, .vertex = {rt_vertex_vertex, rt_vertex_normal, rt_vertex_uv,}, .fill_mode = RT_FILL,});
     static auto pass_color = rt_create_texture_color(width, height);
     static auto pass_depth = rt_create_texture_depth(width, height);
     {
@@ -276,8 +279,14 @@ void frame(int width, int height)
 
         static auto texture0 = rt_load_texture_file("../../DiffuseTerrain.png");
         static auto texture1 = rt_load_texture_file("../../HeightTerrain.png");
-        rt_bind_texture(texture0, {.binding = 0,});
-        rt_bind_texture(texture1, {.binding = 1,});
+        static auto binding = rt_create_binding({
+            .layout = layout,
+            .entry = {
+                {.binding = 0, .texture = texture0.default_view},
+                {.binding = 1, .texture = texture1.default_view},
+            },
+        });
+        rt_bind_binding(binding);
 
         static auto meshlet = rt_create_meshlet_plane(5, 100);
         rt_draw_meshlet(meshlet);

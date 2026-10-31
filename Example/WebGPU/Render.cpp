@@ -184,16 +184,19 @@ static void present(rt_texture_t& color, uint32_t width, uint32_t height)
 
 void frame(int width, int height)
 {
+    static auto layout = rt_create_layout({
+        .entry = {
+            {.binding = 0, .type = RT_BINDING_TEXTURE},
+            {.binding = 1, .type = RT_BINDING_SAMPLER},
+        },
+    });
     static auto module = rt_create_module_render({
+        .layout = layout,
         .vshader = {.code = VS, .size = (uint32_t)strlen(VS), .entry = "vs_main"},
         .fshader = {.code = FS, .size = (uint32_t)strlen(FS), .entry = "fs_main"},
         .colors = {{.format = colorFormat,}},
         .depth = {.write = true, .func = RT_LEQUAL,},
         .vertex = {rt_vertex_vertex, rt_vertex_normal, rt_vertex_uv,},
-        .binding = {
-            {.binding = 0, .type = RT_BINDING_TEXTURE},
-            {.binding = 1, .type = RT_BINDING_SAMPLER},
-        },
         .wind_mode = RT_CCW,
     });
     static auto pass_color = rt_create_texture({
@@ -213,8 +216,14 @@ void frame(int width, int height)
 
         static auto texture0 = rt_load_texture_file("Earth.png", true);
         static auto sampler0 = rt_create_sampler({.min_filter = RT_LINEAR, .mag_filter = RT_LINEAR, .address_u = RT_REPEAT, .address_v = RT_REPEAT,});
-        rt_bind_texture(texture0, {.binding = 0,});
-        rt_bind_sampler(sampler0, {.binding = 1,});
+        static auto binding = rt_create_binding({
+            .layout = layout,
+            .entry = {
+                {.binding = 0, .texture = texture0.default_view},
+                {.binding = 1, .sampler = sampler0},
+            },
+        });
+        rt_bind_binding(binding);
 
         auto projMat = glm::perspectiveRH_ZO(glm::radians(60.0f), (float)width / (float)height, 0.1f, 100.0f);
         auto viewMat = glm::lookAt(glm::vec3(0, 2, 5), glm::vec3(0, 0, 0), glm::vec3(0, 1, 0));

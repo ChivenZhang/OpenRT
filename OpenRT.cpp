@@ -28,16 +28,8 @@
 #endif
 #include <string>
 
-static rt_backend_t g_backend = RT_OPENGL;
-
-rt_backend_t rt_get_backend()
-{
-    return g_backend;
-}
-
 void rt_load_library(rt_load_info_t const& info)
 {
-    g_backend = info.backend;
     switch (info.backend)
     {
     case RT_OPENGL:
@@ -92,6 +84,8 @@ void rt_load_library(rt_load_info_t const& info)
 }
 
 void (*rt_unload_library)() = nullptr;
+rt_backend_t (*rt_get_backend)() = nullptr;
+rt_limits_t (*rt_get_limits)() = nullptr;
 
 rt_buffer_t (*rt_create_buffer)(rt_buffer_info_t const& info) = nullptr;
 void (*rt_destroy_buffer)(rt_buffer_t& buffer) = nullptr;
@@ -111,6 +105,13 @@ void (*rt_bind_texture_storage)(rt_texture_view_t& view, rt_texture_storage_bind
 rt_sampler_t (*rt_create_sampler)(rt_sampler_info_t const& info) = nullptr;
 void (*rt_destroy_sampler)(rt_sampler_t& sampler) = nullptr;
 void (*rt_bind_sampler)(rt_sampler_t& sampler, rt_sampler_bind_t bind) = nullptr;
+
+rt_layout_t (*rt_create_layout)(rt_layout_info_t const& info) = nullptr;
+void (*rt_destroy_layout)(rt_layout_t& layout) = nullptr;
+
+rt_binding_t (*rt_create_binding)(rt_binding_info_t const& info) = nullptr;
+void (*rt_destroy_binding)(rt_binding_t& binding) = nullptr;
+void (*rt_bind_binding)(rt_binding_t& binding) = nullptr;
 
 rt_module_compute_t (*rt_create_module_compute)(rt_module_compute_info_t const& info) = nullptr;
 rt_module_render_t (*rt_create_module_render)(rt_module_render_info_t const& info) = nullptr;

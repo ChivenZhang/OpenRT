@@ -520,7 +520,7 @@ struct mt_texture_native_t
     uint32_t width = 1, height = 1, depth = 1;
     rt_texture_target_t target = RT_TEXTURE_2D;
     rt_texture_format_t rtFormat = RT_TEXTURE_NONE;
-    rt_texture_usages_t usage = 0;
+    rt_texture_usages_t usages = 0;
     rt_texture_sample_t samples = RT_TEXTURE_SAMPLE_1X;
 
     mt_texture_native_t() = default;
@@ -530,7 +530,7 @@ struct mt_texture_native_t
         : handle(other.handle), format(other.format), state(other.state),
           levels(other.levels), layers(other.layers),
           width(other.width), height(other.height), depth(other.depth), target(other.target),
-          rtFormat(other.rtFormat), usage(other.usage), samples(other.samples)
+          rtFormat(other.rtFormat), usages(other.usages), samples(other.samples)
     {
         other.handle = nullptr;
     }
@@ -549,7 +549,7 @@ struct mt_texture_native_t
             depth = other.depth;
             target = other.target;
             rtFormat = other.rtFormat;
-            usage = other.usage;
+            usages = other.usages;
             samples = other.samples;
             other.handle = nullptr;
         }
@@ -562,13 +562,18 @@ struct mt_texture_view_native_t
 {
     MTL::Texture* handle = nullptr;
     mt_texture_native_t* texture = nullptr;
+    uint64_t gpuID = 0;
+    uint32_t bindless = 0;
 
     mt_texture_view_native_t() = default;
     mt_texture_view_native_t(const mt_texture_view_native_t&) = delete;
     mt_texture_view_native_t& operator=(const mt_texture_view_native_t&) = delete;
-    mt_texture_view_native_t(mt_texture_view_native_t&& other) noexcept : handle(other.handle), texture(other.texture)
+    mt_texture_view_native_t(mt_texture_view_native_t&& other) noexcept
+        : handle(other.handle), texture(other.texture), gpuID(other.gpuID), bindless(other.bindless)
     {
         other.handle = nullptr;
+        other.gpuID = 0;
+        other.bindless = 0;
     }
     mt_texture_view_native_t& operator=(mt_texture_view_native_t&& other) noexcept
     {
@@ -577,11 +582,26 @@ struct mt_texture_view_native_t
             mt_release(handle);
             handle = other.handle;
             texture = other.texture;
+            gpuID = other.gpuID;
+            bindless = other.bindless;
             other.handle = nullptr;
+            other.gpuID = 0;
+            other.bindless = 0;
         }
         return *this;
     }
     ~mt_texture_view_native_t() { mt_release(handle); }
+};
+
+struct mt_layout_native_t
+{
+    rt_layout_entry_t entry[RT_MAX_BINDING_HANDLE_NUM] = {};
+};
+
+struct mt_binding_native_t
+{
+    mt_layout_native_t* layout = nullptr;
+    rt_binding_entry_t entry[RT_MAX_BINDING_HANDLE_NUM] = {};
 };
 
 struct mt_sampler_native_t
@@ -623,7 +643,7 @@ struct mt_module_native_t
     MTL::PrimitiveType primitive = MTL::PrimitiveTypeTriangle;
     MTL::CullMode cull = MTL::CullModeBack;
     MTL::Winding winding = MTL::WindingCounterClockwise;
-    rt_binding_t bindings[RT_MAX_BINDING_HANDLE_NUM] = {};
+    rt_layout_entry_t layouts[RT_MAX_BINDING_HANDLE_NUM] = {};
 
     mt_module_native_t() = default;
     mt_module_native_t(const mt_module_native_t&) = delete;
@@ -640,7 +660,7 @@ struct mt_module_native_t
             vfn = other.vfn; tfn = other.tfn; mfn = other.mfn; ffn = other.ffn; cfn = other.cfn;
             renderPipeline = other.renderPipeline; computePipeline = other.computePipeline; depthStencil = other.depthStencil;
             primitive = other.primitive; cull = other.cull; winding = other.winding;
-            std::memcpy(bindings, other.bindings, sizeof(bindings));
+            std::memcpy(layouts, other.layouts, sizeof(layouts));
             other.vlib = other.tlib = other.mlib = other.flib = other.clib = nullptr;
             other.vfn = other.tfn = other.mfn = other.ffn = other.cfn = nullptr;
             other.renderPipeline = nullptr; other.computePipeline = nullptr; other.depthStencil = nullptr;
@@ -683,18 +703,23 @@ struct mt_staging_t
 
 struct mt_native_t
 {
-    uint32_t bufferID = 0, textureID = 0, textureViewID = 0, samplerID = 0, moduleID = 0;
+    uint32_t bufferID = 0, textureID = 0, textureViewID = 0, samplerID = 0, layoutID = 0, bindingID = 0, moduleID = 0;
     uint32_t meshID = 0, meshletID = 0, passID = 0;
+    rt_limits_t limits;
 
     std::map<uint32_t, mt_buffer_native_t> buffers;
     std::map<uint32_t, mt_texture_native_t> textures;
     std::map<uint32_t, mt_texture_view_native_t> textureViews;
     std::map<uint32_t, mt_sampler_native_t> samplers;
+    std::map<uint32_t, mt_layout_native_t> layouts;
+    std::map<uint32_t, mt_binding_native_t> bindings;
     std::map<uint32_t, mt_module_native_t> modules;
     std::map<uint32_t, mt_mesh_native_t> meshes;
     std::map<uint32_t, mt_meshlet_native_t> meshlets;
     std::map<uint32_t, mt_pass_compute_native_t> computePasses;
     std::map<uint32_t, mt_pass_transfer_native_t> transferPasses;
+    std::vector<MTL::Texture*> bindlessTextures;
+    std::vector<uint32_t> bindlessFree;
 
     MTL::Device* device = nullptr;
     MTL::CommandQueue* queue = nullptr;
@@ -730,6 +755,7 @@ struct mt_native_t
     };
     rt_module_render_t* currentRenderModule = nullptr;
     rt_module_compute_t* currentComputeModule = nullptr;
+    mt_binding_native_t* currentBindingGroup = nullptr;
 } static metal;
 
 static void mt_end_encoder()
@@ -906,8 +932,12 @@ static void mt_fill_render_state(rt_module_render_t& result, rt_module_render_in
     result.index_type = info.index_type;
     for (size_t i = 0; i < std::size(info.vertex); ++i)
         result.vertex[i] = info.vertex[i];
-    for (size_t i = 0; i < std::size(info.binding); ++i)
-        result.binding[i] = info.binding[i];
+    for (size_t i = 0; i < RT_MAX_BINDING_HANDLE_NUM; ++i)
+    {
+        result.layout[i].binding = info.layout.entry[i].binding;
+        result.layout[i].stages = info.layout.entry[i].stages;
+        result.layout[i].type = info.layout.entry[i].type;
+    }
     result.cull_mode = info.cull_mode;
     result.wind_mode = info.wind_mode;
     result.fill_mode = info.fill_mode;
@@ -972,7 +1002,7 @@ static bool mt_create_depth_stencil(mt_module_native_t& native, rt_module_render
     native.cull = rt_to_mt_cull(info.cull_mode);
     native.winding = (info.wind_mode == RT_CW) ? MTL::WindingClockwise : MTL::WindingCounterClockwise;
     for (uint32_t i = 0; i < RT_MAX_BINDING_HANDLE_NUM; ++i)
-        native.bindings[i] = info.binding[i];
+        native.layouts[i] = info.layout.entry[i];
     return native.depthStencil != nullptr;
 }
 
@@ -996,14 +1026,27 @@ static void mt_apply_push()
 
 static void mt_flush_descriptors()
 {
-    auto* mod = mt_current_module_native();
-    if (!mod) return;
+    auto* native = mt_current_module_native();
+    if (!native) return;
     mt_apply_push();
+    auto* group = metal.currentBindingGroup;
+    if (!group || !group->layout)
+    {
+        for (MTL::Texture* texture : metal.bindlessTextures)
+        {
+            if (!texture) continue;
+            if (metal.renderEncoder)
+                metal.renderEncoder->useResource(texture, MTL::ResourceUsageRead, MTL::RenderStageFragment);
+            if (metal.computeEncoder)
+                metal.computeEncoder->useResource(texture, MTL::ResourceUsageRead);
+        }
+        return;
+    }
     for (uint32_t i = 0; i < RT_MAX_BINDING_HANDLE_NUM; ++i)
     {
-        auto& bind = mod->bindings[i];
+        auto const& bind = group->layout->entry[i];
         if (bind.type == RT_BINDING_NONE) continue;
-        auto& slot = metal.currentBinding[bind.binding];
+        auto const& slot = group->entry[i];
         if (bind.type == RT_BINDING_UNIFORM_BUFFER || bind.type == RT_BINDING_STORAGE_BUFFER)
         {
             auto* buf = mt_buffer_native(slot.buffer);
@@ -1021,7 +1064,7 @@ static void mt_flush_descriptors()
         }
         else if (bind.type == RT_BINDING_TEXTURE)
         {
-            auto* view = mt_texture_view_native(slot.texture_view);
+            auto* view = mt_texture_view_native(slot.texture);
             if (!view || !view->texture) continue;
             auto* tex = view->texture;
             MTL::Texture* gpuTex = view->handle ? view->handle : tex->handle;
@@ -1034,7 +1077,7 @@ static void mt_flush_descriptors()
         }
         else if (bind.type == RT_BINDING_STORAGE_TEXTURE)
         {
-            auto* view = mt_texture_view_native(slot.storage_view);
+            auto* view = mt_texture_view_native(slot.texture_storage);
             if (!view || !view->texture) continue;
             auto* tex = view->texture;
             MTL::Texture* gpuTex = view->handle ? view->handle : tex->handle;
@@ -1054,6 +1097,14 @@ static void mt_flush_descriptors()
             if (metal.computeEncoder)
                 metal.computeEncoder->setSamplerState(samp->handle, bind.binding);
         }
+    }
+    for (MTL::Texture* texture : metal.bindlessTextures)
+    {
+        if (!texture) continue;
+        if (metal.renderEncoder)
+            metal.renderEncoder->useResource(texture, MTL::ResourceUsageRead, MTL::RenderStageFragment);
+        if (metal.computeEncoder)
+            metal.computeEncoder->useResource(texture, MTL::ResourceUsageRead);
     }
 }
 
@@ -1075,6 +1126,8 @@ void mt_load_library(MTL::Device* device, MTL::CommandQueue* queue)
     mt_retain_cmd(metal.queue->commandBuffer());
 
     rt_unload_library = mt_unload_library;
+    rt_get_backend = mt_get_backend;
+    rt_get_limits = mt_get_limits;
     rt_create_buffer = mt_create_buffer;
     rt_destroy_buffer = mt_destroy_buffer;
     rt_bind_buffer = mt_bind_buffer;
@@ -1090,6 +1143,11 @@ void mt_load_library(MTL::Device* device, MTL::CommandQueue* queue)
     rt_create_sampler = mt_create_sampler;
     rt_destroy_sampler = mt_destroy_sampler;
     rt_bind_sampler = mt_bind_sampler;
+    rt_create_layout = mt_create_layout;
+    rt_destroy_layout = mt_destroy_layout;
+    rt_create_binding = mt_create_binding;
+    rt_destroy_binding = mt_destroy_binding;
+    rt_bind_binding = mt_bind_binding;
     rt_create_module_compute = mt_create_module_compute;
     rt_create_module_render = mt_create_module_render;
     rt_destroy_module_render = mt_destroy_module_render;
@@ -1137,10 +1195,61 @@ void mt_load_library(MTL::Device* device, MTL::CommandQueue* queue)
     rt_destroy_meshlet = mt_destroy_meshlet;
     rt_draw_meshlet = mt_draw_meshlet;
     rt_submit = mt_submit;
+
+    rt_limits_t limits = {};
+    limits.max_bindless_handle_size = (uint32_t)sizeof(uint64_t);
+    limits.max_push_constant_size = (uint32_t)sizeof(metal.pushData);
+    if (metal.device)
+    {
+        bool wide = metal.device->supportsFamily(MTL::GPUFamilyMac1) || metal.device->supportsFamily(MTL::GPUFamilyApple3) || metal.device->supportsFamily(MTL::GPUFamilyMacCatalyst1);
+        limits.max_texture_dimension_1d = wide ? 16384u : 8192u;
+        limits.max_texture_dimension_2d = limits.max_texture_dimension_1d;
+        limits.max_texture_dimension_3d = 2048;
+        limits.max_texture_array_layers = 2048;
+        limits.max_texture_samples = 1;
+        for (uint32_t samples = 8; samples > 1; samples >>= 1)
+        {
+            if (metal.device->supportsTextureSampleCount(samples))
+            {
+                limits.max_texture_samples = samples;
+                break;
+            }
+        }
+        uint64_t bufferSize = (uint64_t)metal.device->maxBufferLength();
+        limits.max_buffer_size = bufferSize;
+        limits.max_uniform_buffer_binding_size = bufferSize;
+        limits.max_storage_buffer_binding_size = bufferSize;
+        limits.min_uniform_buffer_offset_alignment = 16;
+        limits.min_storage_buffer_offset_alignment = 16;
+        bool tier2 = metal.device->argumentBuffersSupport() == MTL::ArgumentBuffersTier2;
+        limits.max_uniform_buffers_per_shader_stage = tier2 ? 1000000u : 31u;
+        limits.max_storage_buffers_per_shader_stage = limits.max_uniform_buffers_per_shader_stage;
+        limits.max_sampled_textures_per_shader_stage = tier2 ? 1000000u : 31u;
+        limits.max_storage_textures_per_shader_stage = tier2 ? 1000000u : 8u;
+        limits.max_samplers_per_shader_stage = tier2 ? 1024u : 16u;
+        limits.max_bindless_textures = tier2 ? 1048576u : 0u;
+        limits.max_vertex_buffers = 31;
+        limits.max_vertex_attributes = 31;
+        limits.max_vertex_buffer_array_stride = 4096;
+        limits.max_color_attachments = 8;
+        limits.max_color_attachment_bytes_per_sample = 128;
+        limits.max_compute_workgroup_storage_size = (uint32_t)metal.device->maxThreadgroupMemoryLength();
+        MTL::Size threads = metal.device->maxThreadsPerThreadgroup();
+        limits.max_compute_workgroup_size_x = (uint32_t)threads.width;
+        limits.max_compute_workgroup_size_y = (uint32_t)threads.height;
+        limits.max_compute_workgroup_size_z = (uint32_t)threads.depth;
+        uint32_t invocations = limits.max_compute_workgroup_size_x;
+        if (limits.max_compute_workgroup_size_y > invocations) invocations = limits.max_compute_workgroup_size_y;
+        if (limits.max_compute_workgroup_size_z > invocations) invocations = limits.max_compute_workgroup_size_z;
+        limits.max_compute_invocations_per_workgroup = invocations;
+        limits.max_compute_workgroups_per_dimension = 0x7fffffffu;
+    }
+    metal.limits = limits;
 }
 
 void mt_unload_library()
 {
+    metal.limits = {};
     mt_end_encoder();
     mt_release(metal.cmd);
     for (auto& staging : metal.pendingStaging)
@@ -1154,10 +1263,15 @@ void mt_unload_library()
         mt_release(module.renderPipeline); mt_release(module.computePipeline); mt_release(module.depthStencil);
     }
     metal.modules.clear();
+    metal.bindings.clear();
+    metal.layouts.clear();
+    metal.currentBindingGroup = nullptr;
     for (auto& item : metal.buffers)
         mt_release(item.second.handle);
     metal.buffers.clear();
     metal.textureViews.clear();
+    metal.bindlessTextures.clear();
+    metal.bindlessFree.clear();
     for (auto& item : metal.textures)
         mt_release(item.second.handle);
     metal.textures.clear();
@@ -1172,12 +1286,15 @@ void mt_unload_library()
     else metal.queue = nullptr;
     metal.device = nullptr;
     metal.ownsQueue = false;
-    metal.bufferID = metal.textureID = metal.textureViewID = metal.samplerID = metal.moduleID = 0;
+    metal.bufferID = metal.textureID = metal.textureViewID = metal.samplerID = 0;
+    metal.layoutID = metal.bindingID = metal.moduleID = 0;
     metal.meshID = metal.meshletID = metal.passID = 0;
     metal.currentPassType = RT_MODULE_NONE;
     metal.currentPipeline = nullptr;
 
     if (rt_unload_library == mt_unload_library) rt_unload_library = nullptr;
+    if (rt_get_backend == mt_get_backend) rt_get_backend = nullptr;
+    if (rt_get_limits == mt_get_limits) rt_get_limits = nullptr;
     if (rt_create_buffer == mt_create_buffer) rt_create_buffer = nullptr;
     if (rt_destroy_buffer == mt_destroy_buffer) rt_destroy_buffer = nullptr;
     if (rt_bind_buffer == mt_bind_buffer) rt_bind_buffer = nullptr;
@@ -1193,6 +1310,11 @@ void mt_unload_library()
     if (rt_create_sampler == mt_create_sampler) rt_create_sampler = nullptr;
     if (rt_destroy_sampler == mt_destroy_sampler) rt_destroy_sampler = nullptr;
     if (rt_bind_sampler == mt_bind_sampler) rt_bind_sampler = nullptr;
+    if (rt_create_layout == mt_create_layout) rt_create_layout = nullptr;
+    if (rt_destroy_layout == mt_destroy_layout) rt_destroy_layout = nullptr;
+    if (rt_create_binding == mt_create_binding) rt_create_binding = nullptr;
+    if (rt_destroy_binding == mt_destroy_binding) rt_destroy_binding = nullptr;
+    if (rt_bind_binding == mt_bind_binding) rt_bind_binding = nullptr;
     if (rt_create_module_compute == mt_create_module_compute) rt_create_module_compute = nullptr;
     if (rt_create_module_render == mt_create_module_render) rt_create_module_render = nullptr;
     if (rt_destroy_module_render == mt_destroy_module_render) rt_destroy_module_render = nullptr;
@@ -1242,9 +1364,19 @@ void mt_unload_library()
     if (rt_submit == mt_submit) rt_submit = nullptr;
 }
 
+rt_backend_t mt_get_backend()
+{
+    return RT_METAL;
+}
+
+rt_limits_t mt_get_limits()
+{
+    return metal.limits;
+}
+
 rt_buffer_t mt_create_buffer(rt_buffer_info_t const& info)
 {
-    if (info.usage == 0)
+    if (info.usages == 0)
     {
         fprintf(stderr, "Buffer usage must not be 0");
         abort();
@@ -1253,7 +1385,7 @@ rt_buffer_t mt_create_buffer(rt_buffer_info_t const& info)
     if (!metal.device || info.size == 0) return result;
     uint32_t handle = metal.bufferID + 1;
     auto& native = metal.buffers[handle];
-    bool hostVisible = (info.usage & (RT_BUFFER_USAGE_MAP_READ | RT_BUFFER_USAGE_MAP_WRITE)) || info.data;
+    bool hostVisible = (info.usages & (RT_BUFFER_USAGE_MAP_READ | RT_BUFFER_USAGE_MAP_WRITE)) || info.data;
     MTL::ResourceOptions options = hostVisible ? MTL::ResourceStorageModeShared : MTL::ResourceStorageModePrivate;
     if (info.data && hostVisible)
         native.handle = metal.device->newBuffer(info.data, info.size, options);
@@ -1283,7 +1415,7 @@ rt_buffer_t mt_create_buffer(rt_buffer_info_t const& info)
     metal.bufferID = handle;
     result.handle = handle;
     result.size = info.size;
-    result.usage = info.usage;
+    result.usages = info.usages;
     result.native = &native;
     return result;
 }
@@ -1332,9 +1464,38 @@ void mt_unmap_buffer(rt_buffer_t& buffer)
     native->mappedSize = 0;
 }
 
+static uint32_t mt_alloc_bindless(MTL::Texture* texture)
+{
+    if (metal.bindlessTextures.empty())
+        metal.bindlessTextures.push_back(nullptr);
+    uint32_t index;
+    if (!metal.bindlessFree.empty())
+    {
+        index = metal.bindlessFree.back();
+        metal.bindlessFree.pop_back();
+    }
+    else
+    {
+        index = (uint32_t)metal.bindlessTextures.size();
+        metal.bindlessTextures.push_back(nullptr);
+    }
+    metal.bindlessTextures[index] = texture;
+    return index;
+}
+
+static void mt_release_bindless(mt_texture_view_native_t& native)
+{
+    if (!native.bindless) return;
+    if (native.bindless < metal.bindlessTextures.size())
+        metal.bindlessTextures[native.bindless] = nullptr;
+    metal.bindlessFree.push_back(native.bindless);
+    native.bindless = 0;
+    native.gpuID = 0;
+}
+
 rt_texture_t mt_create_texture(rt_texture_info_t const& info)
 {
-    if (info.usage == 0)
+    if (info.usages == 0)
     {
         fprintf(stderr, "Texture usage must not be 0");
         abort();
@@ -1347,7 +1508,7 @@ rt_texture_t mt_create_texture(rt_texture_info_t const& info)
     auto& native = metal.textures[handle];
     native.format = rt_to_mt_texture_format(info.format);
     native.rtFormat = info.format;
-    native.usage = info.usage;
+    native.usages = info.usages;
     native.width = info.width;
     native.height = info.target == RT_TEXTURE_1D ? 1 : info.height;
     native.depth = info.depth ? info.depth : 1;
@@ -1373,9 +1534,9 @@ rt_texture_t mt_create_texture(rt_texture_info_t const& info)
     desc->setHeight(native.height);
     desc->setMipmapLevelCount(native.levels);
     MTL::TextureUsage usage = MTL::TextureUsageUnknown;
-    if (info.usage & RT_TEXTURE_USAGE_TEXTURE_BINDING) usage |= MTL::TextureUsageShaderRead;
-    if (info.usage & RT_TEXTURE_USAGE_STORAGE_BINDING) usage |= MTL::TextureUsageShaderWrite;
-    if (info.usage & RT_TEXTURE_USAGE_RENDER_ATTACHMENT) usage |= MTL::TextureUsageRenderTarget;
+    if (info.usages & RT_TEXTURE_USAGE_TEXTURE_BINDING) usage |= MTL::TextureUsageShaderRead;
+    if (info.usages & RT_TEXTURE_USAGE_STORAGE_BINDING) usage |= MTL::TextureUsageShaderWrite;
+    if (info.usages & RT_TEXTURE_USAGE_RENDER_ATTACHMENT) usage |= MTL::TextureUsageRenderTarget;
     desc->setUsage(usage);
     desc->setStorageMode(MTL::StorageModePrivate);
     if (info.target == RT_TEXTURE_1D) desc->setTextureType(MTL::TextureType1D);
@@ -1422,14 +1583,14 @@ rt_texture_t mt_create_texture(rt_texture_info_t const& info)
     result.target = native.target;
     result.format = native.rtFormat;
     result.samples = native.samples;
-    result.usage = native.usage;
+    result.usages = native.usages;
     result.mipmaps = native.levels;
     result.native = &native;
     result.default_view = mt_create_texture_view(result, {
         .target = native.target,
         .format = native.rtFormat,
         .aspect = RT_TEXTURE_ASPECT_ALL,
-        .usage = native.usage,
+        .usages = info.usages,
         .layer_count = native.layers,
         .level_count = native.levels,
     });
@@ -1443,7 +1604,10 @@ void mt_destroy_texture(rt_texture_t& texture)
         for (auto it = metal.textureViews.begin(); it != metal.textureViews.end(); )
         {
             if (it->second.texture == native)
+            {
+                mt_release_bindless(it->second);
                 it = metal.textureViews.erase(it);
+            }
             else
                 ++it;
         }
@@ -1468,11 +1632,17 @@ rt_texture_view_t mt_create_texture_view(rt_texture_t& texture, rt_texture_view_
 {
     auto* tex = mt_texture_native(texture);
     rt_texture_format_t format = info.format != RT_TEXTURE_NONE ? info.format : (tex ? tex->rtFormat : RT_TEXTURE_NONE);
-    rt_texture_usages_t usage = info.usage ? info.usage : (tex ? tex->usage : 0);
+    rt_texture_usages_t usage = info.usages ? info.usages : (tex ? tex->usages : 0);
     rt_texture_view_t result{
-        0, info.target, format,
-        info.aspect, usage,
-        info.base_layer, info.layer_count, info.base_level, info.level_count, nullptr};
+        .target = info.target,
+        .format = format,
+        .aspect = info.aspect,
+        .usages = usage,
+        .base_layer = info.base_layer,
+        .layer_count = info.layer_count,
+        .base_level = info.base_level,
+        .level_count = info.level_count,
+    };
     if (!tex || !tex->handle) return result;
     uint32_t levelCount = info.level_count ? info.level_count : tex->levels - info.base_level;
     if (info.base_level >= tex->levels || levelCount == 0) return result;
@@ -1520,13 +1690,22 @@ rt_texture_view_t mt_create_texture_view(rt_texture_t& texture, rt_texture_view_
     metal.textureViewID = handle;
     result.handle = handle;
     result.native = &native;
+    if (usage & RT_TEXTURE_USAGE_TEXTURE_BINDLESS)
+    {
+        native.bindless = mt_alloc_bindless(view);
+        native.gpuID = view->gpuResourceID()._impl;
+        result.bindless = native.gpuID;
+    }
     return result;
 }
 
 void mt_destroy_texture_view(rt_texture_view_t& view)
 {
-    if (mt_texture_view_native(view))
+    if (auto* native = mt_texture_view_native(view))
+    {
+        mt_release_bindless(*native);
         metal.textureViews.erase(view.handle);
+    }
     view = {};
 }
 
@@ -1594,9 +1773,98 @@ void mt_bind_sampler(rt_sampler_t& sampler, rt_sampler_bind_t bind)
     metal.currentBinding[bind.binding].sampler_bind = bind;
 }
 
+static mt_layout_native_t* mt_layout_native(rt_layout_t const& layout)
+{
+    if (!layout.native || layout.handle == 0) return nullptr;
+    return (mt_layout_native_t*)layout.native;
+}
+
+static mt_binding_native_t* mt_binding_native(rt_binding_t const& binding)
+{
+    if (!binding.native || binding.handle == 0) return nullptr;
+    return (mt_binding_native_t*)binding.native;
+}
+
+rt_layout_t mt_create_layout(rt_layout_info_t const& info)
+{
+    rt_layout_t result = {};
+    auto handle = metal.layoutID + 1;
+    auto& native = metal.layouts[handle];
+    for (size_t i = 0; i < RT_MAX_BINDING_HANDLE_NUM; ++i)
+    {
+        result.entry[i] = info.entry[i];
+        native.entry[i] = info.entry[i];
+    }
+    metal.layoutID = handle;
+    result.handle = handle;
+    result.native = &native;
+    return result;
+}
+
+void mt_destroy_layout(rt_layout_t& layout)
+{
+    if (mt_layout_native(layout))
+        metal.layouts.erase(layout.handle);
+    layout = {};
+}
+
+rt_binding_t mt_create_binding(rt_binding_info_t const& info)
+{
+    auto* layout = mt_layout_native(info.layout);
+    if (!layout)
+    {
+        fprintf(stderr, "Binding requires a layout");
+        abort();
+    }
+    rt_binding_t result = {};
+    auto handle = metal.bindingID + 1;
+    auto& native = metal.bindings[handle];
+    native.layout = layout;
+    for (size_t i = 0; i < RT_MAX_BINDING_HANDLE_NUM; ++i)
+    {
+        result.entry[i] = info.entry[i];
+        native.entry[i] = info.entry[i];
+    }
+    metal.bindingID = handle;
+    result.handle = handle;
+    result.native = &native;
+    return result;
+}
+
+void mt_destroy_binding(rt_binding_t& binding)
+{
+    if (auto* native = mt_binding_native(binding))
+    {
+        if (metal.currentBindingGroup == native)
+            metal.currentBindingGroup = nullptr;
+        metal.bindings.erase(binding.handle);
+    }
+    binding = {};
+}
+
+void mt_bind_binding(rt_binding_t& binding)
+{
+    if (metal.currentPipeline == nullptr)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    auto* native = mt_binding_native(binding);
+    if (!native || !native->layout)
+        return;
+    for (size_t i = 0; i < RT_MAX_BINDING_HANDLE_NUM; ++i)
+        native->entry[i] = binding.entry[i];
+    metal.currentBindingGroup = native;
+}
+
 rt_module_compute_t mt_create_module_compute(rt_module_compute_info_t const& info)
 {
     rt_module_compute_t result = {};
+    if (!info.layout.handle)
+    {
+        fprintf(stderr, "Module requires a layout");
+        abort();
+    }
     if (!info.cshader.code || !info.cshader.size || !metal.device) return result;
     uint32_t handle = metal.moduleID + 1;
     auto& native = metal.modules[handle];
@@ -1617,18 +1885,26 @@ rt_module_compute_t mt_create_module_compute(rt_module_compute_info_t const& inf
         return {};
     }
     for (uint32_t i = 0; i < RT_MAX_BINDING_HANDLE_NUM; ++i)
-        native.bindings[i] = info.binding[i];
+    {
+        native.layouts[i] = info.layout.entry[i];
+        result.layout[i].binding = info.layout.entry[i].binding;
+        result.layout[i].stages = info.layout.entry[i].stages;
+        result.layout[i].type = info.layout.entry[i].type;
+    }
     metal.moduleID = handle;
     result.handle = handle;
     result.native = &native;
-    for (size_t i = 0; i < std::size(info.binding); ++i)
-        result.binding[i] = info.binding[i];
     return result;
 }
 
 rt_module_render_t mt_create_module_render(rt_module_render_info_t const& info)
 {
     rt_module_render_t result = {};
+    if (!info.layout.handle)
+    {
+        fprintf(stderr, "Module requires a layout");
+        abort();
+    }
     if (!metal.device) return result;
     uint32_t handle = metal.moduleID + 1;
     auto& native = metal.modules[handle];
@@ -1751,6 +2027,7 @@ void mt_begin_compute(rt_pass_compute_t& pass)
     }
     for (auto& binding : metal.currentBinding)
         binding = {};
+    metal.currentBindingGroup = nullptr;
     auto handle = metal.passID + 1;
     auto& native = metal.computePasses[handle];
     pass.handle = handle;
@@ -1782,6 +2059,7 @@ void mt_end_compute(rt_pass_compute_t& pass)
     metal.currentPassType = RT_MODULE_NONE;
     metal.currentPipeline = nullptr;
     metal.currentComputeModule = nullptr;
+    metal.currentBindingGroup = nullptr;
     for (auto& binding : metal.currentBinding)
         binding = {};
 }
@@ -1793,14 +2071,14 @@ void mt_bind_module_compute(rt_module_compute_t& module)
         fprintf(stderr, "Pipeline not begin");
         abort();
     }
-    auto* mod = (mt_module_native_t*)module.native;
-    if (module.handle == 0 || !mod || !mod->computePipeline)
+    auto* native = (mt_module_native_t*)module.native;
+    if (module.handle == 0 || !native || !native->computePipeline)
     {
         fprintf(stderr, "Pipeline module is not created");
         abort();
     }
     metal.currentComputeModule = &module;
-    metal.computeEncoder->setComputePipelineState(mod->computePipeline);
+    metal.computeEncoder->setComputePipelineState(native->computePipeline);
 }
 
 void mt_dispatch_compute(uint32_t groupX, uint32_t groupY, uint32_t groupZ)
@@ -1823,9 +2101,9 @@ void mt_dispatch_compute(uint32_t groupX, uint32_t groupY, uint32_t groupZ)
     mt_flush_descriptors();
     MTL::Size groups = MTL::Size::Make(std::max(1u, groupX), std::max(1u, groupY), std::max(1u, groupZ));
     MTL::Size threads = MTL::Size::Make(1, 1, 1);
-    auto* mod = mt_current_module_native();
-    if (mod && mod->computePipeline)
-        threads = MTL::Size::Make(mod->computePipeline->threadExecutionWidth(), 1, 1);
+    auto* native = mt_current_module_native();
+    if (native && native->computePipeline)
+        threads = MTL::Size::Make(native->computePipeline->threadExecutionWidth(), 1, 1);
     metal.computeEncoder->dispatchThreadgroups(groups, threads);
 }
 
@@ -1846,16 +2124,16 @@ void mt_dispatch_compute_indirect(rt_buffer_t& indirect, size_t offset)
         fprintf(stderr, "Pipeline module not bound");
         abort();
     }
-    auto* native = mt_buffer_native(indirect);
-    if (!native || !native->handle)
+    auto* buf = mt_buffer_native(indirect);
+    if (!buf || !buf->handle)
         return;
     mt_flush_descriptors();
-    mt_transition_buffer(*native, MTL_STATE_SHADER_READ);
+    mt_transition_buffer(*buf, MTL_STATE_SHADER_READ);
     MTL::Size threads = MTL::Size::Make(1, 1, 1);
-    auto* mod = mt_current_module_native();
-    if (mod && mod->computePipeline)
-        threads = MTL::Size::Make(mod->computePipeline->threadExecutionWidth(), 1, 1);
-    metal.computeEncoder->dispatchThreadgroups(native->handle, (NS::UInteger)offset, threads);
+    auto* native = mt_current_module_native();
+    if (native && native->computePipeline)
+        threads = MTL::Size::Make(native->computePipeline->threadExecutionWidth(), 1, 1);
+    metal.computeEncoder->dispatchThreadgroups(buf->handle, (NS::UInteger)offset, threads);
 }
 
 static void mt_bind_draw_vbos(rt_buffer_t vbo[], uint32_t vbo_num)
@@ -1878,8 +2156,8 @@ static void mt_bind_draw_vbos(rt_buffer_t vbo[], uint32_t vbo_num)
 
 static MTL::PrimitiveType mt_draw_primitive()
 {
-    auto* mod = (mt_module_native_t*)mt_current_render_module().native;
-    return mod ? mod->primitive : MTL::PrimitiveTypeTriangle;
+    auto* native = (mt_module_native_t*)mt_current_render_module().native;
+    return native ? native->primitive : MTL::PrimitiveTypeTriangle;
 }
 
 void mt_begin_render(rt_pass_render_t& pass)
@@ -1891,6 +2169,7 @@ void mt_begin_render(rt_pass_render_t& pass)
     }
     for (auto& binding : metal.currentBinding)
         binding = {};
+    metal.currentBindingGroup = nullptr;
     metal.currentPassType = RT_MODULE_RENDER;
     metal.currentRenderPass = &pass;
     metal.currentRenderModule = nullptr;
@@ -1975,6 +2254,7 @@ void mt_end_render(rt_pass_render_t& pass)
     metal.currentPassType = RT_MODULE_NONE;
     metal.currentPipeline = nullptr;
     metal.currentRenderModule = nullptr;
+    metal.currentBindingGroup = nullptr;
     for (auto& binding : metal.currentBinding)
         binding = {};
 }
@@ -1986,18 +2266,18 @@ void mt_bind_module_render(rt_module_render_t& module)
         fprintf(stderr, "Pipeline not begin");
         abort();
     }
-    auto* mod = (mt_module_native_t*)module.native;
-    if (module.handle == 0 || !mod || !mod->renderPipeline)
+    auto* native = (mt_module_native_t*)module.native;
+    if (module.handle == 0 || !native || !native->renderPipeline)
     {
         fprintf(stderr, "Pipeline module is not created");
         abort();
     }
     metal.currentRenderModule = &module;
-    metal.renderEncoder->setRenderPipelineState(mod->renderPipeline);
-    if (mod->depthStencil)
-        metal.renderEncoder->setDepthStencilState(mod->depthStencil);
-    metal.renderEncoder->setCullMode(mod->cull);
-    metal.renderEncoder->setFrontFacingWinding(mod->winding);
+    metal.renderEncoder->setRenderPipelineState(native->renderPipeline);
+    if (native->depthStencil)
+        metal.renderEncoder->setDepthStencilState(native->depthStencil);
+    metal.renderEncoder->setCullMode(native->cull);
+    metal.renderEncoder->setFrontFacingWinding(native->winding);
 }
 
 void mt_set_viewport(float x, float y, float width, float height, float minDepth, float maxDepth)
@@ -2441,7 +2721,7 @@ static void mt_draw_mesh_impl(rt_mesh_t& mesh, uint32_t instanceCount)
     }
     mt_flush_descriptors();
     rt_module_render_t const& module = mt_current_render_module();
-    auto* mod = (mt_module_native_t*)module.native;
+    auto* native = (mt_module_native_t*)module.native;
     uint32_t vertex_count = 0;
     for (uint32_t i = 0; i < std::size(module.vertex); ++i)
     {
@@ -2466,7 +2746,7 @@ static void mt_draw_mesh_impl(rt_mesh_t& mesh, uint32_t instanceCount)
             }
         }
     }
-    MTL::PrimitiveType primitive = mod ? mod->primitive : MTL::PrimitiveTypeTriangle;
+    MTL::PrimitiveType primitive = native ? native->primitive : MTL::PrimitiveTypeTriangle;
     if (mesh.index.handle)
     {
         auto* native = mt_buffer_native(mesh.index);
@@ -2489,13 +2769,13 @@ rt_mesh_t mt_create_mesh(const float* vertices, const float* normals, const floa
     native.vertexCount = (uint32_t)vertex_count;
     native.indexCount = (uint32_t)index_count;
     if (vertices)
-        result.vertex[0] = mt_create_buffer({.size = vertex_count * 3 * sizeof(float), .usage = RT_BUFFER_USAGE_VERTEX | RT_BUFFER_USAGE_COPY_DST, .data = vertices});
+        result.vertex[0] = mt_create_buffer({.size = vertex_count * 3 * sizeof(float), .usages = RT_BUFFER_USAGE_VERTEX | RT_BUFFER_USAGE_COPY_DST, .data = vertices});
     if (normals)
-        result.vertex[1] = mt_create_buffer({.size = vertex_count * 3 * sizeof(float), .usage = RT_BUFFER_USAGE_VERTEX | RT_BUFFER_USAGE_COPY_DST, .data = normals});
+        result.vertex[1] = mt_create_buffer({.size = vertex_count * 3 * sizeof(float), .usages = RT_BUFFER_USAGE_VERTEX | RT_BUFFER_USAGE_COPY_DST, .data = normals});
     if (uvs)
-        result.vertex[2] = mt_create_buffer({.size = vertex_count * 2 * sizeof(float), .usage = RT_BUFFER_USAGE_VERTEX | RT_BUFFER_USAGE_COPY_DST, .data = uvs});
+        result.vertex[2] = mt_create_buffer({.size = vertex_count * 2 * sizeof(float), .usages = RT_BUFFER_USAGE_VERTEX | RT_BUFFER_USAGE_COPY_DST, .data = uvs});
     if (indices)
-        result.index = mt_create_buffer({.size = index_count * sizeof(uint32_t), .usage = RT_BUFFER_USAGE_INDEX | RT_BUFFER_USAGE_COPY_DST, .data = indices});
+        result.index = mt_create_buffer({.size = index_count * sizeof(uint32_t), .usages = RT_BUFFER_USAGE_INDEX | RT_BUFFER_USAGE_COPY_DST, .data = indices});
     std::iota(result.location, result.location + std::size(result.location), 0);
     metal.meshID = handle;
     result.handle = handle;
@@ -2532,13 +2812,13 @@ rt_meshlet_t mt_create_meshlet(const float* vertices, const float* normals, cons
     native.vertexCount = (uint32_t)vertex_count;
     native.indexCount = (uint32_t)index_count;
     if (vertices)
-        result.vertex[0] = mt_create_buffer({.size = vertex_count * 4 * sizeof(float), .usage = RT_BUFFER_USAGE_STORAGE | RT_BUFFER_USAGE_COPY_DST, .data = vertices});
+        result.vertex[0] = mt_create_buffer({.size = vertex_count * 4 * sizeof(float), .usages = RT_BUFFER_USAGE_STORAGE | RT_BUFFER_USAGE_COPY_DST, .data = vertices});
     if (normals)
-        result.vertex[1] = mt_create_buffer({.size = vertex_count * 4 * sizeof(float), .usage = RT_BUFFER_USAGE_STORAGE | RT_BUFFER_USAGE_COPY_DST, .data = normals});
+        result.vertex[1] = mt_create_buffer({.size = vertex_count * 4 * sizeof(float), .usages = RT_BUFFER_USAGE_STORAGE | RT_BUFFER_USAGE_COPY_DST, .data = normals});
     if (uvs)
-        result.vertex[2] = mt_create_buffer({.size = vertex_count * 2 * sizeof(float), .usage = RT_BUFFER_USAGE_STORAGE | RT_BUFFER_USAGE_COPY_DST, .data = uvs});
+        result.vertex[2] = mt_create_buffer({.size = vertex_count * 2 * sizeof(float), .usages = RT_BUFFER_USAGE_STORAGE | RT_BUFFER_USAGE_COPY_DST, .data = uvs});
     if (indices)
-        result.index = mt_create_buffer({.size = index_count * sizeof(uint32_t), .usage = RT_BUFFER_USAGE_STORAGE | RT_BUFFER_USAGE_COPY_DST, .data = indices});
+        result.index = mt_create_buffer({.size = index_count * sizeof(uint32_t), .usages = RT_BUFFER_USAGE_STORAGE | RT_BUFFER_USAGE_COPY_DST, .data = indices});
     std::iota(result.location, result.location + std::size(result.location), 0);
     metal.meshletID = handle;
     result.handle = handle;
