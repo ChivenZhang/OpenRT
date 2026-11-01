@@ -662,8 +662,8 @@ void gl_load_library()
     // ====================================================================
 
     rt_unload_library = gl_unload_library;
-    rt_get_backend = gl_get_backend;
     rt_get_limits = gl_get_limits;
+    rt_get_backend = gl_get_backend;
     rt_create_buffer = gl_create_buffer;
     rt_destroy_buffer = gl_destroy_buffer;
     rt_map_buffer = gl_map_buffer;
@@ -833,8 +833,8 @@ void gl_unload_library()
     // ====================================================================
 
     if(rt_unload_library == gl_unload_library) rt_unload_library = nullptr;
-    if(rt_get_backend == gl_get_backend) rt_get_backend = nullptr;
     if(rt_get_limits == gl_get_limits) rt_get_limits = nullptr;
+    if(rt_get_backend == gl_get_backend) rt_get_backend = nullptr;
     if(rt_create_buffer == gl_create_buffer) rt_create_buffer = nullptr;
     if(rt_destroy_buffer == gl_destroy_buffer) rt_destroy_buffer = nullptr;
     if(rt_map_buffer == gl_map_buffer) rt_map_buffer = nullptr;
@@ -916,14 +916,14 @@ static uint32_t gl_limit3(GLenum a, GLenum b, GLenum c)
     return value;
 }
 
-rt_backend_t gl_get_backend()
-{
-    return RT_OPENGL;
-}
-
 rt_limits_t gl_get_limits()
 {
     return opengl.limits;
+}
+
+rt_backend_t gl_get_backend()
+{
+    return RT_OPENGL;
 }
 
 // ====================================================================

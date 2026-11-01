@@ -1367,8 +1367,8 @@ void vk_load_library(VkInstance instance, VkPhysicalDevice physical, VkDevice de
     vulkan.fnDrawMeshTasksIndirectEXT = (PFN_vkCmdDrawMeshTasksIndirectEXT)vkGetDeviceProcAddr(vulkan.device, "vkCmdDrawMeshTasksIndirectEXT");
 
     rt_unload_library = vk_unload_library;
-    rt_get_backend = vk_get_backend;
     rt_get_limits = vk_get_limits;
+    rt_get_backend = vk_get_backend;
     rt_create_buffer = vk_create_buffer;
     rt_destroy_buffer = vk_destroy_buffer;
     rt_map_buffer = vk_map_buffer;
@@ -1577,8 +1577,8 @@ void vk_unload_library()
     vulkan.currentPipeline = nullptr;
 
     if (rt_unload_library == vk_unload_library) rt_unload_library = nullptr;
-    if (rt_get_backend == vk_get_backend) rt_get_backend = nullptr;
     if (rt_get_limits == vk_get_limits) rt_get_limits = nullptr;
+    if (rt_get_backend == vk_get_backend) rt_get_backend = nullptr;
     if (rt_create_buffer == vk_create_buffer) rt_create_buffer = nullptr;
     if (rt_destroy_buffer == vk_destroy_buffer) rt_destroy_buffer = nullptr;
     if (rt_map_buffer == vk_map_buffer) rt_map_buffer = nullptr;
@@ -1654,14 +1654,14 @@ static uint32_t vk_sample_count(VkSampleCountFlags flags)
     return 1;
 }
 
-rt_backend_t vk_get_backend()
-{
-    return RT_VULKAN;
-}
-
 rt_limits_t vk_get_limits()
 {
     return vulkan.limits;
+}
+
+rt_backend_t vk_get_backend()
+{
+    return RT_VULKAN;
 }
 
 rt_buffer_t vk_create_buffer(rt_buffer_info_t const& info)

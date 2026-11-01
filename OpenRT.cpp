@@ -84,8 +84,8 @@ void rt_load_library(rt_load_info_t const& info)
 }
 
 void (*rt_unload_library)() = nullptr;
-rt_backend_t (*rt_get_backend)() = nullptr;
 rt_limits_t (*rt_get_limits)() = nullptr;
+rt_backend_t (*rt_get_backend)() = nullptr;
 
 rt_buffer_t (*rt_create_buffer)(rt_buffer_info_t const& info) = nullptr;
 void (*rt_destroy_buffer)(rt_buffer_t& buffer) = nullptr;

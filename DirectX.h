@@ -15,8 +15,8 @@
 
 void dx_load_library(ID3D12Device* device, ID3D12CommandQueue* queue);
 void dx_unload_library();
-rt_backend_t dx_get_backend();
 rt_limits_t dx_get_limits();
+rt_backend_t dx_get_backend();
 
 rt_buffer_t dx_create_buffer(rt_buffer_info_t const& info);
 void dx_destroy_buffer(rt_buffer_t& buffer);

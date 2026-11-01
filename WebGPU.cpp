@@ -840,8 +840,8 @@ void wg_load_library(WGPUDevice device, WGPUQueue queue)
     webgpu.pushBuffer = wgpuDeviceCreateBuffer(webgpu.device, &push);
 
     rt_unload_library = wg_unload_library;
-    rt_get_backend = wg_get_backend;
     rt_get_limits = wg_get_limits;
+    rt_get_backend = wg_get_backend;
     rt_create_buffer = wg_create_buffer;
     rt_destroy_buffer = wg_destroy_buffer;
     rt_map_buffer = wg_map_buffer;
@@ -1021,8 +1021,8 @@ void wg_unload_library()
     webgpu.currentPipeline = nullptr;
 
     if (rt_unload_library == wg_unload_library) rt_unload_library = nullptr;
-    if (rt_get_backend == wg_get_backend) rt_get_backend = nullptr;
     if (rt_get_limits == wg_get_limits) rt_get_limits = nullptr;
+    if (rt_get_backend == wg_get_backend) rt_get_backend = nullptr;
     if (rt_create_buffer == wg_create_buffer) rt_create_buffer = nullptr;
     if (rt_destroy_buffer == wg_destroy_buffer) rt_destroy_buffer = nullptr;
     if (rt_map_buffer == wg_map_buffer) rt_map_buffer = nullptr;
@@ -1088,14 +1088,14 @@ void wg_unload_library()
     if (rt_submit == wg_submit) rt_submit = nullptr;
 }
 
-rt_backend_t wg_get_backend()
-{
-    return RT_WEBGPU;
-}
-
 rt_limits_t wg_get_limits()
 {
     return webgpu.limits;
+}
+
+rt_backend_t wg_get_backend()
+{
+    return RT_WEBGPU;
 }
 
 rt_buffer_t wg_create_buffer(rt_buffer_info_t const& info)

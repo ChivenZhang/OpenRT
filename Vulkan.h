@@ -15,8 +15,8 @@
 
 void vk_load_library(VkInstance instance, VkPhysicalDevice physical, VkDevice device, VkQueue queue, VkCommandBuffer cmdbuf, uint32_t family);
 void vk_unload_library();
-rt_backend_t vk_get_backend();
 rt_limits_t vk_get_limits();
+rt_backend_t vk_get_backend();
 
 rt_buffer_t vk_create_buffer(rt_buffer_info_t const& info);
 void vk_destroy_buffer(rt_buffer_t& buffer);

@@ -951,8 +951,8 @@ struct rt_limits_t
 
 OPENRT_API void rt_load_library(rt_load_info_t const& info = {});
 OPENRT_API void (*rt_unload_library)();
-OPENRT_API rt_backend_t (*rt_get_backend)();
 OPENRT_API rt_limits_t (*rt_get_limits)();
+OPENRT_API rt_backend_t (*rt_get_backend)();
 
 OPENRT_API rt_buffer_t (*rt_create_buffer)(rt_buffer_info_t const& info);
 OPENRT_API void (*rt_destroy_buffer)(rt_buffer_t& buffer);

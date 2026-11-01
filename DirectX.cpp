@@ -1006,8 +1006,8 @@ void dx_load_library(ID3D12Device* device, ID3D12CommandQueue* queue)
     direct.fenceEvent = CreateEventW(nullptr, FALSE, FALSE, nullptr);
 
     rt_unload_library = dx_unload_library;
-    rt_get_backend = dx_get_backend;
     rt_get_limits = dx_get_limits;
+    rt_get_backend = dx_get_backend;
     rt_create_buffer = dx_create_buffer;
     rt_destroy_buffer = dx_destroy_buffer;
     rt_map_buffer = dx_map_buffer;
@@ -1200,8 +1200,8 @@ void dx_unload_library()
     direct.currentPipeline = nullptr;
 
     if (rt_unload_library == dx_unload_library) rt_unload_library = nullptr;
-    if (rt_get_backend == dx_get_backend) rt_get_backend = nullptr;
     if (rt_get_limits == dx_get_limits) rt_get_limits = nullptr;
+    if (rt_get_backend == dx_get_backend) rt_get_backend = nullptr;
     if (rt_create_buffer == dx_create_buffer) rt_create_buffer = nullptr;
     if (rt_destroy_buffer == dx_destroy_buffer) rt_destroy_buffer = nullptr;
     if (rt_map_buffer == dx_map_buffer) rt_map_buffer = nullptr;
@@ -1267,14 +1267,14 @@ void dx_unload_library()
     if (rt_submit == dx_submit) rt_submit = nullptr;
 }
 
-rt_backend_t dx_get_backend()
-{
-    return RT_DIRECTX;
-}
-
 rt_limits_t dx_get_limits()
 {
     return direct.limits;
+}
+
+rt_backend_t dx_get_backend()
+{
+    return RT_DIRECTX;
 }
 
 rt_buffer_t dx_create_buffer(rt_buffer_info_t const& info)

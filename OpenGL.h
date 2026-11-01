@@ -15,8 +15,8 @@
 
 void gl_load_library();
 void gl_unload_library();
-rt_backend_t gl_get_backend();
 rt_limits_t gl_get_limits();
+rt_backend_t gl_get_backend();
 
 rt_buffer_t gl_create_buffer(rt_buffer_info_t const& info);
 void gl_destroy_buffer(rt_buffer_t& buffer);

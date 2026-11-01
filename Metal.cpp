@@ -1126,8 +1126,8 @@ void mt_load_library(MTL::Device* device, MTL::CommandQueue* queue)
     mt_retain_cmd(metal.queue->commandBuffer());
 
     rt_unload_library = mt_unload_library;
-    rt_get_backend = mt_get_backend;
     rt_get_limits = mt_get_limits;
+    rt_get_backend = mt_get_backend;
     rt_create_buffer = mt_create_buffer;
     rt_destroy_buffer = mt_destroy_buffer;
     rt_map_buffer = mt_map_buffer;
@@ -1289,8 +1289,8 @@ void mt_unload_library()
     metal.currentPipeline = nullptr;
 
     if (rt_unload_library == mt_unload_library) rt_unload_library = nullptr;
-    if (rt_get_backend == mt_get_backend) rt_get_backend = nullptr;
     if (rt_get_limits == mt_get_limits) rt_get_limits = nullptr;
+    if (rt_get_backend == mt_get_backend) rt_get_backend = nullptr;
     if (rt_create_buffer == mt_create_buffer) rt_create_buffer = nullptr;
     if (rt_destroy_buffer == mt_destroy_buffer) rt_destroy_buffer = nullptr;
     if (rt_map_buffer == mt_map_buffer) rt_map_buffer = nullptr;
@@ -1356,14 +1356,14 @@ void mt_unload_library()
     if (rt_submit == mt_submit) rt_submit = nullptr;
 }
 
-rt_backend_t mt_get_backend()
-{
-    return RT_METAL;
-}
-
 rt_limits_t mt_get_limits()
 {
     return metal.limits;
+}
+
+rt_backend_t mt_get_backend()
+{
+    return RT_METAL;
 }
 
 rt_buffer_t mt_create_buffer(rt_buffer_info_t const& info)

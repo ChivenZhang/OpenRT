@@ -16,8 +16,8 @@
 
 void wg_load_library(WGPUDevice device, WGPUQueue queue);
 void wg_unload_library();
-rt_backend_t wg_get_backend();
 rt_limits_t wg_get_limits();
+rt_backend_t wg_get_backend();
 
 rt_buffer_t wg_create_buffer(rt_buffer_info_t const& info);
 void wg_destroy_buffer(rt_buffer_t& buffer);

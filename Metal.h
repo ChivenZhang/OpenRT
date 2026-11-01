@@ -15,8 +15,8 @@
 
 void mt_load_library(MTL::Device* device, MTL::CommandQueue* queue);
 void mt_unload_library();
-rt_backend_t mt_get_backend();
 rt_limits_t mt_get_limits();
+rt_backend_t mt_get_backend();
 
 rt_buffer_t mt_create_buffer(rt_buffer_info_t const& info);
 void mt_destroy_buffer(rt_buffer_t& buffer);
