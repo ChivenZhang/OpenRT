@@ -89,22 +89,18 @@ rt_limits_t (*rt_get_limits)() = nullptr;
 
 rt_buffer_t (*rt_create_buffer)(rt_buffer_info_t const& info) = nullptr;
 void (*rt_destroy_buffer)(rt_buffer_t& buffer) = nullptr;
-void (*rt_bind_buffer)(rt_buffer_t& buffer, rt_buffer_bind_t bind) = nullptr;
 void* (*rt_map_buffer)(rt_buffer_t& buffer, rt_access_t mode, size_t offset, size_t size) = nullptr; // mode: RT_READ_ONLY / RT_WRITE_ONLY / RT_READ_WRITE
 void (*rt_unmap_buffer)(rt_buffer_t& buffer) = nullptr;
 
 rt_texture_t (*rt_create_texture)(rt_texture_info_t const& info) = nullptr;
 void (*rt_destroy_texture)(rt_texture_t& texture) = nullptr;
-void (*rt_bind_texture)(rt_texture_t& texture, rt_texture_bind_t bind) = nullptr;
 
 rt_texture_view_t (*rt_create_texture_view)(rt_texture_t& texture, rt_texture_view_info_t const& info) = nullptr;
 void (*rt_destroy_texture_view)(rt_texture_view_t& view) = nullptr;
 void (*rt_bind_texture_view)(rt_texture_view_t& view, rt_texture_view_bind_t bind) = nullptr;
-void (*rt_bind_texture_storage)(rt_texture_view_t& view, rt_texture_storage_bind_t bind) = nullptr;
 
 rt_sampler_t (*rt_create_sampler)(rt_sampler_info_t const& info) = nullptr;
 void (*rt_destroy_sampler)(rt_sampler_t& sampler) = nullptr;
-void (*rt_bind_sampler)(rt_sampler_t& sampler, rt_sampler_bind_t bind) = nullptr;
 
 rt_layout_t (*rt_create_layout)(rt_layout_info_t const& info) = nullptr;
 void (*rt_destroy_layout)(rt_layout_t& layout) = nullptr;

@@ -20,22 +20,18 @@ rt_limits_t vk_get_limits();
 
 rt_buffer_t vk_create_buffer(rt_buffer_info_t const& info);
 void vk_destroy_buffer(rt_buffer_t& buffer);
-void vk_bind_buffer(rt_buffer_t& buffer, rt_buffer_bind_t bind = {});
 void* vk_map_buffer(rt_buffer_t& buffer, rt_access_t mode, size_t offset, size_t size);
 void vk_unmap_buffer(rt_buffer_t& buffer);
 
 rt_texture_t vk_create_texture(rt_texture_info_t const& info);
 void vk_destroy_texture(rt_texture_t& texture);
-void vk_bind_texture(rt_texture_t& texture, rt_texture_bind_t bind = {});
 
 rt_texture_view_t vk_create_texture_view(rt_texture_t& texture, rt_texture_view_info_t const& info);
 void vk_destroy_texture_view(rt_texture_view_t& view);
 void vk_bind_texture_view(rt_texture_view_t& view, rt_texture_view_bind_t bind = {});
-void vk_bind_texture_storage(rt_texture_view_t& view, rt_texture_storage_bind_t bind = {});
 
 rt_sampler_t vk_create_sampler(rt_sampler_info_t const& info);
 void vk_destroy_sampler(rt_sampler_t& sampler);
-void vk_bind_sampler(rt_sampler_t& sampler, rt_sampler_bind_t bind = {});
 
 rt_layout_t vk_create_layout(rt_layout_info_t const& info);
 void vk_destroy_layout(rt_layout_t& layout);

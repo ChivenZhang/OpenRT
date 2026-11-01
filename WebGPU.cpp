@@ -844,19 +844,15 @@ void wg_load_library(WGPUDevice device, WGPUQueue queue)
     rt_get_limits = wg_get_limits;
     rt_create_buffer = wg_create_buffer;
     rt_destroy_buffer = wg_destroy_buffer;
-    rt_bind_buffer = wg_bind_buffer;
     rt_map_buffer = wg_map_buffer;
     rt_unmap_buffer = wg_unmap_buffer;
     rt_create_texture = wg_create_texture;
     rt_destroy_texture = wg_destroy_texture;
-    rt_bind_texture = wg_bind_texture;
     rt_create_texture_view = wg_create_texture_view;
     rt_destroy_texture_view = wg_destroy_texture_view;
     rt_bind_texture_view = wg_bind_texture_view;
-    rt_bind_texture_storage = wg_bind_texture_storage;
     rt_create_sampler = wg_create_sampler;
     rt_destroy_sampler = wg_destroy_sampler;
-    rt_bind_sampler = wg_bind_sampler;
     rt_create_layout = wg_create_layout;
     rt_destroy_layout = wg_destroy_layout;
     rt_create_binding = wg_create_binding;
@@ -1029,19 +1025,15 @@ void wg_unload_library()
     if (rt_get_limits == wg_get_limits) rt_get_limits = nullptr;
     if (rt_create_buffer == wg_create_buffer) rt_create_buffer = nullptr;
     if (rt_destroy_buffer == wg_destroy_buffer) rt_destroy_buffer = nullptr;
-    if (rt_bind_buffer == wg_bind_buffer) rt_bind_buffer = nullptr;
     if (rt_map_buffer == wg_map_buffer) rt_map_buffer = nullptr;
     if (rt_unmap_buffer == wg_unmap_buffer) rt_unmap_buffer = nullptr;
     if (rt_create_texture == wg_create_texture) rt_create_texture = nullptr;
     if (rt_destroy_texture == wg_destroy_texture) rt_destroy_texture = nullptr;
-    if (rt_bind_texture == wg_bind_texture) rt_bind_texture = nullptr;
     if (rt_create_texture_view == wg_create_texture_view) rt_create_texture_view = nullptr;
     if (rt_destroy_texture_view == wg_destroy_texture_view) rt_destroy_texture_view = nullptr;
     if (rt_bind_texture_view == wg_bind_texture_view) rt_bind_texture_view = nullptr;
-    if (rt_bind_texture_storage == wg_bind_texture_storage) rt_bind_texture_storage = nullptr;
     if (rt_create_sampler == wg_create_sampler) rt_create_sampler = nullptr;
     if (rt_destroy_sampler == wg_destroy_sampler) rt_destroy_sampler = nullptr;
-    if (rt_bind_sampler == wg_bind_sampler) rt_bind_sampler = nullptr;
     if (rt_create_layout == wg_create_layout) rt_create_layout = nullptr;
     if (rt_destroy_layout == wg_destroy_layout) rt_destroy_layout = nullptr;
     if (rt_create_binding == wg_create_binding) rt_create_binding = nullptr;
@@ -1154,16 +1146,6 @@ void wg_destroy_buffer(rt_buffer_t& buffer)
     buffer = {};
 }
 
-void wg_bind_buffer(rt_buffer_t& buffer, rt_buffer_bind_t bind)
-{
-    if (webgpu.currentPipeline == nullptr)
-    {
-        fprintf(stderr, "Pipeline not begin");
-        abort();
-    }
-    webgpu.currentBinding[bind.binding].buffer = buffer;
-    webgpu.currentBinding[bind.binding].buffer_bind = bind;
-}
 
 void* wg_map_buffer(rt_buffer_t& buffer, rt_access_t mode, size_t offset, size_t size)
 {
@@ -1303,17 +1285,6 @@ void wg_destroy_texture(rt_texture_t& texture)
     texture = {};
 }
 
-void wg_bind_texture(rt_texture_t& texture, rt_texture_bind_t bind)
-{
-    if (webgpu.currentPipeline == nullptr)
-    {
-        fprintf(stderr, "Pipeline not begin");
-        abort();
-    }
-    webgpu.currentBinding[bind.binding].type = RT_BINDING_TEXTURE;
-    webgpu.currentBinding[bind.binding].texture_view = texture.default_view;
-    webgpu.currentBinding[bind.binding].texture_bind = bind;
-}
 
 rt_texture_view_t wg_create_texture_view(rt_texture_t& texture, rt_texture_view_info_t const& info)
 {
@@ -1395,17 +1366,6 @@ void wg_bind_texture_view(rt_texture_view_t& view, rt_texture_view_bind_t bind)
     webgpu.currentBinding[bind.binding].texture_bind.binding = bind.binding;
 }
 
-void wg_bind_texture_storage(rt_texture_view_t& view, rt_texture_storage_bind_t bind)
-{
-    if (webgpu.currentPipeline == nullptr)
-    {
-        fprintf(stderr, "Pipeline not begin");
-        abort();
-    }
-    webgpu.currentBinding[bind.binding].type = RT_BINDING_STORAGE_TEXTURE;
-    webgpu.currentBinding[bind.binding].storage_view = view;
-    webgpu.currentBinding[bind.binding].storage_texture_bind = bind;
-}
 
 rt_sampler_t wg_create_sampler(rt_sampler_info_t const& info)
 {
@@ -1434,17 +1394,6 @@ void wg_destroy_sampler(rt_sampler_t& sampler)
     sampler = {};
 }
 
-void wg_bind_sampler(rt_sampler_t& sampler, rt_sampler_bind_t bind)
-{
-    if (webgpu.currentPipeline == nullptr)
-    {
-        fprintf(stderr, "Pipeline not begin");
-        abort();
-    }
-    webgpu.currentBinding[bind.binding].type = RT_BINDING_SAMPLER;
-    webgpu.currentBinding[bind.binding].sampler = sampler;
-    webgpu.currentBinding[bind.binding].sampler_bind = bind;
-}
 
 static wg_layout_native_t* wg_layout_native(rt_layout_t const& layout)
 {
@@ -2771,25 +2720,7 @@ void wg_draw_meshlet(rt_meshlet_t& meshlet)
         fprintf(stderr, "Pipeline not begin");
         abort();
     }
-    rt_module_render_t const& module = wg_current_render_module();
-    uint32_t index_binding = 0;
-    for (uint32_t i = 0; i < std::size(module.vertex); ++i)
-    {
-        for (auto& attrib : module.vertex[i].attrib)
-        {
-            if (attrib.format == RT_VERTEX_NONE) continue;
-            for (uint32_t k = 0; k < std::size(meshlet.vertex); ++k)
-            {
-                if (meshlet.vertex[k].handle == 0 || meshlet.location[k] != attrib.location) continue;
-                wg_bind_buffer(meshlet.vertex[k], {.binding = attrib.location});
-                break;
-            }
-            if (attrib.location + 1 > index_binding)
-                index_binding = attrib.location + 1;
-        }
-    }
-    if (meshlet.index.handle)
-        wg_bind_buffer(meshlet.index, {.binding = index_binding});
+    (void)wg_current_render_module();
     wg_flush_descriptors();
 }
 

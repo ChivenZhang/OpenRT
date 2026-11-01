@@ -607,30 +607,7 @@ static rt_module_render_t const& gl_current_render_module()
     return *opengl.currentRenderModule;
 }
 
-static gl_module_native_t* gl_current_module_native()
-{
-    if (opengl.currentPassType == RT_MODULE_COMPUTE && opengl.currentComputeModule)
-        return gl_module_native(opengl.currentComputeModule->handle, opengl.currentComputeModule->native);
-    if (opengl.currentPassType == RT_MODULE_RENDER && opengl.currentRenderModule)
-        return gl_module_native(opengl.currentRenderModule->handle, opengl.currentRenderModule->native);
-    return nullptr;
-}
 
-static rt_binding_type_t gl_query_buffer_binding_type(uint32_t binding)
-{
-    auto* native = gl_current_module_native();
-    if (native)
-    {
-        for (uint32_t i = 0; i < RT_MAX_BINDING_HANDLE_NUM; ++i)
-        {
-            auto const& item = native->layouts[i];
-            if (item.binding == binding &&
-                (item.type == RT_BINDING_UNIFORM_BUFFER || item.type == RT_BINDING_STORAGE_BUFFER))
-                return item.type;
-        }
-    }
-    return RT_BINDING_UNIFORM_BUFFER;
-}
 
 static GLuint gl_buffer_name(rt_buffer_t const& buffer)
 {
@@ -689,19 +666,15 @@ void gl_load_library()
     rt_get_limits = gl_get_limits;
     rt_create_buffer = gl_create_buffer;
     rt_destroy_buffer = gl_destroy_buffer;
-    rt_bind_buffer = gl_bind_buffer;
     rt_map_buffer = gl_map_buffer;
     rt_unmap_buffer = gl_unmap_buffer;
     rt_create_texture = gl_create_texture;
     rt_destroy_texture = gl_destroy_texture;
-    rt_bind_texture = gl_bind_texture;
     rt_create_texture_view = gl_create_texture_view;
     rt_destroy_texture_view = gl_destroy_texture_view;
     rt_bind_texture_view = gl_bind_texture_view;
-    rt_bind_texture_storage = gl_bind_texture_storage;
     rt_create_sampler = gl_create_sampler;
     rt_destroy_sampler = gl_destroy_sampler;
-    rt_bind_sampler = gl_bind_sampler;
     rt_create_layout = gl_create_layout;
     rt_destroy_layout = gl_destroy_layout;
     rt_create_binding = gl_create_binding;
@@ -864,19 +837,15 @@ void gl_unload_library()
     if(rt_get_limits == gl_get_limits) rt_get_limits = nullptr;
     if(rt_create_buffer == gl_create_buffer) rt_create_buffer = nullptr;
     if(rt_destroy_buffer == gl_destroy_buffer) rt_destroy_buffer = nullptr;
-    if(rt_bind_buffer == gl_bind_buffer) rt_bind_buffer = nullptr;
     if(rt_map_buffer == gl_map_buffer) rt_map_buffer = nullptr;
     if(rt_unmap_buffer == gl_unmap_buffer) rt_unmap_buffer = nullptr;
     if(rt_create_texture == gl_create_texture) rt_create_texture = nullptr;
     if(rt_destroy_texture == gl_destroy_texture) rt_destroy_texture = nullptr;
-    if(rt_bind_texture == gl_bind_texture) rt_bind_texture = nullptr;
     if(rt_create_texture_view == gl_create_texture_view) rt_create_texture_view = nullptr;
     if(rt_destroy_texture_view == gl_destroy_texture_view) rt_destroy_texture_view = nullptr;
     if(rt_bind_texture_view == gl_bind_texture_view) rt_bind_texture_view = nullptr;
-    if(rt_bind_texture_storage == gl_bind_texture_storage) rt_bind_texture_storage = nullptr;
     if(rt_create_sampler == gl_create_sampler) rt_create_sampler = nullptr;
     if(rt_destroy_sampler == gl_destroy_sampler) rt_destroy_sampler = nullptr;
-    if(rt_bind_sampler == gl_bind_sampler) rt_bind_sampler = nullptr;
     if(rt_create_layout == gl_create_layout) rt_create_layout = nullptr;
     if(rt_destroy_layout == gl_destroy_layout) rt_destroy_layout = nullptr;
     if(rt_create_binding == gl_create_binding) rt_create_binding = nullptr;
@@ -1001,20 +970,6 @@ void gl_destroy_buffer(rt_buffer_t& buffer)
     buffer = {};
 }
 
-void gl_bind_buffer(rt_buffer_t& buffer, rt_buffer_bind_t bind)
-{
-    if (opengl.currentPipeline == nullptr)
-    {
-        fprintf(stderr, "Pipeline not begin");
-        abort();
-    }
-    rt_binding_type_t type = gl_query_buffer_binding_type(bind.binding);
-    GLenum target = (type == RT_BINDING_STORAGE_BUFFER) ? GL_SHADER_STORAGE_BUFFER : GL_UNIFORM_BUFFER;
-    size_t size = bind.size;
-    if (size == (size_t)-1U)
-        size = buffer.size > bind.offset ? buffer.size - bind.offset : 0;
-    glBindBufferRange(target, bind.binding, gl_buffer_name(buffer), (GLintptr)bind.offset, (GLsizeiptr)size);
-}
 
 void* gl_map_buffer(rt_buffer_t& buffer, rt_access_t mode, size_t offset, size_t size)
 {
@@ -1304,19 +1259,6 @@ void gl_destroy_texture(rt_texture_t& texture)
     texture = {};
 }
 
-void gl_bind_texture(rt_texture_t& texture, rt_texture_bind_t bind)
-{
-    if (opengl.currentPipeline == nullptr)
-    {
-        fprintf(stderr, "Pipeline not begin");
-        abort();
-    }
-
-    auto name = gl_texture_view_name(texture.default_view);
-    auto target = rt_to_gl_texture_target(texture.default_view.target);
-    glActiveTexture(GL_TEXTURE0 + bind.binding);
-    glBindTexture(target, name);
-}
 
 rt_texture_view_t gl_create_texture_view(rt_texture_t& texture, rt_texture_view_info_t const& info)
 {
@@ -1406,17 +1348,6 @@ void gl_bind_texture_view(rt_texture_view_t& view, rt_texture_view_bind_t bind)
     glBindTexture(target, gl_texture_view_name(view));
 }
 
-void gl_bind_texture_storage(rt_texture_view_t& view, rt_texture_storage_bind_t bind)
-{
-    if (opengl.currentPipeline == nullptr)
-    {
-        fprintf(stderr, "Pipeline not begin");
-        abort();
-    }
-
-    glBindImageTexture(bind.binding, gl_texture_view_name(view), (GLint)bind.base_level, 1 < bind.layer_count,
-                       (GLint)bind.base_layer, rt_to_gl_access(bind.access), rt_to_gl_texture_format(view.format));
-}
 
 // ====================================================================
 
@@ -1450,16 +1381,6 @@ void gl_destroy_sampler(rt_sampler_t& sampler)
     sampler = {};
 }
 
-void gl_bind_sampler(rt_sampler_t& sampler, rt_sampler_bind_t bind)
-{
-    if (opengl.currentPipeline == nullptr)
-    {
-        fprintf(stderr, "Pipeline not begin");
-        abort();
-    }
-
-    glBindSampler(bind.binding, gl_sampler_name(sampler));
-}
 
 // ====================================================================
 
@@ -3444,11 +3365,25 @@ void gl_draw_screen(int width, int height, rt_color_t clear, rt_texture_t& textu
     static auto module = gl_create_module_render({.layout = layout, .vshader = {.code = VS}, .fshader = {.code = FS}, .vertex = {rt_vertex_vertex, {}, rt_vertex_uv,},});
     rt_pass_render_t pass = {.screen = {.color = { .clear = true, .value = clear,}, .depth = {.clear = true,}, .stencil = {.clear = true,}}};
     gl_begin_render(pass);
+    static rt_binding_t binding = {};
+    static uint32_t boundView = 0;
+    if (texture.handle && texture.default_view.handle != boundView)
+    {
+        if (binding.handle)
+            gl_destroy_binding(binding);
+        binding = gl_create_binding({
+            .layout = layout,
+            .entry = {
+                {.binding = 0, .texture = texture.default_view},
+            },
+        });
+        boundView = texture.default_view.handle;
+    }
     gl_bind_module_render(module);
     gl_set_viewport(0.0f, 0.0f, (float)width, (float)height, 0.0f, 1.0f);
-    gl_bind_texture(texture, {.binding = 0,});
-    if (texture.handle)
+    if (texture.handle && binding.handle)
     {
+        gl_bind_binding(binding);
         static auto mesh = gl_create_mesh_screen();
         gl_draw_mesh(mesh);
     }

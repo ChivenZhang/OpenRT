@@ -1130,19 +1130,15 @@ void mt_load_library(MTL::Device* device, MTL::CommandQueue* queue)
     rt_get_limits = mt_get_limits;
     rt_create_buffer = mt_create_buffer;
     rt_destroy_buffer = mt_destroy_buffer;
-    rt_bind_buffer = mt_bind_buffer;
     rt_map_buffer = mt_map_buffer;
     rt_unmap_buffer = mt_unmap_buffer;
     rt_create_texture = mt_create_texture;
     rt_destroy_texture = mt_destroy_texture;
-    rt_bind_texture = mt_bind_texture;
     rt_create_texture_view = mt_create_texture_view;
     rt_destroy_texture_view = mt_destroy_texture_view;
     rt_bind_texture_view = mt_bind_texture_view;
-    rt_bind_texture_storage = mt_bind_texture_storage;
     rt_create_sampler = mt_create_sampler;
     rt_destroy_sampler = mt_destroy_sampler;
-    rt_bind_sampler = mt_bind_sampler;
     rt_create_layout = mt_create_layout;
     rt_destroy_layout = mt_destroy_layout;
     rt_create_binding = mt_create_binding;
@@ -1297,19 +1293,15 @@ void mt_unload_library()
     if (rt_get_limits == mt_get_limits) rt_get_limits = nullptr;
     if (rt_create_buffer == mt_create_buffer) rt_create_buffer = nullptr;
     if (rt_destroy_buffer == mt_destroy_buffer) rt_destroy_buffer = nullptr;
-    if (rt_bind_buffer == mt_bind_buffer) rt_bind_buffer = nullptr;
     if (rt_map_buffer == mt_map_buffer) rt_map_buffer = nullptr;
     if (rt_unmap_buffer == mt_unmap_buffer) rt_unmap_buffer = nullptr;
     if (rt_create_texture == mt_create_texture) rt_create_texture = nullptr;
     if (rt_destroy_texture == mt_destroy_texture) rt_destroy_texture = nullptr;
-    if (rt_bind_texture == mt_bind_texture) rt_bind_texture = nullptr;
     if (rt_create_texture_view == mt_create_texture_view) rt_create_texture_view = nullptr;
     if (rt_destroy_texture_view == mt_destroy_texture_view) rt_destroy_texture_view = nullptr;
     if (rt_bind_texture_view == mt_bind_texture_view) rt_bind_texture_view = nullptr;
-    if (rt_bind_texture_storage == mt_bind_texture_storage) rt_bind_texture_storage = nullptr;
     if (rt_create_sampler == mt_create_sampler) rt_create_sampler = nullptr;
     if (rt_destroy_sampler == mt_destroy_sampler) rt_destroy_sampler = nullptr;
-    if (rt_bind_sampler == mt_bind_sampler) rt_bind_sampler = nullptr;
     if (rt_create_layout == mt_create_layout) rt_create_layout = nullptr;
     if (rt_destroy_layout == mt_destroy_layout) rt_destroy_layout = nullptr;
     if (rt_create_binding == mt_create_binding) rt_create_binding = nullptr;
@@ -1427,16 +1419,6 @@ void mt_destroy_buffer(rt_buffer_t& buffer)
     buffer = {};
 }
 
-void mt_bind_buffer(rt_buffer_t& buffer, rt_buffer_bind_t bind)
-{
-    if (metal.currentPipeline == nullptr)
-    {
-        fprintf(stderr, "Pipeline not begin");
-        abort();
-    }
-    metal.currentBinding[bind.binding].buffer = buffer;
-    metal.currentBinding[bind.binding].buffer_bind = bind;
-}
 
 void* mt_map_buffer(rt_buffer_t& buffer, rt_access_t mode, size_t offset, size_t size)
 {
@@ -1616,17 +1598,6 @@ void mt_destroy_texture(rt_texture_t& texture)
     texture = {};
 }
 
-void mt_bind_texture(rt_texture_t& texture, rt_texture_bind_t bind)
-{
-    if (metal.currentPipeline == nullptr)
-    {
-        fprintf(stderr, "Pipeline not begin");
-        abort();
-    }
-    metal.currentBinding[bind.binding].type = RT_BINDING_TEXTURE;
-    metal.currentBinding[bind.binding].texture_view = texture.default_view;
-    metal.currentBinding[bind.binding].texture_bind = bind;
-}
 
 rt_texture_view_t mt_create_texture_view(rt_texture_t& texture, rt_texture_view_info_t const& info)
 {
@@ -1722,17 +1693,6 @@ void mt_bind_texture_view(rt_texture_view_t& view, rt_texture_view_bind_t bind)
     metal.currentBinding[bind.binding].texture_bind.binding = bind.binding;
 }
 
-void mt_bind_texture_storage(rt_texture_view_t& view, rt_texture_storage_bind_t bind)
-{
-    if (metal.currentPipeline == nullptr)
-    {
-        fprintf(stderr, "Pipeline not begin");
-        abort();
-    }
-    metal.currentBinding[bind.binding].type = RT_BINDING_STORAGE_TEXTURE;
-    metal.currentBinding[bind.binding].storage_view = view;
-    metal.currentBinding[bind.binding].storage_texture_bind = bind;
-}
 
 rt_sampler_t mt_create_sampler(rt_sampler_info_t const& info)
 {
@@ -1761,17 +1721,6 @@ void mt_destroy_sampler(rt_sampler_t& sampler)
     sampler = {};
 }
 
-void mt_bind_sampler(rt_sampler_t& sampler, rt_sampler_bind_t bind)
-{
-    if (metal.currentPipeline == nullptr)
-    {
-        fprintf(stderr, "Pipeline not begin");
-        abort();
-    }
-    metal.currentBinding[bind.binding].type = RT_BINDING_SAMPLER;
-    metal.currentBinding[bind.binding].sampler = sampler;
-    metal.currentBinding[bind.binding].sampler_bind = bind;
-}
 
 static mt_layout_native_t* mt_layout_native(rt_layout_t const& layout)
 {
@@ -2848,25 +2797,7 @@ void mt_draw_meshlet(rt_meshlet_t& meshlet)
         fprintf(stderr, "Pipeline not begin");
         abort();
     }
-    rt_module_render_t const& module = mt_current_render_module();
-    uint32_t index_binding = 0;
-    for (uint32_t i = 0; i < std::size(module.vertex); ++i)
-    {
-        for (auto& attrib : module.vertex[i].attrib)
-        {
-            if (attrib.format == RT_VERTEX_NONE) continue;
-            for (uint32_t k = 0; k < std::size(meshlet.vertex); ++k)
-            {
-                if (meshlet.vertex[k].handle == 0 || meshlet.location[k] != attrib.location) continue;
-                mt_bind_buffer(meshlet.vertex[k], {.binding = attrib.location});
-                break;
-            }
-            if (attrib.location + 1 > index_binding)
-                index_binding = attrib.location + 1;
-        }
-    }
-    if (meshlet.index.handle)
-        mt_bind_buffer(meshlet.index, {.binding = index_binding});
+    (void)mt_current_render_module();
     mt_flush_descriptors();
     auto* native = (mt_meshlet_native_t*)meshlet.native;
     uint32_t tasks = native && native->indexCount ? native->indexCount / 3 : 1;

@@ -956,22 +956,18 @@ OPENRT_API rt_limits_t (*rt_get_limits)();
 
 OPENRT_API rt_buffer_t (*rt_create_buffer)(rt_buffer_info_t const& info);
 OPENRT_API void (*rt_destroy_buffer)(rt_buffer_t& buffer);
-OPENRT_API void (*rt_bind_buffer)(rt_buffer_t& buffer, rt_buffer_bind_t bind);
 OPENRT_API void* (*rt_map_buffer)(rt_buffer_t& buffer, rt_access_t mode, size_t offset, size_t size); // mode: RT_READ_ONLY / RT_WRITE_ONLY / RT_READ_WRITE
 OPENRT_API void (*rt_unmap_buffer)(rt_buffer_t& buffer);
 
 OPENRT_API rt_texture_t (*rt_create_texture)(rt_texture_info_t const& info);
 OPENRT_API void (*rt_destroy_texture)(rt_texture_t& texture);
-OPENRT_API void (*rt_bind_texture)(rt_texture_t& texture, rt_texture_bind_t bind);
 
 OPENRT_API rt_texture_view_t (*rt_create_texture_view)(rt_texture_t& texture, rt_texture_view_info_t const& info);
 OPENRT_API void (*rt_destroy_texture_view)(rt_texture_view_t& view);
 OPENRT_API void (*rt_bind_texture_view)(rt_texture_view_t& view, rt_texture_view_bind_t bind);
-OPENRT_API void (*rt_bind_texture_storage)(rt_texture_view_t& view, rt_texture_storage_bind_t bind);
 
 OPENRT_API rt_sampler_t (*rt_create_sampler)(rt_sampler_info_t const& info);
 OPENRT_API void (*rt_destroy_sampler)(rt_sampler_t& sampler);
-OPENRT_API void (*rt_bind_sampler)(rt_sampler_t& sampler, rt_sampler_bind_t bind);
 
 OPENRT_API rt_layout_t (*rt_create_layout)(rt_layout_info_t const& info);
 OPENRT_API void (*rt_destroy_layout)(rt_layout_t& layout);
