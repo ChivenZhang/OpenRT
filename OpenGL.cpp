@@ -1298,10 +1298,8 @@ rt_texture_view_t gl_create_texture_view(rt_texture_t& texture, rt_texture_view_
     if (rt_texture_has_depth(result.format) || rt_texture_has_stencil(result.format))
     {
         GLenum mode = result.aspect == RT_TEXTURE_ASPECT_STENCIL ? GL_STENCIL_INDEX : GL_DEPTH_COMPONENT;
-        GLenum glTarget = rt_to_gl_texture_target(info.target);
-        glBindTexture(glTarget, native.handle);
-        glTexParameteri(glTarget, GL_DEPTH_STENCIL_TEXTURE_MODE, mode);
-        glBindTexture(glTarget, 0);
+        glBindTexture(rt_to_gl_texture_target(info.target), native.handle);
+        glTexParameteri(rt_to_gl_texture_target(info.target), GL_DEPTH_STENCIL_TEXTURE_MODE, mode);
     }
     native.texture = parentTex;
     opengl.textureViewID = handle;
