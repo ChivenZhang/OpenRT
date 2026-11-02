@@ -2495,7 +2495,7 @@ void dx_draw_array(rt_buffer_t vbo[], uint32_t vbo_num, uint32_t vertex_num, uin
     direct.cmd->DrawInstanced(vertex_num, instance_num, vertex_start, instance_start);
 }
 
-void dx_draw_index(rt_buffer_t vbo[], uint32_t vbo_num, rt_buffer_t& ebo, uint32_t vertex_num, uint32_t instance_num, uint32_t vertex_start, uint32_t instance_start)
+void dx_draw_index(rt_buffer_t vbo[], uint32_t vbo_num, rt_buffer_t& ebo, uint32_t index_num, uint32_t instance_num, uint32_t index_start, uint32_t vertex_start, uint32_t instance_start)
 {
     if (direct.currentPipeline == nullptr)
     {
@@ -2518,7 +2518,7 @@ void dx_draw_index(rt_buffer_t vbo[], uint32_t vbo_num, rt_buffer_t& ebo, uint32
     view.SizeInBytes = (UINT)ebo.size;
     view.Format = rt_to_dx_index_type(dx_current_render_module().index_type);
     direct.cmd->IASetIndexBuffer(&view);
-    direct.cmd->DrawIndexedInstanced(vertex_num, instance_num, 0, (INT)vertex_start, instance_start);
+    direct.cmd->DrawIndexedInstanced(index_num, instance_num, index_start, (INT)vertex_start, instance_start);
 }
 
 void dx_draw_array_indirect(rt_buffer_t vbo[], uint32_t vbo_num, rt_buffer_t& indirect, size_t offset)

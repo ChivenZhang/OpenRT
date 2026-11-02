@@ -1001,7 +1001,7 @@ OPENRT_API void (*rt_set_scissor)(int32_t x, int32_t y, int32_t width, int32_t h
 OPENRT_API void (*rt_set_blend_constant)(float r, float g, float b, float a);
 OPENRT_API void (*rt_set_stencil_reference)(int32_t value);
 OPENRT_API void (*rt_draw_array)(rt_buffer_t vbo[], uint32_t vbo_num, uint32_t vertex_num, uint32_t instance_num, uint32_t vertex_start, uint32_t instance_start);
-OPENRT_API void (*rt_draw_index)(rt_buffer_t vbo[], uint32_t vbo_num, rt_buffer_t& ebo, uint32_t vertex_num, uint32_t instance_num, uint32_t vertex_start, uint32_t instance_start);
+OPENRT_API void (*rt_draw_index)(rt_buffer_t vbo[], uint32_t vbo_num, rt_buffer_t& ebo, uint32_t index_num, uint32_t instance_num, uint32_t index_start, uint32_t vertex_start, uint32_t instance_start);
 OPENRT_API void (*rt_draw_array_indirect)(rt_buffer_t vbo[], uint32_t vbo_num, rt_buffer_t& indirect, size_t offset);
 OPENRT_API void (*rt_draw_index_indirect)(rt_buffer_t vbo[], uint32_t vbo_num, rt_buffer_t& ebo, rt_buffer_t& indirect, size_t offset);
 OPENRT_API void (*rt_draw_mesh_task)(uint32_t groupX, uint32_t groupY, uint32_t groupZ);

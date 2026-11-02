@@ -2299,7 +2299,7 @@ void mt_draw_array(rt_buffer_t vbo[], uint32_t vbo_num, uint32_t vertex_num, uin
     metal.renderEncoder->drawPrimitives(mt_draw_primitive(), vertex_start, vertex_num, instance_num, instance_start);
 }
 
-void mt_draw_index(rt_buffer_t vbo[], uint32_t vbo_num, rt_buffer_t& ebo, uint32_t vertex_num, uint32_t instance_num, uint32_t vertex_start, uint32_t instance_start)
+void mt_draw_index(rt_buffer_t vbo[], uint32_t vbo_num, rt_buffer_t& ebo, uint32_t index_num, uint32_t instance_num, uint32_t index_start, uint32_t vertex_start, uint32_t instance_start)
 {
     if (metal.currentPipeline == nullptr)
     {
@@ -2317,8 +2317,9 @@ void mt_draw_index(rt_buffer_t vbo[], uint32_t vbo_num, rt_buffer_t& ebo, uint32
     mt_flush_descriptors();
     mt_bind_draw_vbos(vbo, vbo_num);
     mt_transition_buffer(*indexNative, MTL_STATE_INDEX);
-    metal.renderEncoder->drawIndexedPrimitives(mt_draw_primitive(), vertex_num,
-        rt_to_mt_index_type(mt_current_render_module().index_type), indexNative->handle, 0, instance_num, (NS::Integer)vertex_start, instance_start);
+    rt_module_render_t const& module = mt_current_render_module();
+    metal.renderEncoder->drawIndexedPrimitives(mt_draw_primitive(), index_num,
+        rt_to_mt_index_type(module.index_type), indexNative->handle, (NS::UInteger)index_start * rt_to_mt_index_size(module.index_type), instance_num, (NS::Integer)vertex_start, instance_start);
 }
 
 void mt_draw_array_indirect(rt_buffer_t vbo[], uint32_t vbo_num, rt_buffer_t& indirect, size_t offset)

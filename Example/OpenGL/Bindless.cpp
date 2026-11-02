@@ -183,7 +183,7 @@ void frame(int width, int height)
         meshMat = glm::rotate(meshMat, glm::radians(-18.0f), glm::vec3(1, 0, 0));
         rt_push_const_mat4("meshMat", &meshMat[0][0]);
         rt_push_const_uint("albedo", (uint32_t)i);
-        rt_draw_index(cube.vertex, 3, cube.index, cube.index.size / sizeof(uint32_t), 1, 0, 0);
+        rt_draw_index(cube.vertex, 3, cube.index, cube.index.size / sizeof(uint32_t), 1, 0, 0, 0);
     }
 
     rt_end_render(pass);

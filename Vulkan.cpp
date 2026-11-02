@@ -3088,7 +3088,7 @@ void vk_draw_array(rt_buffer_t vbo[], uint32_t vbo_num, uint32_t vertex_num, uin
     vkCmdDraw(vulkan.cmdBuffer, vertex_num, instance_num, vertex_start, instance_start);
 }
 
-void vk_draw_index(rt_buffer_t vbo[], uint32_t vbo_num, rt_buffer_t& ebo, uint32_t vertex_num, uint32_t instance_num, uint32_t vertex_start, uint32_t instance_start)
+void vk_draw_index(rt_buffer_t vbo[], uint32_t vbo_num, rt_buffer_t& ebo, uint32_t index_num, uint32_t instance_num, uint32_t index_start, uint32_t vertex_start, uint32_t instance_start)
 {
     if (vulkan.currentPipeline == nullptr)
     {
@@ -3108,7 +3108,7 @@ void vk_draw_index(rt_buffer_t vbo[], uint32_t vbo_num, rt_buffer_t& ebo, uint32
     vk_bind_draw_vbos(vbo, vbo_num);
     rt_module_render_t const& module = vk_current_render_module();
     vkCmdBindIndexBuffer(vulkan.cmdBuffer, indexNative->handle, 0, rt_to_vk_index_type(module.index_type));
-    vkCmdDrawIndexed(vulkan.cmdBuffer, vertex_num, instance_num, 0, (int32_t)vertex_start, instance_start);
+    vkCmdDrawIndexed(vulkan.cmdBuffer, index_num, instance_num, index_start, (int32_t)vertex_start, instance_start);
 }
 
 void vk_draw_array_indirect(rt_buffer_t vbo[], uint32_t vbo_num, rt_buffer_t& indirect, size_t offset)
