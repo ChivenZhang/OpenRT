@@ -62,7 +62,7 @@ enum rt_texture_usage_t : uint32_t
     RT_TEXTURE_USAGE_TEXTURE_BINDING   = 0x0004,
     RT_TEXTURE_USAGE_STORAGE_BINDING   = 0x0008,
     RT_TEXTURE_USAGE_RENDER_ATTACHMENT = 0x0010,
-    RT_TEXTURE_USAGE_TEXTURE_BINDLESS  = 0x0020,    // Only used by texture view
+    RT_TEXTURE_USAGE_TEXTURE_BINDLESS  = 0x0020,    // Only used by texture view. Combine explicitly with the other usages
 };
 using rt_texture_usages_t = uint32_t;
 

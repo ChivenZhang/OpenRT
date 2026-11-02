@@ -246,7 +246,7 @@ static rt_texture_t load_bindless(const char* filename)
         .mipmaps = 1,
         .target = RT_TEXTURE_2D,
         .format = image.format,
-        .usages = RT_TEXTURE_USAGE_TEXTURE_BINDLESS,
+        .usages = RT_TEXTURE_USAGE_COPY_SRC | RT_TEXTURE_USAGE_COPY_DST | RT_TEXTURE_USAGE_TEXTURE_BINDING | RT_TEXTURE_USAGE_STORAGE_BINDING | RT_TEXTURE_USAGE_RENDER_ATTACHMENT | RT_TEXTURE_USAGE_TEXTURE_BINDLESS,
         .min_filter = RT_LINEAR,
         .mag_filter = RT_LINEAR,
         .address_u = RT_REPEAT,

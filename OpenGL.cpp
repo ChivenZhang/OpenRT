@@ -1295,27 +1295,7 @@ rt_texture_view_t gl_create_texture_view(rt_texture_t& texture, rt_texture_view_
         opengl.textureViews.erase(handle);
         return result;
     }
-    if (result.target != RT_TEXTURE_2D_MULTISAMPLE)
-    {
-        GLenum glTarget = rt_to_gl_texture_target(info.target);
-        glBindTexture(glTarget, native.handle);
-        glTexParameteri(glTarget, GL_TEXTURE_WRAP_S, rt_to_gl_address(texture.address_u));
-        glTexParameteri(glTarget, GL_TEXTURE_WRAP_T, rt_to_gl_address(texture.address_v));
-        glTexParameteri(glTarget, GL_TEXTURE_WRAP_R, rt_to_gl_address(texture.address_w));
-        glTexParameteri(glTarget, GL_TEXTURE_MIN_FILTER, rt_to_gl_filter(texture.min_filter));
-        glTexParameteri(glTarget, GL_TEXTURE_MAG_FILTER, rt_to_gl_filter(texture.mag_filter));
-        glTexParameteri(glTarget, GL_TEXTURE_BASE_LEVEL, 0);
-        glTexParameteri(glTarget, GL_TEXTURE_MAX_LEVEL, levelCount ? (GLint)levelCount - 1 : 0);
-        if (texture.address_u == RT_CLAMP_TO_BORDER || texture.address_v == RT_CLAMP_TO_BORDER || texture.address_w == RT_CLAMP_TO_BORDER)
-            glTexParameterfv(glTarget, GL_TEXTURE_BORDER_COLOR, texture.border);
-        if (rt_texture_has_depth(result.format) || rt_texture_has_stencil(result.format))
-        {
-            GLenum mode = result.aspect == RT_TEXTURE_ASPECT_STENCIL ? GL_STENCIL_INDEX : GL_DEPTH_COMPONENT;
-            glTexParameteri(glTarget, GL_DEPTH_STENCIL_TEXTURE_MODE, mode);
-        }
-        glBindTexture(glTarget, 0);
-    }
-    else if (rt_texture_has_depth(result.format) || rt_texture_has_stencil(result.format))
+    if (rt_texture_has_depth(result.format) || rt_texture_has_stencil(result.format))
     {
         GLenum mode = result.aspect == RT_TEXTURE_ASPECT_STENCIL ? GL_STENCIL_INDEX : GL_DEPTH_COMPONENT;
         GLenum glTarget = rt_to_gl_texture_target(info.target);
