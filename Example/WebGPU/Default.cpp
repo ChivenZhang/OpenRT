@@ -139,9 +139,9 @@ void frame(int width, int height)
     });
     static auto pass_color = rt_create_texture({
         .width = (uint32_t)width, .height = (uint32_t)height,
+        .mipmaps = 1,
         .format = colorFormat,
         .min_filter = RT_LINEAR, .mag_filter = RT_LINEAR,
-        .mipmaps = 1,
     });
     {
         rt_pass_render_t pass = {.colors = {{.texture_view = pass_color.default_view, .clear = true,}},};

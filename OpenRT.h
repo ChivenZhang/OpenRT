@@ -62,7 +62,7 @@ enum rt_texture_usage_t : uint32_t
     RT_TEXTURE_USAGE_TEXTURE_BINDING   = 0x0004,
     RT_TEXTURE_USAGE_STORAGE_BINDING   = 0x0008,
     RT_TEXTURE_USAGE_RENDER_ATTACHMENT = 0x0010,
-    RT_TEXTURE_USAGE_TEXTURE_BINDLESS  = 0x0020 | RT_TEXTURE_USAGE_TEXTURE_BINDING,    // Only used by texture view
+    RT_TEXTURE_USAGE_TEXTURE_BINDLESS  = 0x0020,    // Only used by texture view
 };
 using rt_texture_usages_t = uint32_t;
 
@@ -474,11 +474,17 @@ struct rt_texture_t
 {
     uint32_t handle = 0;
     uint32_t width = 0, height = 0, depth = 1;
+    uint32_t mipmaps = 0;
     rt_texture_target_t target = RT_TEXTURE_2D;
     rt_texture_format_t format = RT_TEXTURE_NONE;
     rt_texture_sample_t samples = RT_TEXTURE_SAMPLE_1X;
     rt_texture_usages_t usages = 0;
-    uint32_t mipmaps = 0;
+    rt_filter_t min_filter = RT_LINEAR_MIPMAP_LINEAR;  // RT_NEAREST / RT_LINEAR / RT_NEAREST_MIPMAP_NEAREST / RT_LINEAR_MIPMAP_NEAREST / RT_NEAREST_MIPMAP_LINEAR / RT_LINEAR_MIPMAP_LINEAR
+    rt_filter_t mag_filter = RT_LINEAR;                // RT_NEAREST / RT_LINEAR
+    rt_address_t address_u = RT_REPEAT;                // RT_REPEAT / RT_MIRRORED_REPEAT / RT_CLAMP_TO_EDGE / RT_CLAMP_TO_BORDER / RT_MIRROR_CLAMP_TO_EDGE
+    rt_address_t address_v = RT_REPEAT;                // RT_REPEAT / RT_MIRRORED_REPEAT / RT_CLAMP_TO_EDGE / RT_CLAMP_TO_BORDER / RT_MIRROR_CLAMP_TO_EDGE
+    rt_address_t address_w = RT_REPEAT;                // RT_REPEAT / RT_MIRRORED_REPEAT / RT_CLAMP_TO_EDGE / RT_CLAMP_TO_BORDER / RT_MIRROR_CLAMP_TO_EDGE
+    float border[4] = {0.0f, 0.0f, 0.0f, 0.0f};
     rt_texture_view_t default_view = {};
     void* native = nullptr;
 };
@@ -486,16 +492,16 @@ struct rt_texture_t
 struct rt_texture_info_t
 {
     uint32_t width = 0, height = 0, depth = 1;
-    rt_texture_target_t target = RT_TEXTURE_2D;          // RT_TEXTURE_1D / RT_TEXTURE_2D / RT_TEXTURE_3D / RT_TEXTURE_2D_ARRAY / RT_TEXTURE_2D_MULTISAMPLE
+    uint32_t mipmaps = 1;   // 0:auto generate
+    rt_texture_target_t target = RT_TEXTURE_2D;        // RT_TEXTURE_1D / RT_TEXTURE_2D / RT_TEXTURE_3D / RT_TEXTURE_2D_ARRAY / RT_TEXTURE_2D_MULTISAMPLE
     rt_texture_format_t format = RT_TEXTURE_RGBA8UNORM;
-    rt_texture_usages_t usages = RT_TEXTURE_USAGE_COPY_SRC | RT_TEXTURE_USAGE_COPY_DST | RT_TEXTURE_USAGE_TEXTURE_BINDING | RT_TEXTURE_USAGE_STORAGE_BINDING | RT_TEXTURE_USAGE_RENDER_ATTACHMENT; // rt_texture_usage_t
+    rt_texture_sample_t samples = RT_TEXTURE_SAMPLE_1X;// RT_TEXTURE_SAMPLE_1X / RT_TEXTURE_SAMPLE_4X
+    rt_texture_usages_t usages = RT_TEXTURE_USAGE_COPY_SRC | RT_TEXTURE_USAGE_COPY_DST | RT_TEXTURE_USAGE_TEXTURE_BINDING | RT_TEXTURE_USAGE_STORAGE_BINDING | RT_TEXTURE_USAGE_RENDER_ATTACHMENT;
     rt_filter_t min_filter = RT_LINEAR_MIPMAP_LINEAR;  // RT_NEAREST / RT_LINEAR / RT_NEAREST_MIPMAP_NEAREST / RT_LINEAR_MIPMAP_NEAREST / RT_NEAREST_MIPMAP_LINEAR / RT_LINEAR_MIPMAP_LINEAR
     rt_filter_t mag_filter = RT_LINEAR;                // RT_NEAREST / RT_LINEAR
-    rt_address_t address_u = RT_REPEAT;                    // RT_REPEAT / RT_MIRRORED_REPEAT / RT_CLAMP_TO_EDGE / RT_CLAMP_TO_BORDER / RT_MIRROR_CLAMP_TO_EDGE
-    rt_address_t address_v = RT_REPEAT;                    // RT_REPEAT / RT_MIRRORED_REPEAT / RT_CLAMP_TO_EDGE / RT_CLAMP_TO_BORDER / RT_MIRROR_CLAMP_TO_EDGE
-    rt_address_t address_w = RT_REPEAT;                    // RT_REPEAT / RT_MIRRORED_REPEAT / RT_CLAMP_TO_EDGE / RT_CLAMP_TO_BORDER / RT_MIRROR_CLAMP_TO_EDGE
-    uint32_t mipmaps = 1;   // 0:auto generate
-    rt_texture_sample_t samples = RT_TEXTURE_SAMPLE_1X; // RT_TEXTURE_SAMPLE_1X / RT_TEXTURE_SAMPLE_4X
+    rt_address_t address_u = RT_REPEAT;                // RT_REPEAT / RT_MIRRORED_REPEAT / RT_CLAMP_TO_EDGE / RT_CLAMP_TO_BORDER / RT_MIRROR_CLAMP_TO_EDGE
+    rt_address_t address_v = RT_REPEAT;                // RT_REPEAT / RT_MIRRORED_REPEAT / RT_CLAMP_TO_EDGE / RT_CLAMP_TO_BORDER / RT_MIRROR_CLAMP_TO_EDGE
+    rt_address_t address_w = RT_REPEAT;                // RT_REPEAT / RT_MIRRORED_REPEAT / RT_CLAMP_TO_EDGE / RT_CLAMP_TO_BORDER / RT_MIRROR_CLAMP_TO_EDGE
     float border[4] = {0.0f, 0.0f, 0.0f, 0.0f};
     const void* data = nullptr;
 };

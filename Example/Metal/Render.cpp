@@ -136,9 +136,9 @@ void frame(int width, int height)
     });
     static auto pass_color = rt_create_texture({
         .width = (uint32_t)width, .height = (uint32_t)height,
+        .mipmaps = 1,
         .format = RT_TEXTURE_BGRA8UNORM,
         .min_filter = RT_LINEAR, .mag_filter = RT_LINEAR,
-        .mipmaps = 1,
     });
     static auto pass_depth = rt_create_texture_depth(width, height);
     {

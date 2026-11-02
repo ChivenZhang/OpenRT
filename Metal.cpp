@@ -1567,6 +1567,13 @@ rt_texture_t mt_create_texture(rt_texture_info_t const& info)
     result.samples = native.samples;
     result.usages = native.usages;
     result.mipmaps = native.levels;
+    result.min_filter = info.min_filter;
+    result.mag_filter = info.mag_filter;
+    result.address_u = info.address_u;
+    result.address_v = info.address_v;
+    result.address_w = info.address_w;
+    for (int i = 0; i < 4; ++i)
+        result.border[i] = info.border[i];
     result.native = &native;
     result.default_view = mt_create_texture_view(result, {
         .target = native.target,
@@ -1603,12 +1610,12 @@ rt_texture_view_t mt_create_texture_view(rt_texture_t& texture, rt_texture_view_
 {
     auto* tex = mt_texture_native(texture);
     rt_texture_format_t format = info.format != RT_TEXTURE_NONE ? info.format : (tex ? tex->rtFormat : RT_TEXTURE_NONE);
-    rt_texture_usages_t usage = info.usages ? info.usages : (tex ? tex->usages : 0);
+    rt_texture_usages_t usages = info.usages ? info.usages : (tex ? tex->usages : 0);
     rt_texture_view_t result{
         .target = info.target,
         .format = format,
         .aspect = info.aspect,
-        .usages = usage,
+        .usages = usages,
         .base_layer = info.base_layer,
         .layer_count = info.layer_count,
         .base_level = info.base_level,
@@ -1661,7 +1668,7 @@ rt_texture_view_t mt_create_texture_view(rt_texture_t& texture, rt_texture_view_
     metal.textureViewID = handle;
     result.handle = handle;
     result.native = &native;
-    if (usage & RT_TEXTURE_USAGE_TEXTURE_BINDLESS)
+    if (usages & RT_TEXTURE_USAGE_TEXTURE_BINDLESS)
     {
         native.bindless = mt_alloc_bindless(view);
         native.gpuID = view->gpuResourceID()._impl;

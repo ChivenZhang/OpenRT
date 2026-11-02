@@ -1026,27 +1026,6 @@ static void gl_release_bindless(gl_texture_view_native_t& native)
     }
 }
 
-static void gl_make_texture_view_bindless(gl_texture_view_native_t& native, rt_texture_view_t& result)
-{
-    if (!GLEW_ARB_bindless_texture || !native.handle || result.target == RT_TEXTURE_2D_MULTISAMPLE)
-        return;
-    bool depth = rt_texture_has_depth(result.format) || rt_texture_has_stencil(result.format);
-    GLint filter = depth ? GL_NEAREST : GL_LINEAR;
-    glTextureParameteri(native.handle, GL_TEXTURE_MIN_FILTER, filter);
-    glTextureParameteri(native.handle, GL_TEXTURE_MAG_FILTER, filter);
-    glTextureParameteri(native.handle, GL_TEXTURE_WRAP_S, GL_REPEAT);
-    glTextureParameteri(native.handle, GL_TEXTURE_WRAP_T, GL_REPEAT);
-    glTextureParameteri(native.handle, GL_TEXTURE_WRAP_R, GL_REPEAT);
-    glTextureParameteri(native.handle, GL_TEXTURE_BASE_LEVEL, 0);
-    glTextureParameteri(native.handle, GL_TEXTURE_MAX_LEVEL, result.level_count ? (GLint)result.level_count - 1 : 0);
-    GLuint64 handle = glGetTextureHandleARB(native.handle);
-    if (!handle)
-        return;
-    glMakeTextureHandleResidentARB(handle);
-    native.bindlessHandle = handle;
-    result.bindless = handle;
-}
-
 rt_texture_t gl_create_texture(rt_texture_info_t const& info)
 {
     if (info.usages == 0)
@@ -1223,6 +1202,13 @@ rt_texture_t gl_create_texture(rt_texture_info_t const& info)
     result.samples = native.samples;
     result.usages = native.usages;
     result.mipmaps = native.levels;
+    result.min_filter = info.min_filter;
+    result.mag_filter = info.mag_filter;
+    result.address_u = info.address_u;
+    result.address_v = info.address_v;
+    result.address_w = info.address_w;
+    for (int i = 0; i < 4; ++i)
+        result.border[i] = info.border[i];
     result.native = &native;
     uint32_t layers = (target == RT_TEXTURE_2D_ARRAY && depth) ? depth : 1;
     result.default_view = gl_create_texture_view(result, {
@@ -1265,12 +1251,12 @@ rt_texture_view_t gl_create_texture_view(rt_texture_t& texture, rt_texture_view_
     auto* parentTex = gl_texture_native(texture);
     rt_texture_format_t parentFormat = parentTex ? parentTex->format : RT_TEXTURE_NONE;
     rt_texture_format_t format = info.format != RT_TEXTURE_NONE ? info.format : parentFormat;
-    rt_texture_usages_t usage = info.usages ? info.usages : (parentTex ? parentTex->usages : 0);
+    rt_texture_usages_t usages = info.usages ? info.usages : (parentTex ? parentTex->usages : 0);
     rt_texture_view_t result{
         .target = info.target,
         .format = format,
         .aspect = info.aspect,
-        .usages = usage,
+        .usages = usages,
         .base_layer = info.base_layer,
         .layer_count = info.layer_count,
         .base_level = info.base_level,
@@ -1309,18 +1295,47 @@ rt_texture_view_t gl_create_texture_view(rt_texture_t& texture, rt_texture_view_
         opengl.textureViews.erase(handle);
         return result;
     }
-    if (rt_texture_has_depth(result.format) || rt_texture_has_stencil(result.format))
+    if (result.target != RT_TEXTURE_2D_MULTISAMPLE)
+    {
+        GLenum glTarget = rt_to_gl_texture_target(info.target);
+        glBindTexture(glTarget, native.handle);
+        glTexParameteri(glTarget, GL_TEXTURE_WRAP_S, rt_to_gl_address(texture.address_u));
+        glTexParameteri(glTarget, GL_TEXTURE_WRAP_T, rt_to_gl_address(texture.address_v));
+        glTexParameteri(glTarget, GL_TEXTURE_WRAP_R, rt_to_gl_address(texture.address_w));
+        glTexParameteri(glTarget, GL_TEXTURE_MIN_FILTER, rt_to_gl_filter(texture.min_filter));
+        glTexParameteri(glTarget, GL_TEXTURE_MAG_FILTER, rt_to_gl_filter(texture.mag_filter));
+        glTexParameteri(glTarget, GL_TEXTURE_BASE_LEVEL, 0);
+        glTexParameteri(glTarget, GL_TEXTURE_MAX_LEVEL, levelCount ? (GLint)levelCount - 1 : 0);
+        if (texture.address_u == RT_CLAMP_TO_BORDER || texture.address_v == RT_CLAMP_TO_BORDER || texture.address_w == RT_CLAMP_TO_BORDER)
+            glTexParameterfv(glTarget, GL_TEXTURE_BORDER_COLOR, texture.border);
+        if (rt_texture_has_depth(result.format) || rt_texture_has_stencil(result.format))
+        {
+            GLenum mode = result.aspect == RT_TEXTURE_ASPECT_STENCIL ? GL_STENCIL_INDEX : GL_DEPTH_COMPONENT;
+            glTexParameteri(glTarget, GL_DEPTH_STENCIL_TEXTURE_MODE, mode);
+        }
+        glBindTexture(glTarget, 0);
+    }
+    else if (rt_texture_has_depth(result.format) || rt_texture_has_stencil(result.format))
     {
         GLenum mode = result.aspect == RT_TEXTURE_ASPECT_STENCIL ? GL_STENCIL_INDEX : GL_DEPTH_COMPONENT;
-        glBindTexture(rt_to_gl_texture_target(info.target), native.handle);
-        glTexParameteri(rt_to_gl_texture_target(info.target), GL_DEPTH_STENCIL_TEXTURE_MODE, mode);
+        GLenum glTarget = rt_to_gl_texture_target(info.target);
+        glBindTexture(glTarget, native.handle);
+        glTexParameteri(glTarget, GL_DEPTH_STENCIL_TEXTURE_MODE, mode);
+        glBindTexture(glTarget, 0);
     }
     native.texture = parentTex;
     opengl.textureViewID = handle;
     result.handle = handle;
     result.native = &native;
-    if (usage & RT_TEXTURE_USAGE_TEXTURE_BINDLESS)
-        gl_make_texture_view_bindless(native, result);
+    if ((usages & RT_TEXTURE_USAGE_TEXTURE_BINDLESS) && GLEW_ARB_bindless_texture && native.handle && result.target != RT_TEXTURE_2D_MULTISAMPLE)
+    {
+        if (GLuint64 bindless = glGetTextureHandleARB(native.handle))
+        {
+            glMakeTextureHandleResidentARB(bindless);
+            native.bindlessHandle = bindless;
+            result.bindless = bindless;
+        }
+    }
     return result;
 }
 

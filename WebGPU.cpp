@@ -694,16 +694,16 @@ static bool wg_storage_format(WGPUTextureFormat format)
     }
 }
 
-static WGPUTextureUsage wg_texture_usage(rt_texture_usages_t usage, WGPUTextureFormat format, rt_texture_sample_t samples)
+static WGPUTextureUsage wg_texture_usage(rt_texture_usages_t usages, WGPUTextureFormat format, rt_texture_sample_t samples)
 {
     if (samples != RT_TEXTURE_SAMPLE_1X || !wg_storage_format(format))
-        usage &= ~RT_TEXTURE_USAGE_STORAGE_BINDING;
+        usages &= ~RT_TEXTURE_USAGE_STORAGE_BINDING;
     WGPUTextureUsage flags = WGPUTextureUsage_None;
-    if (usage & RT_TEXTURE_USAGE_COPY_SRC) flags = (WGPUTextureUsage)(flags | WGPUTextureUsage_CopySrc);
-    if (usage & RT_TEXTURE_USAGE_COPY_DST) flags = (WGPUTextureUsage)(flags | WGPUTextureUsage_CopyDst);
-    if (usage & RT_TEXTURE_USAGE_TEXTURE_BINDING) flags = (WGPUTextureUsage)(flags | WGPUTextureUsage_TextureBinding);
-    if (usage & RT_TEXTURE_USAGE_STORAGE_BINDING) flags = (WGPUTextureUsage)(flags | WGPUTextureUsage_StorageBinding);
-    if (usage & RT_TEXTURE_USAGE_RENDER_ATTACHMENT) flags = (WGPUTextureUsage)(flags | WGPUTextureUsage_RenderAttachment);
+    if (usages & RT_TEXTURE_USAGE_COPY_SRC) flags = (WGPUTextureUsage)(flags | WGPUTextureUsage_CopySrc);
+    if (usages & RT_TEXTURE_USAGE_COPY_DST) flags = (WGPUTextureUsage)(flags | WGPUTextureUsage_CopyDst);
+    if (usages & RT_TEXTURE_USAGE_TEXTURE_BINDING) flags = (WGPUTextureUsage)(flags | WGPUTextureUsage_TextureBinding);
+    if (usages & RT_TEXTURE_USAGE_STORAGE_BINDING) flags = (WGPUTextureUsage)(flags | WGPUTextureUsage_StorageBinding);
+    if (usages & RT_TEXTURE_USAGE_RENDER_ATTACHMENT) flags = (WGPUTextureUsage)(flags | WGPUTextureUsage_RenderAttachment);
     return flags;
 }
 
@@ -1257,6 +1257,13 @@ rt_texture_t wg_create_texture(rt_texture_info_t const& info)
     result.samples = native.samples;
     result.usages = native.usages;
     result.mipmaps = native.levels;
+    result.min_filter = info.min_filter;
+    result.mag_filter = info.mag_filter;
+    result.address_u = info.address_u;
+    result.address_v = info.address_v;
+    result.address_w = info.address_w;
+    for (int i = 0; i < 4; ++i)
+        result.border[i] = info.border[i];
     result.native = &native;
     result.default_view = wg_create_texture_view(result, {
         .target = native.target,
@@ -1290,12 +1297,12 @@ rt_texture_view_t wg_create_texture_view(rt_texture_t& texture, rt_texture_view_
 {
     auto* tex = wg_texture_native(texture);
     rt_texture_format_t format = info.format != RT_TEXTURE_NONE ? info.format : (tex ? tex->rtFormat : RT_TEXTURE_NONE);
-    rt_texture_usages_t usage = info.usages ? info.usages : (tex ? tex->usages : 0);
+    rt_texture_usages_t usages = info.usages ? info.usages : (tex ? tex->usages : 0);
     rt_texture_view_t result{
         .target = info.target,
         .format = format,
         .aspect = info.aspect,
-        .usages = usage,
+        .usages = usages,
         .base_layer = info.base_layer,
         .layer_count = info.layer_count,
         .base_level = info.base_level,

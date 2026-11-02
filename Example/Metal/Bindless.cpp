@@ -168,6 +168,7 @@ static rt_texture_t load_bindless(const char* filename)
         .width = image.width,
         .height = image.height,
         .depth = 1,
+        .mipmaps = 1,
         .target = RT_TEXTURE_2D,
         .format = image.format,
         .usages = RT_TEXTURE_USAGE_TEXTURE_BINDLESS,
@@ -176,7 +177,6 @@ static rt_texture_t load_bindless(const char* filename)
         .address_u = RT_REPEAT,
         .address_v = RT_REPEAT,
         .address_w = RT_REPEAT,
-        .mipmaps = 1,
         .data = image.data,
     });
     rt_destroy_image(image);
@@ -215,9 +215,9 @@ void frame(int width, int height)
     });
     static auto pass_color = rt_create_texture({
         .width = (uint32_t)width, .height = (uint32_t)height,
+        .mipmaps = 1,
         .format = RT_TEXTURE_BGRA8UNORM,
         .min_filter = RT_LINEAR, .mag_filter = RT_LINEAR,
-        .mipmaps = 1,
     });
     static auto pass_depth = rt_create_texture_depth(width, height);
     static auto cube = rt_create_mesh_cube(1.4f, 1.4f, 1.4f);

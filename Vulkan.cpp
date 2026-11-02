@@ -173,15 +173,15 @@ static VkImageAspectFlags vk_format_aspect(VkFormat format)
     }
 }
 
-static VkImageUsageFlags rt_to_vk_image_usage(rt_texture_usages_t usage, rt_texture_format_t format)
+static VkImageUsageFlags rt_to_vk_image_usage(rt_texture_usages_t usages, rt_texture_format_t format)
 {
     VkImageUsageFlags flags = 0;
     bool depthStencil = rt_texture_has_depth(format) || rt_texture_has_stencil(format);
-    if (usage & RT_TEXTURE_USAGE_COPY_SRC) flags |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
-    if (usage & RT_TEXTURE_USAGE_COPY_DST) flags |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;
-    if (usage & RT_TEXTURE_USAGE_TEXTURE_BINDING) flags |= VK_IMAGE_USAGE_SAMPLED_BIT;
-    if ((usage & RT_TEXTURE_USAGE_STORAGE_BINDING) && !depthStencil) flags |= VK_IMAGE_USAGE_STORAGE_BIT;
-    if (usage & RT_TEXTURE_USAGE_RENDER_ATTACHMENT)
+    if (usages & RT_TEXTURE_USAGE_COPY_SRC) flags |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+    if (usages & RT_TEXTURE_USAGE_COPY_DST) flags |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+    if (usages & RT_TEXTURE_USAGE_TEXTURE_BINDING) flags |= VK_IMAGE_USAGE_SAMPLED_BIT;
+    if ((usages & RT_TEXTURE_USAGE_STORAGE_BINDING) && !depthStencil) flags |= VK_IMAGE_USAGE_STORAGE_BIT;
+    if (usages & RT_TEXTURE_USAGE_RENDER_ATTACHMENT)
         flags |= depthStencil ? VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT : VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
     return flags;
 }
@@ -1950,6 +1950,13 @@ rt_texture_t vk_create_texture(rt_texture_info_t const& info)
     result.samples = native.samples;
     result.usages = native.usages;
     result.mipmaps = native.levels;
+    result.min_filter = info.min_filter;
+    result.mag_filter = info.mag_filter;
+    result.address_u = info.address_u;
+    result.address_v = info.address_v;
+    result.address_w = info.address_w;
+    for (int i = 0; i < 4; ++i)
+        result.border[i] = info.border[i];
     result.native = &native;
     result.default_view = vk_create_texture_view(result, {
         .target = native.target,
@@ -1993,12 +2000,12 @@ rt_texture_view_t vk_create_texture_view(rt_texture_t& texture, rt_texture_view_
 {
     auto* tex = vk_texture_native(texture);
     rt_texture_format_t format = info.format != RT_TEXTURE_NONE ? info.format : (tex ? tex->rtFormat : RT_TEXTURE_NONE);
-    rt_texture_usages_t usage = info.usages ? info.usages : (tex ? tex->usages : 0);
+    rt_texture_usages_t usages = info.usages ? info.usages : (tex ? tex->usages : 0);
     rt_texture_view_t result{
         .target = info.target,
         .format = format,
         .aspect = info.aspect,
-        .usages = usage,
+        .usages = usages,
         .base_layer = info.base_layer,
         .layer_count = info.layer_count,
         .base_level = info.base_level,
@@ -2054,7 +2061,7 @@ rt_texture_view_t vk_create_texture_view(rt_texture_t& texture, rt_texture_view_
     vulkan.textureViewID = handle;
     result.handle = handle;
     result.native = &native;
-    if (usage & RT_TEXTURE_USAGE_TEXTURE_BINDLESS)
+    if (usages & RT_TEXTURE_USAGE_TEXTURE_BINDLESS)
     {
         uint32_t index = vk_alloc_bindless();
         if (index)

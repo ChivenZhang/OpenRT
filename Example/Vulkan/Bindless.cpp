@@ -151,6 +151,7 @@ static rt_texture_t load_bindless(const char* filename)
         .width = image.width,
         .height = image.height,
         .depth = 1,
+        .mipmaps = 1,
         .target = RT_TEXTURE_2D,
         .format = image.format,
         .usages = RT_TEXTURE_USAGE_TEXTURE_BINDLESS,
@@ -159,7 +160,6 @@ static rt_texture_t load_bindless(const char* filename)
         .address_u = RT_REPEAT,
         .address_v = RT_REPEAT,
         .address_w = RT_REPEAT,
-        .mipmaps = 1,
         .data = image.data,
     });
     rt_destroy_image(image);

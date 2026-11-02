@@ -1505,6 +1505,13 @@ rt_texture_t dx_create_texture(rt_texture_info_t const& info)
     result.samples = native.samples > 1 ? RT_TEXTURE_SAMPLE_4X : RT_TEXTURE_SAMPLE_1X;
     result.usages = native.usages;
     result.mipmaps = native.levels;
+    result.min_filter = info.min_filter;
+    result.mag_filter = info.mag_filter;
+    result.address_u = info.address_u;
+    result.address_v = info.address_v;
+    result.address_w = info.address_w;
+    for (int i = 0; i < 4; ++i)
+        result.border[i] = info.border[i];
     result.native = &native;
     result.default_view = dx_create_texture_view(result, {
         .target = native.target,
@@ -1541,12 +1548,12 @@ rt_texture_view_t dx_create_texture_view(rt_texture_t& texture, rt_texture_view_
 {
     auto* tex = dx_texture_native(texture);
     rt_texture_format_t format = info.format != RT_TEXTURE_NONE ? info.format : (tex ? tex->rtFormat : RT_TEXTURE_NONE);
-    rt_texture_usages_t usage = info.usages ? info.usages : (tex ? tex->usages : 0);
+    rt_texture_usages_t usages = info.usages ? info.usages : (tex ? tex->usages : 0);
     rt_texture_view_t result{
         .target = info.target,
         .format = format,
         .aspect = info.aspect,
-        .usages = usage,
+        .usages = usages,
         .base_layer = info.base_layer,
         .layer_count = info.layer_count,
         .base_level = info.base_level,
@@ -1629,7 +1636,7 @@ rt_texture_view_t dx_create_texture_view(rt_texture_t& texture, rt_texture_view_
     direct.textureViewID = handle;
     result.handle = handle;
     result.native = &native;
-    if ((usage & RT_TEXTURE_USAGE_TEXTURE_BINDLESS) && tex->handle)
+    if ((usages & RT_TEXTURE_USAGE_TEXTURE_BINDLESS) && tex->handle)
     {
         uint32_t index = dx_alloc_bindless();
         if (index)
