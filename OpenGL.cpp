@@ -1149,15 +1149,9 @@ rt_texture_t gl_create_texture(rt_texture_info_t const& info)
             } clearValue = {1.0f, 0};
             glClearTexImage(native.handle, 0, glFormat, GL_FLOAT_32_UNSIGNED_INT_24_8_REV, &clearValue);
         }
-        else if (glType == GL_FLOAT || glType == GL_HALF_FLOAT)
-        {
-            GLfloat clearValue[4] = {0, 0, 0, 0};
-            glClearTexImage(native.handle, 0, glFormat, glType, clearValue);
-        }
         else
         {
-            GLubyte clearValue[4] = {0, 0, 0, 0};
-            glClearTexImage(native.handle, 0, glFormat, glType, clearValue);
+            glClearTexImage(native.handle, 0, glFormat, glType, nullptr);
         }
     }
 
