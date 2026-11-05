@@ -520,14 +520,28 @@ rt_mesh_t rt_create_mesh_footprint(
             0.0f, -1.0f, 0.0f, u, v);
     }
 
+    // 左脚轮廓是逆时针。右脚只镜像了 X，环绕方向会反，需要把每个三角形的后两个顶点对调。
+    auto add_tri = [&](unsigned int i0, unsigned int i1, unsigned int i2)
+    {
+        indices.push_back(i0);
+        if (left_foot)
+        {
+            indices.push_back(i1);
+            indices.push_back(i2);
+        }
+        else
+        {
+            indices.push_back(i2);
+            indices.push_back(i1);
+        }
+    };
+
     // ========== 顶面 Triangle Fan ==========
     for (int i = 0; i < N; i++)
     {
         int a = top_start + i;
         int b = top_start + ((i + 1) % N);
-        indices.push_back(top_center);
-        indices.push_back(b);
-        indices.push_back(a);
+        add_tri(top_center, b, a);
     }
 
     // ========== 底面 Triangle Fan（反向绕序） ==========
@@ -535,9 +549,7 @@ rt_mesh_t rt_create_mesh_footprint(
     {
         int a = bot_start + i;
         int b = bot_start + ((i + 1) % N);
-        indices.push_back(bot_center);
-        indices.push_back(a);
-        indices.push_back(b);
+        add_tri(bot_center, a, b);
     }
 
     // ========== 侧面 ==========
@@ -548,21 +560,21 @@ rt_mesh_t rt_create_mesh_footprint(
         int curB = bot_start + i;
         int nxtB = bot_start + ((i + 1) % N);
 
-        // 侧面法线（XZ平面内）
+        // 侧面法线（XZ平面内）。镜像后这条法线会指向内侧，右脚再翻回来。
         float dx = positions[nxt * 3 + 0] - positions[cur * 3 + 0];
         float dz = positions[nxt * 3 + 2] - positions[cur * 3 + 2];
         float len = sqrtf(dx * dx + dz * dz);
         float nx = -dz / len;
         float nz =  dx / len;
+        if (!left_foot)
+        {
+            nx = -nx;
+            nz = -nz;
+        }
 
         // 两个三角形 = 一个侧面四边形
-        indices.push_back(cur);
-        indices.push_back(nxt);
-        indices.push_back(curB);
-
-        indices.push_back(nxt);
-        indices.push_back(nxtB);
-        indices.push_back(curB);
+        add_tri(cur, nxt, curB);
+        add_tri(nxt, nxtB, curB);
 
         // 覆盖外圈顶点法线
         for (int vtx : {cur, nxt, curB, nxtB})
