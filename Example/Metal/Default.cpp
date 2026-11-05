@@ -59,7 +59,7 @@ void frame(int width, int height)
     });
     static auto pass_color = rt_create_texture({ .width = (uint32_t)width, .height = (uint32_t)height, .format = RT_TEXTURE_BGRA8UNORM, });
     {
-        rt_pass_render_t pass = {.colors = {{.texture_view = pass_color.default_view, .clear = true,}},};
+        rt_pass_render_t pass = {.colors = {{.texture = pass_color.default_view, .clear = true,}},};
         rt_begin_render(pass);
         rt_bind_module_render(module);
 

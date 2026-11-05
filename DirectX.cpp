@@ -2330,9 +2330,9 @@ void dx_begin_render(rt_pass_render_t& pass)
     D3D12_CPU_DESCRIPTOR_HANDLE rtvStart = direct.rtvHeap->GetCPUDescriptorHandleForHeapStart();
     for (uint32_t i = 0; i < RT_MAX_COLOR_TEXTURE_NUM; ++i)
     {
-        if (pass.colors[i].texture_view.format == RT_TEXTURE_NONE)
+        if (pass.colors[i].texture.format == RT_TEXTURE_NONE)
             continue;
-        auto* view = dx_texture_view_native(pass.colors[i].texture_view);
+        auto* view = dx_texture_view_native(pass.colors[i].texture);
         if (!view || !view->texture || !view->texture->handle) continue;
         auto* tex = view->texture;
         dx_transition_image(*tex, D3D12_RESOURCE_STATE_RENDER_TARGET);
@@ -2341,7 +2341,7 @@ void dx_begin_render(rt_pass_render_t& pass)
         D3D12_RENDER_TARGET_VIEW_DESC rtvDesc = {};
         rtvDesc.Format = tex->format;
         rtvDesc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2D;
-        rtvDesc.Texture2D.MipSlice = pass.colors[i].texture_view.base_level;
+        rtvDesc.Texture2D.MipSlice = pass.colors[i].texture.base_level;
         direct.device->CreateRenderTargetView(tex->handle.Get(), &rtvDesc, rtv);
         rtvs[i] = rtv;
         if (pass.colors[i].clear)
@@ -2349,7 +2349,7 @@ void dx_begin_render(rt_pass_render_t& pass)
             float clear[4] = {pass.colors[i].value.r, pass.colors[i].value.g, pass.colors[i].value.b, pass.colors[i].value.a};
             direct.cmd->ClearRenderTargetView(rtv, clear, 0, nullptr);
         }
-        uint32_t mip = std::min(pass.colors[i].texture_view.base_level, 31u);
+        uint32_t mip = std::min(pass.colors[i].texture.base_level, 31u);
         width = std::max(width, std::max(1u, tex->width >> mip));
         height = std::max(height, std::max(1u, tex->height >> mip));
         colorCount = i + 1;
@@ -2357,7 +2357,7 @@ void dx_begin_render(rt_pass_render_t& pass)
 
     D3D12_CPU_DESCRIPTOR_HANDLE dsv = {};
     bool hasDepth = false;
-    if (auto* view = dx_texture_view_native(pass.depth.texture_view))
+    if (auto* view = dx_texture_view_native(pass.depth.texture))
     {
         if (view->texture && view->texture->handle)
         {
@@ -2367,7 +2367,7 @@ void dx_begin_render(rt_pass_render_t& pass)
             D3D12_DEPTH_STENCIL_VIEW_DESC dsvDesc = {};
             dsvDesc.Format = tex->format;
             dsvDesc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D;
-            dsvDesc.Texture2D.MipSlice = pass.depth.texture_view.base_level;
+            dsvDesc.Texture2D.MipSlice = pass.depth.texture.base_level;
             direct.device->CreateDepthStencilView(tex->handle.Get(), &dsvDesc, dsv);
             if (pass.depth.clear || pass.stencil.clear)
             {
@@ -2376,7 +2376,7 @@ void dx_begin_render(rt_pass_render_t& pass)
                 if (pass.stencil.clear) flags |= D3D12_CLEAR_FLAG_STENCIL;
                 direct.cmd->ClearDepthStencilView(dsv, flags, pass.depth.value, (UINT8)pass.stencil.value, 0, nullptr);
             }
-            uint32_t mip = std::min(pass.depth.texture_view.base_level, 31u);
+            uint32_t mip = std::min(pass.depth.texture.base_level, 31u);
             width = std::max(width, std::max(1u, tex->width >> mip));
             height = std::max(height, std::max(1u, tex->height >> mip));
             hasDepth = true;
@@ -2398,10 +2398,10 @@ void dx_end_render(rt_pass_render_t& pass)
         abort();
     }
     for (auto& color : pass.colors)
-        if (auto* view = dx_texture_view_native(color.texture_view))
+        if (auto* view = dx_texture_view_native(color.texture))
             if (view->texture)
                 dx_transition_image(*view->texture, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-    if (auto* view = dx_texture_view_native(pass.depth.texture_view))
+    if (auto* view = dx_texture_view_native(pass.depth.texture))
         if (view->texture)
             dx_transition_image(*view->texture, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
     pass.handle = 0;

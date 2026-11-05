@@ -781,13 +781,13 @@ struct rt_pass_render_t
 
     struct
     {
-        rt_texture_view_t texture_view = {};
+        rt_texture_view_t texture = {};
         bool clear = false;
         rt_color_t value;
     } colors[RT_MAX_COLOR_TEXTURE_NUM];
     struct
     {
-        rt_texture_view_t texture_view = {};
+        rt_texture_view_t texture = {};
         bool clear = false;
         float value = 1.0f;
     } depth;

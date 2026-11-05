@@ -2134,9 +2134,9 @@ void mt_begin_render(rt_pass_render_t& pass)
     uint32_t width = 0, height = 0;
     for (uint32_t i = 0; i < RT_MAX_COLOR_TEXTURE_NUM; ++i)
     {
-        if (pass.colors[i].texture_view.format == RT_TEXTURE_NONE)
+        if (pass.colors[i].texture.format == RT_TEXTURE_NONE)
             continue;
-        auto* view = mt_texture_view_native(pass.colors[i].texture_view);
+        auto* view = mt_texture_view_native(pass.colors[i].texture);
         if (!view || !view->texture) continue;
         auto* tex = view->texture;
         MTL::Texture* gpuTex = view->handle ? view->handle : tex->handle;
@@ -2147,11 +2147,11 @@ void mt_begin_render(rt_pass_render_t& pass)
         attachment->setLoadAction(pass.colors[i].clear ? MTL::LoadActionClear : MTL::LoadActionLoad);
         attachment->setStoreAction(MTL::StoreActionStore);
         attachment->setClearColor(MTL::ClearColor::Make(pass.colors[i].value.r, pass.colors[i].value.g, pass.colors[i].value.b, pass.colors[i].value.a));
-        uint32_t mip = std::min(pass.colors[i].texture_view.base_level, 31u);
+        uint32_t mip = std::min(pass.colors[i].texture.base_level, 31u);
         width = std::max(width, std::max(1u, tex->width >> mip));
         height = std::max(height, std::max(1u, tex->height >> mip));
     }
-    if (auto* view = mt_texture_view_native(pass.depth.texture_view))
+    if (auto* view = mt_texture_view_native(pass.depth.texture))
     {
         if (view->texture)
         {
@@ -2164,14 +2164,14 @@ void mt_begin_render(rt_pass_render_t& pass)
                 desc->depthAttachment()->setLoadAction(pass.depth.clear ? MTL::LoadActionClear : MTL::LoadActionLoad);
                 desc->depthAttachment()->setStoreAction(MTL::StoreActionStore);
                 desc->depthAttachment()->setClearDepth(pass.depth.value);
-                if (rt_texture_has_stencil(pass.depth.texture_view.format))
+                if (rt_texture_has_stencil(pass.depth.texture.format))
                 {
                     desc->stencilAttachment()->setTexture(gpuTex);
                     desc->stencilAttachment()->setLoadAction(pass.stencil.clear ? MTL::LoadActionClear : MTL::LoadActionLoad);
                     desc->stencilAttachment()->setStoreAction(MTL::StoreActionStore);
                     desc->stencilAttachment()->setClearStencil((uint32_t)pass.stencil.value);
                 }
-                uint32_t mip = std::min(pass.depth.texture_view.base_level, 31u);
+                uint32_t mip = std::min(pass.depth.texture.base_level, 31u);
                 width = std::max(width, std::max(1u, tex->width >> mip));
                 height = std::max(height, std::max(1u, tex->height >> mip));
             }
@@ -2199,10 +2199,10 @@ void mt_end_render(rt_pass_render_t& pass)
         mt_release(metal.renderEncoder);
     }
     for (auto& color : pass.colors)
-        if (auto* view = mt_texture_view_native(color.texture_view))
+        if (auto* view = mt_texture_view_native(color.texture))
             if (view->texture)
                 mt_transition_image(*view->texture, MTL_STATE_SHADER_READ);
-    if (auto* view = mt_texture_view_native(pass.depth.texture_view))
+    if (auto* view = mt_texture_view_native(pass.depth.texture))
         if (view->texture)
             mt_transition_image(*view->texture, MTL_STATE_SHADER_READ);
     pass.handle = 0;

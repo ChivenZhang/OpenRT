@@ -236,7 +236,7 @@ void frame(int width, int height)
         rt_unmap_buffer(table);
     }
     {
-        rt_pass_render_t pass = {.colors = {{.texture_view = pass_color.default_view, .clear = true,}}, .depth = {.texture_view = pass_depth.default_view, .clear = true,},};
+        rt_pass_render_t pass = {.colors = {{.texture = pass_color.default_view, .clear = true,}}, .depth = {.texture = pass_depth.default_view, .clear = true,},};
         rt_begin_render(pass);
         rt_bind_module_render(module);
         rt_bind_binding(binding);

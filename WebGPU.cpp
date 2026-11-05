@@ -2061,18 +2061,18 @@ void wg_begin_render(rt_pass_render_t& pass)
     uint32_t width = 0, height = 0;
     for (uint32_t i = 0; i < RT_MAX_COLOR_TEXTURE_NUM; ++i)
     {
-        if (pass.colors[i].texture_view.format == RT_TEXTURE_NONE)
+        if (pass.colors[i].texture.format == RT_TEXTURE_NONE)
             continue;
-        auto* view = wg_texture_view_native(pass.colors[i].texture_view);
+        auto* view = wg_texture_view_native(pass.colors[i].texture);
         if (!view || !view->handle || !view->texture) continue;
         auto* tex = view->texture;
         wg_transition_image(*tex, WG_STATE_COLOR);
         colors[i].view = view->handle;
-        colors[i].depthSlice = tex->target == RT_TEXTURE_3D ? pass.colors[i].texture_view.base_layer : WGPU_DEPTH_SLICE_UNDEFINED;
+        colors[i].depthSlice = tex->target == RT_TEXTURE_3D ? pass.colors[i].texture.base_layer : WGPU_DEPTH_SLICE_UNDEFINED;
         colors[i].loadOp = pass.colors[i].clear ? WGPULoadOp_Clear : WGPULoadOp_Load;
         colors[i].storeOp = WGPUStoreOp_Store;
         colors[i].clearValue = {pass.colors[i].value.r, pass.colors[i].value.g, pass.colors[i].value.b, pass.colors[i].value.a};
-        uint32_t mip = std::min(pass.colors[i].texture_view.base_level, 31u);
+        uint32_t mip = std::min(pass.colors[i].texture.base_level, 31u);
         width = std::max(width, std::max(1u, tex->width >> mip));
         height = std::max(height, std::max(1u, tex->height >> mip));
         colorCount = i + 1;
@@ -2088,7 +2088,7 @@ void wg_begin_render(rt_pass_render_t& pass)
 
     WGPURenderPassDepthStencilAttachment depth = {};
     bool hasDepth = false;
-    if (auto* view = wg_texture_view_native(pass.depth.texture_view))
+    if (auto* view = wg_texture_view_native(pass.depth.texture))
     {
         if (view->texture && view->handle)
         {
@@ -2098,13 +2098,13 @@ void wg_begin_render(rt_pass_render_t& pass)
             depth.depthLoadOp = pass.depth.clear ? WGPULoadOp_Clear : WGPULoadOp_Load;
             depth.depthStoreOp = WGPUStoreOp_Store;
             depth.depthClearValue = pass.depth.value;
-            if (rt_texture_has_stencil(pass.depth.texture_view.format))
+            if (rt_texture_has_stencil(pass.depth.texture.format))
             {
                 depth.stencilLoadOp = pass.stencil.clear ? WGPULoadOp_Clear : WGPULoadOp_Load;
                 depth.stencilStoreOp = WGPUStoreOp_Store;
                 depth.stencilClearValue = (uint32_t)pass.stencil.value;
             }
-            uint32_t mip = std::min(pass.depth.texture_view.base_level, 31u);
+            uint32_t mip = std::min(pass.depth.texture.base_level, 31u);
             width = std::max(width, std::max(1u, tex->width >> mip));
             height = std::max(height, std::max(1u, tex->height >> mip));
             hasDepth = true;
@@ -2137,10 +2137,10 @@ void wg_end_render(rt_pass_render_t& pass)
         webgpu.renderPass = nullptr;
     }
     for (auto& color : pass.colors)
-        if (auto* view = wg_texture_view_native(color.texture_view))
+        if (auto* view = wg_texture_view_native(color.texture))
             if (view->texture)
                 wg_transition_image(*view->texture, WG_STATE_SHADER_READ);
-    if (auto* view = wg_texture_view_native(pass.depth.texture_view))
+    if (auto* view = wg_texture_view_native(pass.depth.texture))
         if (view->texture)
             wg_transition_image(*view->texture, WG_STATE_SHADER_READ);
     pass.handle = 0;

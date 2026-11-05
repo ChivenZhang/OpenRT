@@ -1940,10 +1940,10 @@ void gl_begin_render(rt_pass_render_t& pass)
 
     glDisable(GL_SCISSOR_TEST);
 
-    bool offscreen = pass.depth.texture_view.handle;
+    bool offscreen = pass.depth.texture.handle;
     for (size_t i = 0; i < std::size(pass.colors) && !offscreen; ++i)
     {
-        if (pass.colors[i].texture_view.handle)
+        if (pass.colors[i].texture.handle)
             offscreen = true;
     }
     opengl.stencilRefer = offscreen ? pass.stencil.refer : pass.screen.stencil.refer;
@@ -1960,19 +1960,19 @@ void gl_begin_render(rt_pass_render_t& pass)
         GLenum colorAttachments[RT_MAX_COLOR_TEXTURE_NUM] = {};
         for (size_t i = 0; i < std::size(pass.colors); ++i)
         {
-            if (pass.colors[i].texture_view.handle == 0 || pass.colors[i].texture_view.format == RT_TEXTURE_NONE)
+            if (pass.colors[i].texture.handle == 0 || pass.colors[i].texture.format == RT_TEXTURE_NONE)
                 continue;
-            colorNames[i] = gl_texture_view_name(pass.colors[i].texture_view);
+            colorNames[i] = gl_texture_view_name(pass.colors[i].texture);
             colorAttachments[i] = GL_COLOR_ATTACHMENT0 + (GLenum)i;
-            width = std::max(width, gl_texture_native(pass.colors[i].texture_view)->width);
-            height = std::max(height, gl_texture_native(pass.colors[i].texture_view)->height);
+            width = std::max(width, gl_texture_native(pass.colors[i].texture)->width);
+            height = std::max(height, gl_texture_native(pass.colors[i].texture)->height);
             colorCount = (int32_t)i + 1;
         }
-        if (pass.depth.texture_view.handle)
+        if (pass.depth.texture.handle)
         {
-            depthName = gl_texture_view_name(pass.depth.texture_view);
-            width = std::max(width, gl_texture_native(pass.depth.texture_view)->width);
-            height = std::max(height, gl_texture_native(pass.depth.texture_view)->height);
+            depthName = gl_texture_view_name(pass.depth.texture);
+            width = std::max(width, gl_texture_native(pass.depth.texture)->width);
+            height = std::max(height, gl_texture_native(pass.depth.texture)->height);
         }
 
         if (opengl.fbo == 0)
@@ -1981,7 +1981,7 @@ void gl_begin_render(rt_pass_render_t& pass)
 
         for (size_t i = 0; i < std::size(pass.colors); ++i)
         {
-            GLenum target = colorNames[i] ? rt_to_gl_texture_target(pass.colors[i].texture_view.target) : GL_TEXTURE_2D;
+            GLenum target = colorNames[i] ? rt_to_gl_texture_target(pass.colors[i].texture.target) : GL_TEXTURE_2D;
             glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + (GLenum)i, target, colorNames[i], 0);
         }
         glFramebufferTexture(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, 0, 0);
@@ -1989,16 +1989,16 @@ void gl_begin_render(rt_pass_render_t& pass)
         glFramebufferTexture(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, 0, 0);
         if (depthName)
         {
-            GLenum target = rt_to_gl_texture_target(pass.depth.texture_view.target);
-            if (rt_texture_has_depth(pass.depth.texture_view.format) && rt_texture_has_stencil(pass.depth.texture_view.format))
+            GLenum target = rt_to_gl_texture_target(pass.depth.texture.target);
+            if (rt_texture_has_depth(pass.depth.texture.format) && rt_texture_has_stencil(pass.depth.texture.format))
             {
                 glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, target, depthName, 0);
             }
-            else if (rt_texture_has_depth(pass.depth.texture_view.format))
+            else if (rt_texture_has_depth(pass.depth.texture.format))
             {
                 glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, target, depthName, 0);
             }
-            else if (rt_texture_has_stencil(pass.depth.texture_view.format))
+            else if (rt_texture_has_stencil(pass.depth.texture.format))
             {
                 glFramebufferTexture2D(GL_FRAMEBUFFER, GL_STENCIL_ATTACHMENT, target, depthName, 0);
             }
@@ -2022,7 +2022,7 @@ void gl_begin_render(rt_pass_render_t& pass)
         glStencilMask(0xFFFFFFFF);
         for (size_t i = 0; i < std::size(pass.colors); ++i)
         {
-            if (pass.colors[i].texture_view.handle == 0 || pass.colors[i].texture_view.format == RT_TEXTURE_NONE)
+            if (pass.colors[i].texture.handle == 0 || pass.colors[i].texture.format == RT_TEXTURE_NONE)
                 continue;
 
             if (pass.colors[i].clear)
@@ -2031,14 +2031,14 @@ void gl_begin_render(rt_pass_render_t& pass)
             }
         }
 
-        if (pass.depth.texture_view.handle &&
-            (rt_texture_has_depth(pass.depth.texture_view.format) || rt_texture_has_stencil(pass.depth.texture_view.format)))
+        if (pass.depth.texture.handle &&
+            (rt_texture_has_depth(pass.depth.texture.format) || rt_texture_has_stencil(pass.depth.texture.format)))
         {
-            if (pass.depth.clear && rt_texture_has_depth(pass.depth.texture_view.format))
+            if (pass.depth.clear && rt_texture_has_depth(pass.depth.texture.format))
             {
                 glClearBufferfv(GL_DEPTH, 0, &pass.depth.value);
             }
-            if (pass.stencil.clear && rt_texture_has_stencil(pass.depth.texture_view.format))
+            if (pass.stencil.clear && rt_texture_has_stencil(pass.depth.texture.format))
             {
                 glClearBufferiv(GL_STENCIL, 0, &pass.stencil.value);
             }
@@ -2130,10 +2130,10 @@ void gl_end_render(rt_pass_render_t& pass)
     opengl.currentRenderPass = nullptr;
     opengl.currentRenderModule = nullptr;
 
-    bool offscreen = pass.depth.texture_view.handle;
+    bool offscreen = pass.depth.texture.handle;
     for (size_t i = 0; i < std::size(pass.colors) && !offscreen; ++i)
     {
-        if (pass.colors[i].texture_view.handle)
+        if (pass.colors[i].texture.handle)
             offscreen = true;
     }
     if (offscreen)
@@ -2163,10 +2163,10 @@ void gl_bind_module_render(rt_module_render_t& module)
     glUseProgram(native->program);
     glBindVertexArray(native->vao);
 
-    bool offscreen = pass.depth.texture_view.handle;
+    bool offscreen = pass.depth.texture.handle;
     for (size_t i = 0; i < std::size(pass.colors) && !offscreen; ++i)
     {
-        if (pass.colors[i].texture_view.handle)
+        if (pass.colors[i].texture.handle)
             offscreen = true;
     }
     if (offscreen)
@@ -2176,7 +2176,7 @@ void gl_bind_module_render(rt_module_render_t& module)
         glDisable(GL_BLEND);
         for (size_t i = 0; i < std::size(pass.colors); ++i)
         {
-            if (pass.colors[i].texture_view.handle == 0 || pass.colors[i].texture_view.format == RT_TEXTURE_NONE)
+            if (pass.colors[i].texture.handle == 0 || pass.colors[i].texture.format == RT_TEXTURE_NONE)
                 continue;
 
             if (module.colors[i].color.func != RT_FUNC_ADD || module.colors[i].color.src != RT_BLEND_ONE ||
@@ -2306,10 +2306,10 @@ void gl_set_stencil_reference(int32_t refer)
     opengl.stencilRefer = refer;
 
     rt_pass_render_t const& pass = *opengl.currentRenderPass;
-    bool offscreen = pass.depth.texture_view.handle;
+    bool offscreen = pass.depth.texture.handle;
     for (size_t i = 0; i < std::size(pass.colors) && !offscreen; ++i)
     {
-        if (pass.colors[i].texture_view.handle)
+        if (pass.colors[i].texture.handle)
             offscreen = true;
     }
     if (offscreen)
