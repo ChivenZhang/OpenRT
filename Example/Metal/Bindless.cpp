@@ -272,7 +272,9 @@ void frame(int width, int height)
             meshMat = glm::rotate(meshMat, glm::radians(-18.0f), glm::vec3(1, 0, 0));
             Push push = make_push(projView, meshMat, (uint32_t)i);
             rt_push_constant((const uint8_t*)&push, sizeof(push));
-            rt_draw_index(cube.vertex, 3, cube.index, cube.index.size / sizeof(uint32_t), 1, 0, 0, 0);
+            rt_buffer_view_t vertex[] = {{.buffer = cube.vertex[0]}, {.buffer = cube.vertex[1]}, {.buffer = cube.vertex[2]}};
+            rt_buffer_view_t index = {.buffer = cube.index};
+            rt_draw_index(vertex, 3, index, cube.index.size / sizeof(uint32_t), 1, 0, 0, 0);
         }
 
         rt_end_render(pass);

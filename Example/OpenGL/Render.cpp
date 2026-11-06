@@ -125,7 +125,9 @@ void frame(int width, int height)
 
         static auto mesh = rt_create_mesh_sphere(2, 64, 32);
         // rt_draw_mesh(mesh);
-        rt_draw_index(mesh.vertex, 3, mesh.index, mesh.index.size / sizeof(uint32_t), 1, 0, 0, 0);
+        rt_buffer_view_t vertex[] = {{.buffer = mesh.vertex[0]}, {.buffer = mesh.vertex[1]}, {.buffer = mesh.vertex[2]}};
+        rt_buffer_view_t index = {.buffer = mesh.index};
+        rt_draw_index(vertex, 3, index, mesh.index.size / sizeof(uint32_t), 1, 0, 0, 0);
 
         rt_end_render(pass);
     }

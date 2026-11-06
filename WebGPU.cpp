@@ -2024,7 +2024,14 @@ void wg_dispatch_compute_indirect(rt_buffer_t& indirect, size_t offset)
         wgpuComputePassEncoderDispatchWorkgroupsIndirect(webgpu.computePass, native->handle, (uint64_t)offset);
 }
 
-static void wg_bind_draw_vbos(rt_buffer_t vbo[], uint32_t vbo_num)
+static uint64_t wg_buffer_view_size(rt_buffer_view_t const& view)
+{
+    if (view.size != (size_t)-1U)
+        return (uint64_t)view.size;
+    return view.buffer.size > view.offset ? (uint64_t)(view.buffer.size - view.offset) : 0;
+}
+
+static void wg_bind_draw_vbos(rt_buffer_view_t vbo[], uint32_t vbo_num)
 {
     rt_module_render_t const& module = wg_current_render_module();
     uint32_t count = vbo_num;
@@ -2032,13 +2039,13 @@ static void wg_bind_draw_vbos(rt_buffer_t vbo[], uint32_t vbo_num)
         count = (uint32_t)std::size(module.vertex);
     for (uint32_t i = 0; i < count; ++i)
     {
-        if (rt_to_wg_vertex_stride(module.vertex[i]) == 0 || !vbo || vbo[i].handle == 0)
+        if (rt_to_wg_vertex_stride(module.vertex[i]) == 0 || !vbo || vbo[i].buffer.handle == 0)
             continue;
-        auto* native = wg_buffer_native(vbo[i]);
+        auto* native = wg_buffer_native(vbo[i].buffer);
         if (!native || !native->handle)
             continue;
         wg_transition_buffer(*native, WG_STATE_VERTEX);
-        wgpuRenderPassEncoderSetVertexBuffer(webgpu.renderPass, i, native->handle, 0, vbo[i].size);
+        wgpuRenderPassEncoderSetVertexBuffer(webgpu.renderPass, i, native->handle, (uint64_t)vbo[i].offset, wg_buffer_view_size(vbo[i]));
     }
 }
 
@@ -2217,7 +2224,7 @@ void wg_set_stencil_reference(int32_t refer)
     wgpuRenderPassEncoderSetStencilReference(webgpu.renderPass, (uint32_t)refer);
 }
 
-void wg_draw_array(rt_buffer_t vbo[], uint32_t vbo_num, uint32_t vertex_num, uint32_t instance_num, uint32_t vertex_start, uint32_t instance_start)
+void wg_draw_array(rt_buffer_view_t vbo[], uint32_t vbo_num, uint32_t vertex_num, uint32_t instance_num, uint32_t vertex_start, uint32_t instance_start)
 {
     if (webgpu.currentPipeline == nullptr)
     {
@@ -2236,7 +2243,7 @@ void wg_draw_array(rt_buffer_t vbo[], uint32_t vbo_num, uint32_t vertex_num, uin
     wgpuRenderPassEncoderDraw(webgpu.renderPass, vertex_num, instance_num, vertex_start, instance_start);
 }
 
-void wg_draw_index(rt_buffer_t vbo[], uint32_t vbo_num, rt_buffer_t& ebo, uint32_t index_num, uint32_t instance_num, uint32_t index_start, uint32_t vertex_start, uint32_t instance_start)
+void wg_draw_index(rt_buffer_view_t vbo[], uint32_t vbo_num, rt_buffer_view_t& ebo, uint32_t index_num, uint32_t instance_num, uint32_t index_start, uint32_t vertex_start, uint32_t instance_start)
 {
     if (webgpu.currentPipeline == nullptr)
     {
@@ -2248,17 +2255,17 @@ void wg_draw_index(rt_buffer_t vbo[], uint32_t vbo_num, rt_buffer_t& ebo, uint32
         fprintf(stderr, "Pipeline not begin");
         abort();
     }
-    auto* indexNative = wg_buffer_native(ebo);
+    auto* indexNative = wg_buffer_native(ebo.buffer);
     if (!indexNative || !indexNative->handle || !webgpu.renderPass)
         return;
     wg_flush_descriptors();
     wg_bind_draw_vbos(vbo, vbo_num);
     wg_transition_buffer(*indexNative, WG_STATE_INDEX);
-    wgpuRenderPassEncoderSetIndexBuffer(webgpu.renderPass, indexNative->handle, rt_to_wg_index_type(wg_current_render_module().index_type), 0, ebo.size);
+    wgpuRenderPassEncoderSetIndexBuffer(webgpu.renderPass, indexNative->handle, rt_to_wg_index_type(wg_current_render_module().index_type), (uint64_t)ebo.offset, wg_buffer_view_size(ebo));
     wgpuRenderPassEncoderDrawIndexed(webgpu.renderPass, index_num, instance_num, index_start, (int32_t)vertex_start, instance_start);
 }
 
-void wg_draw_array_indirect(rt_buffer_t vbo[], uint32_t vbo_num, rt_buffer_t& indirect, size_t offset)
+void wg_draw_array_indirect(rt_buffer_view_t vbo[], uint32_t vbo_num, rt_buffer_t& indirect, size_t offset)
 {
     if (webgpu.currentPipeline == nullptr)
     {
@@ -2279,7 +2286,7 @@ void wg_draw_array_indirect(rt_buffer_t vbo[], uint32_t vbo_num, rt_buffer_t& in
     wgpuRenderPassEncoderDrawIndirect(webgpu.renderPass, indirectNative->handle, (uint64_t)offset);
 }
 
-void wg_draw_index_indirect(rt_buffer_t vbo[], uint32_t vbo_num, rt_buffer_t& ebo, rt_buffer_t& indirect, size_t offset)
+void wg_draw_index_indirect(rt_buffer_view_t vbo[], uint32_t vbo_num, rt_buffer_view_t& ebo, rt_buffer_t& indirect, size_t offset)
 {
     if (webgpu.currentPipeline == nullptr)
     {
@@ -2291,14 +2298,14 @@ void wg_draw_index_indirect(rt_buffer_t vbo[], uint32_t vbo_num, rt_buffer_t& eb
         fprintf(stderr, "Pipeline not begin");
         abort();
     }
-    auto* indexNative = wg_buffer_native(ebo);
+    auto* indexNative = wg_buffer_native(ebo.buffer);
     auto* indirectNative = wg_buffer_native(indirect);
     if (!indexNative || !indexNative->handle || !indirectNative || !indirectNative->handle || !webgpu.renderPass)
         return;
     wg_flush_descriptors();
     wg_bind_draw_vbos(vbo, vbo_num);
     wg_transition_buffer(*indexNative, WG_STATE_INDEX);
-    wgpuRenderPassEncoderSetIndexBuffer(webgpu.renderPass, indexNative->handle, rt_to_wg_index_type(wg_current_render_module().index_type), 0, ebo.size);
+    wgpuRenderPassEncoderSetIndexBuffer(webgpu.renderPass, indexNative->handle, rt_to_wg_index_type(wg_current_render_module().index_type), (uint64_t)ebo.offset, wg_buffer_view_size(ebo));
     wg_transition_buffer(*indirectNative, WG_STATE_SHADER_READ);
     wgpuRenderPassEncoderDrawIndexedIndirect(webgpu.renderPass, indirectNative->handle, (uint64_t)offset);
 }

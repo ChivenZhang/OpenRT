@@ -2286,7 +2286,14 @@ void dx_dispatch_compute_indirect(rt_buffer_t& indirect, size_t offset)
     direct.cmd->ExecuteIndirect(signature, 1, native->handle.Get(), (UINT64)offset, nullptr, 0);
 }
 
-static void dx_bind_draw_vbos(rt_buffer_t vbo[], uint32_t vbo_num)
+static size_t dx_buffer_view_size(rt_buffer_view_t const& view)
+{
+    if (view.size != (size_t)-1U)
+        return view.size;
+    return view.buffer.size > view.offset ? view.buffer.size - view.offset : 0;
+}
+
+static void dx_bind_draw_vbos(rt_buffer_view_t vbo[], uint32_t vbo_num)
 {
     rt_module_render_t const& module = dx_current_render_module();
     uint32_t count = vbo_num;
@@ -2295,15 +2302,15 @@ static void dx_bind_draw_vbos(rt_buffer_t vbo[], uint32_t vbo_num)
     for (uint32_t i = 0; i < count; ++i)
     {
         uint32_t stride = rt_to_dx_vertex_stride(module.vertex[i]);
-        if (stride == 0 || !vbo || vbo[i].handle == 0)
+        if (stride == 0 || !vbo || vbo[i].buffer.handle == 0)
             continue;
-        auto* native = dx_buffer_native(vbo[i]);
+        auto* native = dx_buffer_native(vbo[i].buffer);
         if (!native || !native->handle)
             continue;
         dx_transition_buffer(*native, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
         D3D12_VERTEX_BUFFER_VIEW view = {};
-        view.BufferLocation = native->handle->GetGPUVirtualAddress();
-        view.SizeInBytes = (UINT)vbo[i].size;
+        view.BufferLocation = native->handle->GetGPUVirtualAddress() + (UINT64)vbo[i].offset;
+        view.SizeInBytes = (UINT)dx_buffer_view_size(vbo[i]);
         view.StrideInBytes = stride;
         direct.cmd->IASetVertexBuffers(i, 1, &view);
     }
@@ -2478,7 +2485,7 @@ void dx_set_stencil_reference(int32_t refer)
     direct.cmd->OMSetStencilRef((UINT)refer);
 }
 
-void dx_draw_array(rt_buffer_t vbo[], uint32_t vbo_num, uint32_t vertex_num, uint32_t instance_num, uint32_t vertex_start, uint32_t instance_start)
+void dx_draw_array(rt_buffer_view_t vbo[], uint32_t vbo_num, uint32_t vertex_num, uint32_t instance_num, uint32_t vertex_start, uint32_t instance_start)
 {
     if (direct.currentPipeline == nullptr)
     {
@@ -2495,7 +2502,7 @@ void dx_draw_array(rt_buffer_t vbo[], uint32_t vbo_num, uint32_t vertex_num, uin
     direct.cmd->DrawInstanced(vertex_num, instance_num, vertex_start, instance_start);
 }
 
-void dx_draw_index(rt_buffer_t vbo[], uint32_t vbo_num, rt_buffer_t& ebo, uint32_t index_num, uint32_t instance_num, uint32_t index_start, uint32_t vertex_start, uint32_t instance_start)
+void dx_draw_index(rt_buffer_view_t vbo[], uint32_t vbo_num, rt_buffer_view_t& ebo, uint32_t index_num, uint32_t instance_num, uint32_t index_start, uint32_t vertex_start, uint32_t instance_start)
 {
     if (direct.currentPipeline == nullptr)
     {
@@ -2507,21 +2514,21 @@ void dx_draw_index(rt_buffer_t vbo[], uint32_t vbo_num, rt_buffer_t& ebo, uint32
         fprintf(stderr, "Pipeline not begin");
         abort();
     }
-    auto* indexNative = dx_buffer_native(ebo);
+    auto* indexNative = dx_buffer_native(ebo.buffer);
     if (!indexNative || !indexNative->handle)
         return;
     dx_flush_descriptors();
     dx_bind_draw_vbos(vbo, vbo_num);
     dx_transition_buffer(*indexNative, D3D12_RESOURCE_STATE_INDEX_BUFFER);
     D3D12_INDEX_BUFFER_VIEW view = {};
-    view.BufferLocation = indexNative->handle->GetGPUVirtualAddress();
-    view.SizeInBytes = (UINT)ebo.size;
+    view.BufferLocation = indexNative->handle->GetGPUVirtualAddress() + (UINT64)ebo.offset;
+    view.SizeInBytes = (UINT)dx_buffer_view_size(ebo);
     view.Format = rt_to_dx_index_type(dx_current_render_module().index_type);
     direct.cmd->IASetIndexBuffer(&view);
     direct.cmd->DrawIndexedInstanced(index_num, instance_num, index_start, (INT)vertex_start, instance_start);
 }
 
-void dx_draw_array_indirect(rt_buffer_t vbo[], uint32_t vbo_num, rt_buffer_t& indirect, size_t offset)
+void dx_draw_array_indirect(rt_buffer_view_t vbo[], uint32_t vbo_num, rt_buffer_t& indirect, size_t offset)
 {
     if (direct.currentPipeline == nullptr)
     {
@@ -2544,7 +2551,7 @@ void dx_draw_array_indirect(rt_buffer_t vbo[], uint32_t vbo_num, rt_buffer_t& in
     direct.cmd->ExecuteIndirect(signature, 1, indirectNative->handle.Get(), (UINT64)offset, nullptr, 0);
 }
 
-void dx_draw_index_indirect(rt_buffer_t vbo[], uint32_t vbo_num, rt_buffer_t& ebo, rt_buffer_t& indirect, size_t offset)
+void dx_draw_index_indirect(rt_buffer_view_t vbo[], uint32_t vbo_num, rt_buffer_view_t& ebo, rt_buffer_t& indirect, size_t offset)
 {
     if (direct.currentPipeline == nullptr)
     {
@@ -2556,7 +2563,7 @@ void dx_draw_index_indirect(rt_buffer_t vbo[], uint32_t vbo_num, rt_buffer_t& eb
         fprintf(stderr, "Pipeline not begin");
         abort();
     }
-    auto* indexNative = dx_buffer_native(ebo);
+    auto* indexNative = dx_buffer_native(ebo.buffer);
     auto* indirectNative = dx_buffer_native(indirect);
     if (!indexNative || !indexNative->handle || !indirectNative || !indirectNative->handle)
         return;
@@ -2564,8 +2571,8 @@ void dx_draw_index_indirect(rt_buffer_t vbo[], uint32_t vbo_num, rt_buffer_t& eb
     dx_bind_draw_vbos(vbo, vbo_num);
     dx_transition_buffer(*indexNative, D3D12_RESOURCE_STATE_INDEX_BUFFER);
     D3D12_INDEX_BUFFER_VIEW view = {};
-    view.BufferLocation = indexNative->handle->GetGPUVirtualAddress();
-    view.SizeInBytes = (UINT)ebo.size;
+    view.BufferLocation = indexNative->handle->GetGPUVirtualAddress() + (UINT64)ebo.offset;
+    view.SizeInBytes = (UINT)dx_buffer_view_size(ebo);
     view.Format = rt_to_dx_index_type(dx_current_render_module().index_type);
     direct.cmd->IASetIndexBuffer(&view);
     if (indirectNative->heap != D3D12_HEAP_TYPE_UPLOAD)

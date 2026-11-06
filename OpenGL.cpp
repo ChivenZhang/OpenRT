@@ -2340,7 +2340,7 @@ void gl_set_stencil_reference(int32_t refer)
     }
 }
 
-void gl_draw_array(rt_buffer_t vbo[], uint32_t vbo_num, uint32_t vertex_num, uint32_t instance_num, uint32_t vertex_start, uint32_t instance_start)
+void gl_draw_array(rt_buffer_view_t vbo[], uint32_t vbo_num, uint32_t vertex_num, uint32_t instance_num, uint32_t vertex_start, uint32_t instance_start)
 {
     if (opengl.currentPipeline == nullptr)
     {
@@ -2360,15 +2360,15 @@ void gl_draw_array(rt_buffer_t vbo[], uint32_t vbo_num, uint32_t vertex_num, uin
     for (uint32_t i = 0; i < count; ++i)
     {
         GLsizei stride = rt_to_gl_vertex_stride(module.vertex[i]);
-        if (stride == 0 || !vbo || vbo[i].handle == 0)
+        if (stride == 0 || !vbo || vbo[i].buffer.handle == 0)
             continue;
-        glBindVertexBuffer(i, gl_buffer_name(vbo[i]), 0, stride);
+        glBindVertexBuffer(i, gl_buffer_name(vbo[i].buffer), (GLintptr)vbo[i].offset, stride);
     }
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
     glDrawArraysInstancedBaseInstance(rt_to_gl_primitive(module.primitive), (GLint)vertex_start, (GLsizei)vertex_num, (GLsizei)instance_num, instance_start);
 }
 
-void gl_draw_index(rt_buffer_t vbo[], uint32_t vbo_num, rt_buffer_t& ebo, uint32_t index_num, uint32_t instance_num, uint32_t index_start, uint32_t vertex_start, uint32_t instance_start)
+void gl_draw_index(rt_buffer_view_t vbo[], uint32_t vbo_num, rt_buffer_view_t& ebo, uint32_t index_num, uint32_t instance_num, uint32_t index_start, uint32_t vertex_start, uint32_t instance_start)
 {
     if (opengl.currentPipeline == nullptr)
     {
@@ -2388,16 +2388,16 @@ void gl_draw_index(rt_buffer_t vbo[], uint32_t vbo_num, rt_buffer_t& ebo, uint32
     for (uint32_t i = 0; i < count; ++i)
     {
         GLsizei stride = rt_to_gl_vertex_stride(module.vertex[i]);
-        if (stride == 0 || !vbo || vbo[i].handle == 0)
+        if (stride == 0 || !vbo || vbo[i].buffer.handle == 0)
             continue;
-        glBindVertexBuffer(i, gl_buffer_name(vbo[i]), 0, stride);
+        glBindVertexBuffer(i, gl_buffer_name(vbo[i].buffer), (GLintptr)vbo[i].offset, stride);
     }
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, gl_buffer_name(ebo));
-    size_t indexOffset = (size_t)index_start * (module.index_type == RT_INDEX_UINT16 ? 2u : 4u);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, gl_buffer_name(ebo.buffer));
+    size_t indexOffset = ebo.offset + (size_t)index_start * (module.index_type == RT_INDEX_UINT16 ? 2u : 4u);
     glDrawElementsInstancedBaseVertexBaseInstance(rt_to_gl_primitive(module.primitive), (GLsizei)index_num, rt_to_gl_index_type(module.index_type), (void*)indexOffset, (GLsizei)instance_num, (GLint)vertex_start, instance_start);
 }
 
-void gl_draw_array_indirect(rt_buffer_t vbo[], uint32_t vbo_num, rt_buffer_t& indirect, size_t offset)
+void gl_draw_array_indirect(rt_buffer_view_t vbo[], uint32_t vbo_num, rt_buffer_t& indirect, size_t offset)
 {
     if (opengl.currentPipeline == nullptr)
     {
@@ -2417,16 +2417,16 @@ void gl_draw_array_indirect(rt_buffer_t vbo[], uint32_t vbo_num, rt_buffer_t& in
     for (uint32_t i = 0; i < count; ++i)
     {
         GLsizei stride = rt_to_gl_vertex_stride(module.vertex[i]);
-        if (stride == 0 || !vbo || vbo[i].handle == 0)
+        if (stride == 0 || !vbo || vbo[i].buffer.handle == 0)
             continue;
-        glBindVertexBuffer(i, gl_buffer_name(vbo[i]), 0, stride);
+        glBindVertexBuffer(i, gl_buffer_name(vbo[i].buffer), (GLintptr)vbo[i].offset, stride);
     }
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
     glBindBuffer(GL_DRAW_INDIRECT_BUFFER, gl_buffer_name(indirect));
     glDrawArraysIndirect(rt_to_gl_primitive(module.primitive), (void*)offset);
 }
 
-void gl_draw_index_indirect(rt_buffer_t vbo[], uint32_t vbo_num, rt_buffer_t& ebo, rt_buffer_t& indirect, size_t offset)
+void gl_draw_index_indirect(rt_buffer_view_t vbo[], uint32_t vbo_num, rt_buffer_view_t& ebo, rt_buffer_t& indirect, size_t offset)
 {
     if (opengl.currentPipeline == nullptr)
     {
@@ -2446,11 +2446,11 @@ void gl_draw_index_indirect(rt_buffer_t vbo[], uint32_t vbo_num, rt_buffer_t& eb
     for (uint32_t i = 0; i < count; ++i)
     {
         GLsizei stride = rt_to_gl_vertex_stride(module.vertex[i]);
-        if (stride == 0 || !vbo || vbo[i].handle == 0)
+        if (stride == 0 || !vbo || vbo[i].buffer.handle == 0)
             continue;
-        glBindVertexBuffer(i, gl_buffer_name(vbo[i]), 0, stride);
+        glBindVertexBuffer(i, gl_buffer_name(vbo[i].buffer), (GLintptr)vbo[i].offset, stride);
     }
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, gl_buffer_name(ebo));
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, gl_buffer_name(ebo.buffer));
     glBindBuffer(GL_DRAW_INDIRECT_BUFFER, gl_buffer_name(indirect));
     glDrawElementsIndirect(rt_to_gl_primitive(module.primitive), rt_to_gl_index_type(module.index_type), (void*)offset);
 }
