@@ -34,13 +34,6 @@ static constexpr auto VS = R"(
         uint albedo;
     };
 
-    struct VSIn
-    {
-        float3 in_vertex [[attribute(0)]];
-        float3 in_normal [[attribute(1)]];
-        float2 in_uv [[attribute(2)]];
-    };
-
     struct VSOut
     {
         float4 position [[position]];
@@ -49,13 +42,21 @@ static constexpr auto VS = R"(
         float2 uv;
     };
 
-    vertex VSOut vs_main(VSIn input [[stage_in]], constant Push& push [[buffer(16)]])
+    vertex VSOut vs_main(uint vid [[vertex_id]], device uint64_t* handles [[buffer(0)]], constant Push& push [[buffer(16)]])
     {
+        device uint* indexData = (device uint*)handles[7];
+        uint vertexId = indexData[vid];
+        device float* positionData = (device float*)handles[4];
+        device float* normalData = (device float*)handles[5];
+        device float* uvData = (device float*)handles[6];
+        float3 inVertex = float3(positionData[vertexId * 3 + 0], positionData[vertexId * 3 + 1], positionData[vertexId * 3 + 2]);
+        float3 inNormal = float3(normalData[vertexId * 3 + 0], normalData[vertexId * 3 + 1], normalData[vertexId * 3 + 2]);
+        float2 inUv = float2(uvData[vertexId * 2 + 0], uvData[vertexId * 2 + 1]);
         float4x4 meshMat = float4x4(push.c0, push.c1, push.c2, float4(float3(push.translation), 1.0));
         VSOut output;
-        output.world = (meshMat * float4(input.in_vertex, 1.0)).xyz;
-        output.normal = (meshMat * float4(input.in_normal, 0.0)).xyz;
-        output.uv = input.in_uv;
+        output.world = (meshMat * float4(inVertex, 1.0)).xyz;
+        output.normal = (meshMat * float4(inNormal, 0.0)).xyz;
+        output.uv = inUv;
         output.position = push.projView * float4(output.world, 1.0);
         return output;
     }
@@ -183,20 +184,24 @@ static rt_texture_t load_bindless(const char* filename)
     return texture;
 }
 
-static void write_handles(void* memory, uint32_t stride, rt_texture_t const* textures, int count)
+static void write_handles(void* memory, uint32_t stride, rt_texture_t const* textures, int textureCount, rt_buffer_t const* buffers, int bufferCount)
 {
     if (!memory || stride == 0) return;
     if (stride == sizeof(uint32_t))
     {
         auto* handles = (uint32_t*)memory;
-        for (int i = 0; i < count; ++i)
+        for (int i = 0; i < textureCount; ++i)
             handles[i] = (uint32_t)textures[i].default_view.bindless;
+        for (int i = 0; i < bufferCount; ++i)
+            handles[textureCount + i] = (uint32_t)buffers[i].bindless;
     }
     else if (stride == sizeof(uint64_t))
     {
         auto* handles = (uint64_t*)memory;
-        for (int i = 0; i < count; ++i)
+        for (int i = 0; i < textureCount; ++i)
             handles[i] = textures[i].default_view.bindless;
+        for (int i = 0; i < bufferCount; ++i)
+            handles[textureCount + i] = buffers[i].bindless;
     }
 }
 
@@ -211,7 +216,6 @@ void frame(int width, int height)
         .fshader = {.code = FS, .size = (uint32_t)strlen(FS), .entry = "fs_main"},
         .colors = {{.format = RT_TEXTURE_BGRA8UNORM,}},
         .depth = {.write = true, .func = RT_LEQUAL,},
-        .vertex = {rt_vertex_vertex, rt_vertex_normal, rt_vertex_uv,},
     });
     static auto pass_color = rt_create_texture({
         .width = (uint32_t)width, .height = (uint32_t)height,
@@ -220,7 +224,42 @@ void frame(int width, int height)
         .min_filter = RT_LINEAR, .mag_filter = RT_LINEAR,
     });
     static auto pass_depth = rt_create_texture_depth(width, height);
-    static auto cube = rt_create_mesh_cube(1.4f, 1.4f, 1.4f);
+    static const float cubePositions[24 * 3] = {
+        -0.7f, -0.7f,  0.7f,  0.7f, -0.7f,  0.7f,  0.7f,  0.7f,  0.7f, -0.7f,  0.7f,  0.7f,
+         0.7f, -0.7f, -0.7f, -0.7f, -0.7f, -0.7f, -0.7f,  0.7f, -0.7f,  0.7f,  0.7f, -0.7f,
+        -0.7f,  0.7f,  0.7f,  0.7f,  0.7f,  0.7f,  0.7f,  0.7f, -0.7f, -0.7f,  0.7f, -0.7f,
+        -0.7f, -0.7f, -0.7f,  0.7f, -0.7f, -0.7f,  0.7f, -0.7f,  0.7f, -0.7f, -0.7f,  0.7f,
+         0.7f, -0.7f,  0.7f,  0.7f, -0.7f, -0.7f,  0.7f,  0.7f, -0.7f,  0.7f,  0.7f,  0.7f,
+        -0.7f, -0.7f, -0.7f, -0.7f, -0.7f,  0.7f, -0.7f,  0.7f,  0.7f, -0.7f,  0.7f, -0.7f,
+    };
+    static const float cubeNormals[24 * 3] = {
+        0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1,
+        0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1,
+        0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0,
+        0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0,
+        1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0,
+        -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0,
+    };
+    static const float cubeUvs[24 * 2] = {
+        0, 0, 1, 0, 1, 1, 0, 1,
+        0, 0, 1, 0, 1, 1, 0, 1,
+        0, 0, 1, 0, 1, 1, 0, 1,
+        0, 0, 1, 0, 1, 1, 0, 1,
+        0, 0, 1, 0, 1, 1, 0, 1,
+        0, 0, 1, 0, 1, 1, 0, 1,
+    };
+    static const uint32_t cubeIndices[36] = {
+        0, 1, 2, 0, 2, 3,
+        4, 5, 6, 4, 6, 7,
+        8, 9, 10, 8, 10, 11,
+        12, 13, 14, 12, 14, 15,
+        16, 17, 18, 16, 18, 19,
+        20, 21, 22, 20, 22, 23,
+    };
+    static auto positions = rt_create_buffer({.size = sizeof(cubePositions), .usages = RT_BUFFER_USAGE_BINDLESS, .data = cubePositions});
+    static auto normals = rt_create_buffer({.size = sizeof(cubeNormals), .usages = RT_BUFFER_USAGE_BINDLESS, .data = cubeNormals});
+    static auto uvs = rt_create_buffer({.size = sizeof(cubeUvs), .usages = RT_BUFFER_USAGE_BINDLESS, .data = cubeUvs});
+    static auto indices = rt_create_buffer({.size = sizeof(cubeIndices), .usages = RT_BUFFER_USAGE_BINDLESS, .data = cubeIndices});
     static const char* files[] = {
         "../../Example/OpenGL/Default.png",
         "../../Example/OpenGL/Example.png",
@@ -241,7 +280,7 @@ void frame(int width, int height)
     };
     static auto limits = rt_get_limits();
     static auto table = rt_create_buffer({
-        .size = (size_t)limits.max_bindless_handle_size * 4,
+        .size = (size_t)limits.max_bindless_handle_size * 8,
         .usages = RT_BUFFER_USAGE_STORAGE | RT_BUFFER_USAGE_MAP_WRITE,
     });
     static auto samp = rt_create_sampler({.min_filter = RT_LINEAR, .mag_filter = RT_LINEAR, .address_u = RT_REPEAT, .address_v = RT_REPEAT,});
@@ -254,7 +293,8 @@ void frame(int width, int height)
     });
     if (auto* memory = rt_map_buffer(table, RT_WRITE_ONLY, 0, table.size))
     {
-        write_handles(memory, limits.max_bindless_handle_size, textures, 4);
+        rt_buffer_t geometry[] = {positions, normals, uvs, indices};
+        write_handles(memory, limits.max_bindless_handle_size, textures, 4, geometry, 4);
         rt_unmap_buffer(table);
     }
     {
@@ -272,9 +312,7 @@ void frame(int width, int height)
             meshMat = glm::rotate(meshMat, glm::radians(-18.0f), glm::vec3(1, 0, 0));
             Push push = make_push(projView, meshMat, (uint32_t)i);
             rt_push_constant((const uint8_t*)&push, sizeof(push));
-            rt_buffer_view_t vertex[] = {{.buffer = cube.vertex[0]}, {.buffer = cube.vertex[1]}, {.buffer = cube.vertex[2]}};
-            rt_buffer_view_t index = {.buffer = cube.index};
-            rt_draw_index(vertex, 3, index, cube.index.size / sizeof(uint32_t), 1, 0, 0, 0);
+            rt_draw_array(nullptr, 0, 36, 1, 0, 0);
         }
 
         rt_end_render(pass);

@@ -481,16 +481,18 @@ struct mt_buffer_native_t
     void* mapped = nullptr;
     size_t mappedOffset = 0;
     size_t mappedSize = 0;
+    uint32_t bindless = 0;
 
     mt_buffer_native_t() = default;
     mt_buffer_native_t(const mt_buffer_native_t&) = delete;
     mt_buffer_native_t& operator=(const mt_buffer_native_t&) = delete;
     mt_buffer_native_t(mt_buffer_native_t&& other) noexcept
         : handle(other.handle), state(other.state), mapped(other.mapped),
-          mappedOffset(other.mappedOffset), mappedSize(other.mappedSize)
+          mappedOffset(other.mappedOffset), mappedSize(other.mappedSize), bindless(other.bindless)
     {
         other.handle = nullptr;
         other.mapped = nullptr;
+        other.bindless = 0;
     }
     mt_buffer_native_t& operator=(mt_buffer_native_t&& other) noexcept
     {
@@ -502,8 +504,10 @@ struct mt_buffer_native_t
             mapped = other.mapped;
             mappedOffset = other.mappedOffset;
             mappedSize = other.mappedSize;
+            bindless = other.bindless;
             other.handle = nullptr;
             other.mapped = nullptr;
+            other.bindless = 0;
         }
         return *this;
     }
@@ -720,6 +724,8 @@ struct mt_native_t
     std::map<uint32_t, mt_pass_transfer_native_t> transferPasses;
     std::vector<MTL::Texture*> bindlessTextures;
     std::vector<uint32_t> bindlessFree;
+    std::vector<MTL::Buffer*> bindlessBuffers;
+    std::vector<uint32_t> bindlessBufferFree;
 
     MTL::Device* device = nullptr;
     MTL::CommandQueue* queue = nullptr;
@@ -1024,6 +1030,20 @@ static void mt_apply_push()
         metal.computeEncoder->setBytes(metal.pushData, metal.pushLength, 16);
 }
 
+static void mt_use_bindless_buffers()
+{
+    MTL::ResourceUsage usage = MTL::ResourceUsageRead | MTL::ResourceUsageWrite;
+    MTL::RenderStages stages = MTL::RenderStageVertex | MTL::RenderStageFragment;
+    for (MTL::Buffer* buffer : metal.bindlessBuffers)
+    {
+        if (!buffer) continue;
+        if (metal.renderEncoder)
+            metal.renderEncoder->useResource(buffer, usage, stages);
+        if (metal.computeEncoder)
+            metal.computeEncoder->useResource(buffer, usage);
+    }
+}
+
 static void mt_flush_descriptors()
 {
     auto* native = mt_current_module_native();
@@ -1040,6 +1060,7 @@ static void mt_flush_descriptors()
             if (metal.computeEncoder)
                 metal.computeEncoder->useResource(texture, MTL::ResourceUsageRead);
         }
+        mt_use_bindless_buffers();
         return;
     }
     for (uint32_t i = 0; i < RT_MAX_BINDING_HANDLE_NUM; ++i)
@@ -1106,6 +1127,7 @@ static void mt_flush_descriptors()
         if (metal.computeEncoder)
             metal.computeEncoder->useResource(texture, MTL::ResourceUsageRead);
     }
+    mt_use_bindless_buffers();
 }
 
 void mt_load_library(MTL::Device* device, MTL::CommandQueue* queue)
@@ -1268,6 +1290,8 @@ void mt_unload_library()
     metal.textureViews.clear();
     metal.bindlessTextures.clear();
     metal.bindlessFree.clear();
+    metal.bindlessBuffers.clear();
+    metal.bindlessBufferFree.clear();
     for (auto& item : metal.textures)
         mt_release(item.second.handle);
     metal.textures.clear();
@@ -1409,13 +1433,41 @@ rt_buffer_t mt_create_buffer(rt_buffer_info_t const& info)
     result.size = info.size;
     result.usages = info.usages;
     result.native = &native;
+    if (info.usages & RT_BUFFER_USAGE_BINDLESS)
+    {
+        if (metal.bindlessBuffers.empty())
+            metal.bindlessBuffers.push_back(nullptr);
+        uint32_t index;
+        if (!metal.bindlessBufferFree.empty())
+        {
+            index = metal.bindlessBufferFree.back();
+            metal.bindlessBufferFree.pop_back();
+        }
+        else
+        {
+            index = (uint32_t)metal.bindlessBuffers.size();
+            metal.bindlessBuffers.push_back(nullptr);
+        }
+        metal.bindlessBuffers[index] = native.handle;
+        native.bindless = index;
+        result.bindless = native.handle->gpuAddress();
+    }
     return result;
 }
 
 void mt_destroy_buffer(rt_buffer_t& buffer)
 {
-    if (mt_buffer_native(buffer))
+    if (auto* native = mt_buffer_native(buffer))
+    {
+        if (native->bindless)
+        {
+            if (native->bindless < metal.bindlessBuffers.size())
+                metal.bindlessBuffers[native->bindless] = nullptr;
+            metal.bindlessBufferFree.push_back(native->bindless);
+            native->bindless = 0;
+        }
         metal.buffers.erase(buffer.handle);
+    }
     buffer = {};
 }
 
@@ -1446,7 +1498,7 @@ void mt_unmap_buffer(rt_buffer_t& buffer)
     native->mappedSize = 0;
 }
 
-static uint32_t mt_alloc_bindless(MTL::Texture* texture)
+static uint32_t mt_alloc_bindless_texture_view(MTL::Texture* texture)
 {
     if (metal.bindlessTextures.empty())
         metal.bindlessTextures.push_back(nullptr);
@@ -1465,7 +1517,7 @@ static uint32_t mt_alloc_bindless(MTL::Texture* texture)
     return index;
 }
 
-static void mt_release_bindless(mt_texture_view_native_t& native)
+static void mt_release_bindless_texture_view(mt_texture_view_native_t& native)
 {
     if (!native.bindless) return;
     if (native.bindless < metal.bindlessTextures.size())
@@ -1594,7 +1646,7 @@ void mt_destroy_texture(rt_texture_t& texture)
         {
             if (it->second.texture == native)
             {
-                mt_release_bindless(it->second);
+                mt_release_bindless_texture_view(it->second);
                 it = metal.textureViews.erase(it);
             }
             else
@@ -1670,7 +1722,7 @@ rt_texture_view_t mt_create_texture_view(rt_texture_t& texture, rt_texture_view_
     result.native = &native;
     if (usages & RT_TEXTURE_USAGE_TEXTURE_BINDLESS)
     {
-        native.bindless = mt_alloc_bindless(view);
+        native.bindless = mt_alloc_bindless_texture_view(view);
         native.gpuID = view->gpuResourceID()._impl;
         result.bindless = native.gpuID;
     }
@@ -1681,7 +1733,7 @@ void mt_destroy_texture_view(rt_texture_view_t& view)
 {
     if (auto* native = mt_texture_view_native(view))
     {
-        mt_release_bindless(*native);
+        mt_release_bindless_texture_view(*native);
         metal.textureViews.erase(view.handle);
     }
     view = {};

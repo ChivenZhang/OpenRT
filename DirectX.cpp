@@ -517,6 +517,7 @@ struct dx_buffer_native_t
     void* mapped = nullptr;
     size_t mappedOffset = 0;
     size_t mappedSize = 0;
+    uint32_t bindless = 0;
 };
 
 struct dx_texture_native_t
@@ -553,6 +554,7 @@ struct dx_layout_native_t
     uint32_t entryIndex[RT_MAX_BINDING_HANDLE_NUM] = {};
     uint32_t count = 0;
     uint32_t bindlessRoot = 0;
+    uint32_t bindlessBufferRoot = 0;
 };
 
 struct dx_binding_native_t
@@ -574,6 +576,7 @@ struct dx_module_native_t
     uint32_t descriptorBindings[RT_MAX_BINDING_HANDLE_NUM] = {};
     uint32_t descriptorCount = 0;
     uint32_t bindlessRoot = 0;
+    uint32_t bindlessBufferRoot = 0;
 };
 
 struct dx_mesh_native_t
@@ -635,6 +638,8 @@ struct dx_native_t
     uint32_t srvCursor = 0, samplerCursor = 0;
     uint32_t bindlessCursor = 0;
     std::vector<uint32_t> bindlessFree;
+    uint32_t bindlessBufferCursor = 1;
+    std::vector<uint32_t> bindlessBufferFree;
     std::vector<dx_staging_t> pendingStaging;
     uint8_t pushData[128] = {};
     uint32_t pushCount = 0;
@@ -783,6 +788,8 @@ static void dx_destroy_module_native(uint32_t handle, void*& native)
 
 static constexpr uint32_t DX_DYNAMIC_SRV_COUNT = 2048;
 static constexpr uint32_t DX_BINDLESS_SRV_CAPACITY = 65536;
+static constexpr uint32_t DX_BINDLESS_BUFFER_CAPACITY = 65536;
+static constexpr uint32_t DX_DYNAMIC_SAMPLER_COUNT = 256;
 
 static D3D12_CPU_DESCRIPTOR_HANDLE dx_srv_cpu_index(uint32_t index)
 {
@@ -791,7 +798,7 @@ static D3D12_CPU_DESCRIPTOR_HANDLE dx_srv_cpu_index(uint32_t index)
     return cpu;
 }
 
-static uint32_t dx_alloc_bindless()
+static uint32_t dx_alloc_bindless_texture_view()
 {
     if (!direct.bindlessFree.empty())
     {
@@ -809,10 +816,35 @@ static uint32_t dx_alloc_bindless()
     return direct.bindlessCursor++;
 }
 
-static void dx_release_bindless(dx_texture_view_native_t& native)
+static void dx_release_bindless_texture_view(dx_texture_view_native_t& native)
 {
     if (!native.bindless) return;
     direct.bindlessFree.push_back(native.bindless);
+    native.bindless = 0;
+}
+
+static uint32_t dx_alloc_bindless_buffer()
+{
+    if (!direct.bindlessBufferFree.empty())
+    {
+        uint32_t index = direct.bindlessBufferFree.back();
+        direct.bindlessBufferFree.pop_back();
+        return index;
+    }
+    if (direct.bindlessBufferCursor == 0)
+        direct.bindlessBufferCursor = 1;
+    if (direct.bindlessBufferCursor >= DX_BINDLESS_BUFFER_CAPACITY)
+    {
+        fprintf(stderr, "DirectX: bindless buffer heap exhausted");
+        return 0;
+    }
+    return direct.bindlessBufferCursor++;
+}
+
+static void dx_release_bindless_buffer(dx_buffer_native_t& native)
+{
+    if (!native.bindless) return;
+    direct.bindlessBufferFree.push_back(native.bindless);
     native.bindless = 0;
 }
 
@@ -835,7 +867,7 @@ static D3D12_CPU_DESCRIPTOR_HANDLE dx_srv_cpu(D3D12_GPU_DESCRIPTOR_HANDLE gpu)
 
 static D3D12_GPU_DESCRIPTOR_HANDLE dx_alloc_sampler()
 {
-    if (direct.samplerCursor >= 256) direct.samplerCursor = 0;
+    if (direct.samplerCursor >= DX_DYNAMIC_SAMPLER_COUNT) direct.samplerCursor = 0;
     uint32_t index = direct.samplerCursor++;
     D3D12_GPU_DESCRIPTOR_HANDLE handle = direct.samplerHeap->GetGPUDescriptorHandleForHeapStart();
     handle.ptr += (SIZE_T)index * direct.samplerSize;
@@ -945,9 +977,15 @@ static void dx_flush_descriptors()
     }
     D3D12_GPU_DESCRIPTOR_HANDLE bindlessStart = direct.srvHeap->GetGPUDescriptorHandleForHeapStart();
     if (native->cshader.BytecodeLength)
+    {
         direct.cmd->SetComputeRootDescriptorTable(native->bindlessRoot, bindlessStart);
+        direct.cmd->SetComputeRootDescriptorTable(native->bindlessBufferRoot, bindlessStart);
+    }
     else
+    {
         direct.cmd->SetGraphicsRootDescriptorTable(native->bindlessRoot, bindlessStart);
+        direct.cmd->SetGraphicsRootDescriptorTable(native->bindlessBufferRoot, bindlessStart);
+    }
     if (direct.pushCount)
     {
         if (native->cshader.BytecodeLength)
@@ -987,11 +1025,11 @@ void dx_load_library(ID3D12Device* device, ID3D12CommandQueue* queue)
     heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
     direct.device->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&direct.dsvHeap));
     heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-    heapDesc.NumDescriptors = DX_BINDLESS_SRV_CAPACITY;
+    heapDesc.NumDescriptors = DX_BINDLESS_SRV_CAPACITY + DX_BINDLESS_BUFFER_CAPACITY;
     heapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
     direct.device->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&direct.srvHeap));
     heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER;
-    heapDesc.NumDescriptors = 256;
+    heapDesc.NumDescriptors = DX_DYNAMIC_SAMPLER_COUNT;
     direct.device->CreateDescriptorHeap(&heapDesc, IID_PPV_ARGS(&direct.samplerHeap));
 
     direct.rtvSize = direct.device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
@@ -1001,6 +1039,7 @@ void dx_load_library(ID3D12Device* device, ID3D12CommandQueue* queue)
     direct.srvCursor = 1;
     direct.samplerCursor = 0;
     direct.bindlessCursor = DX_DYNAMIC_SRV_COUNT;
+    direct.bindlessBufferCursor = 1;
 
     direct.device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&direct.fence));
     direct.fenceEvent = CreateEventW(nullptr, FALSE, FALSE, nullptr);
@@ -1170,6 +1209,8 @@ void dx_unload_library()
     direct.textureViews.clear();
     direct.bindlessFree.clear();
     direct.bindlessCursor = 0;
+    direct.bindlessBufferFree.clear();
+    direct.bindlessBufferCursor = 1;
     for (auto& item : direct.textures)
         item.second.handle.Reset();
     direct.textures.clear();
@@ -1341,6 +1382,27 @@ rt_buffer_t dx_create_buffer(rt_buffer_info_t const& info)
     result.size = info.size;
     result.usages = info.usages;
     result.native = &native;
+    if (info.usages & RT_BUFFER_USAGE_BINDLESS)
+    {
+        uint32_t index = dx_alloc_bindless_buffer();
+        if (index)
+        {
+            D3D12_SHADER_RESOURCE_VIEW_DESC srv = {};
+            srv.Format = DXGI_FORMAT_R32_TYPELESS;
+            srv.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
+            srv.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+            srv.Buffer.FirstElement = 0;
+            srv.Buffer.NumElements = (UINT)(desc.Width / 4);
+            srv.Buffer.Flags = D3D12_BUFFER_SRV_FLAG_RAW;
+            direct.device->CreateShaderResourceView(native.handle.Get(), &srv, dx_srv_cpu_index(DX_BINDLESS_SRV_CAPACITY + index));
+            if (native.heap != D3D12_HEAP_TYPE_UPLOAD)
+            {
+                dx_transition_buffer(native, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+            }
+            native.bindless = index;
+            result.bindless = index;
+        }
+    }
     return result;
 }
 
@@ -1350,6 +1412,7 @@ void dx_destroy_buffer(rt_buffer_t& buffer)
     {
         if (native->mapped && native->handle)
             native->handle->Unmap(0, nullptr);
+        dx_release_bindless_buffer(*native);
         direct.buffers.erase(buffer.handle);
     }
     buffer = {};
@@ -1532,7 +1595,7 @@ void dx_destroy_texture(rt_texture_t& texture)
         {
             if (it->second.texture == native)
             {
-                dx_release_bindless(it->second);
+                dx_release_bindless_texture_view(it->second);
                 it = direct.textureViews.erase(it);
             }
             else
@@ -1638,7 +1701,7 @@ rt_texture_view_t dx_create_texture_view(rt_texture_t& texture, rt_texture_view_
     result.native = &native;
     if ((usages & RT_TEXTURE_USAGE_TEXTURE_BINDLESS) && tex->handle)
     {
-        uint32_t index = dx_alloc_bindless();
+        uint32_t index = dx_alloc_bindless_texture_view();
         if (index)
         {
             direct.device->CreateShaderResourceView(tex->handle.Get(), &srv, dx_srv_cpu_index(index));
@@ -1653,7 +1716,7 @@ void dx_destroy_texture_view(rt_texture_view_t& view)
 {
     if (auto* native = dx_texture_view_native(view))
     {
-        dx_release_bindless(*native);
+        dx_release_bindless_texture_view(*native);
         direct.textureViews.erase(view.handle);
     }
     view = {};
@@ -1721,6 +1784,7 @@ static void dx_use_layout(dx_module_native_t& native, rt_layout_t const& layout,
     native.rootSignature = src->rootSignature;
     native.descriptorCount = src->count;
     native.bindlessRoot = src->bindlessRoot;
+    native.bindlessBufferRoot = src->bindlessBufferRoot;
     for (uint32_t i = 0; i < src->count; ++i)
     {
         native.kinds[i] = src->kinds[i];
@@ -1741,7 +1805,7 @@ rt_layout_t dx_create_layout(rt_layout_info_t const& info)
     auto handle = direct.layoutID + 1;
     auto& native = direct.layouts[handle];
     D3D12_DESCRIPTOR_RANGE ranges[RT_MAX_BINDING_HANDLE_NUM] = {};
-    D3D12_ROOT_PARAMETER params[2 + RT_MAX_BINDING_HANDLE_NUM] = {};
+    D3D12_ROOT_PARAMETER params[3 + RT_MAX_BINDING_HANDLE_NUM] = {};
     params[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
     params[0].Constants.ShaderRegister = 16;
     params[0].Constants.RegisterSpace = 0;
@@ -1804,6 +1868,18 @@ rt_layout_t dx_create_layout(rt_layout_info_t const& info)
     params[paramCount].DescriptorTable.pDescriptorRanges = &bindlessRange;
     params[paramCount].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
     native.bindlessRoot = paramCount;
+    paramCount++;
+    D3D12_DESCRIPTOR_RANGE bindlessBufferRange = {};
+    bindlessBufferRange.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
+    bindlessBufferRange.NumDescriptors = DX_BINDLESS_BUFFER_CAPACITY;
+    bindlessBufferRange.BaseShaderRegister = 0;
+    bindlessBufferRange.RegisterSpace = 2;
+    bindlessBufferRange.OffsetInDescriptorsFromTableStart = DX_BINDLESS_SRV_CAPACITY;
+    params[paramCount].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+    params[paramCount].DescriptorTable.NumDescriptorRanges = 1;
+    params[paramCount].DescriptorTable.pDescriptorRanges = &bindlessBufferRange;
+    params[paramCount].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+    native.bindlessBufferRoot = paramCount;
     paramCount++;
     D3D12_ROOT_SIGNATURE_DESC desc = {};
     desc.NumParameters = paramCount;

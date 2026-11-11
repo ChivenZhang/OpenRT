@@ -52,6 +52,7 @@ enum rt_buffer_usage_t : uint32_t
     RT_BUFFER_USAGE_STORAGE       = 0x0080,
     RT_BUFFER_USAGE_INDIRECT      = 0x0100,
     RT_BUFFER_USAGE_QUERY_RESOLVE = 0x0200,
+    RT_BUFFER_USAGE_BINDLESS      = 0x0400,
 };
 using rt_buffer_usages_t = uint32_t;
 
@@ -416,13 +417,14 @@ struct rt_buffer_t
     uint32_t handle = 0;
     size_t size = 0;
     rt_buffer_usages_t usages = 0;
+    uint64_t bindless = 0; // Native SSBO handle. Cast with rt_limits_t::max_bindless_handle_size before writing an SSBO
     void* native = nullptr;
 };
 
 struct rt_buffer_info_t
 {
     size_t size = 0;                    // 缓冲区大小（字节）
-    rt_buffer_usages_t usages = RT_BUFFER_USAGE_MAP_READ | RT_BUFFER_USAGE_MAP_WRITE | RT_BUFFER_USAGE_COPY_SRC | RT_BUFFER_USAGE_COPY_DST; // rt_buffer_usage_t
+    rt_buffer_usages_t usages = RT_BUFFER_USAGE_MAP_READ | RT_BUFFER_USAGE_MAP_WRITE | RT_BUFFER_USAGE_COPY_SRC | RT_BUFFER_USAGE_COPY_DST;
     const void* data = nullptr;         // 初始数据指针，可为 nullptr
 };
 
@@ -540,9 +542,9 @@ struct rt_sampler_info_t
 {
     rt_filter_t min_filter = RT_LINEAR_MIPMAP_LINEAR;  // RT_NEAREST / RT_LINEAR / RT_NEAREST_MIPMAP_NEAREST / RT_LINEAR_MIPMAP_NEAREST / RT_NEAREST_MIPMAP_LINEAR / RT_LINEAR_MIPMAP_LINEAR
     rt_filter_t mag_filter = RT_LINEAR;                // RT_NEAREST / RT_LINEAR
-    rt_address_t address_u = RT_REPEAT;                    // RT_REPEAT / RT_MIRRORED_REPEAT / RT_CLAMP_TO_EDGE / RT_CLAMP_TO_BORDER / RT_MIRROR_CLAMP_TO_EDGE
-    rt_address_t address_v = RT_REPEAT;                    // RT_REPEAT / RT_MIRRORED_REPEAT / RT_CLAMP_TO_EDGE / RT_CLAMP_TO_BORDER / RT_MIRROR_CLAMP_TO_EDGE
-    rt_address_t address_w = RT_REPEAT;                    // RT_REPEAT / RT_MIRRORED_REPEAT / RT_CLAMP_TO_EDGE / RT_CLAMP_TO_BORDER / RT_MIRROR_CLAMP_TO_EDGE
+    rt_address_t address_u = RT_REPEAT;                // RT_REPEAT / RT_MIRRORED_REPEAT / RT_CLAMP_TO_EDGE / RT_CLAMP_TO_BORDER / RT_MIRROR_CLAMP_TO_EDGE
+    rt_address_t address_v = RT_REPEAT;                // RT_REPEAT / RT_MIRRORED_REPEAT / RT_CLAMP_TO_EDGE / RT_CLAMP_TO_BORDER / RT_MIRROR_CLAMP_TO_EDGE
+    rt_address_t address_w = RT_REPEAT;                // RT_REPEAT / RT_MIRRORED_REPEAT / RT_CLAMP_TO_EDGE / RT_CLAMP_TO_BORDER / RT_MIRROR_CLAMP_TO_EDGE
 };
 
 struct rt_sampler_bind_t

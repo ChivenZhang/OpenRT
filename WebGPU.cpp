@@ -1135,6 +1135,7 @@ rt_buffer_t wg_create_buffer(rt_buffer_info_t const& info)
     result.handle = handle;
     result.size = info.size;
     result.usages = info.usages;
+    result.bindless = 0;
     result.native = &native;
     return result;
 }

@@ -464,6 +464,8 @@ static GLenum rt_to_gl_primitive(rt_primitive_t primitive)
 struct gl_buffer_native_t
 {
     GLuint handle = 0;
+    GLuint64 bindless = 0;
+    bool resident = false;
 };
 
 struct gl_texture_native_t
@@ -633,7 +635,7 @@ static GLuint gl_sampler_name(rt_sampler_t const& sampler)
     return native ? native->handle : 0;
 }
 
-static void gl_release_bindless(gl_texture_view_native_t& native);
+static void gl_release_bindless_texture_view(gl_texture_view_native_t& native);
 
 static uint32_t gl_limit(GLenum name);
 static uint32_t gl_limit3(GLenum a, GLenum b, GLenum c);
@@ -802,7 +804,7 @@ void gl_unload_library()
     opengl.bindings.clear();
     for (auto& item : opengl.textureViews)
     {
-        gl_release_bindless(item.second);
+        gl_release_bindless_texture_view(item.second);
         if (item.second.handle)
             glDeleteTextures(1, &item.second.handle);
     }
@@ -816,7 +818,15 @@ void gl_unload_library()
     for (auto& item : opengl.buffers)
     {
         if (item.second.handle)
+        {
+            if (item.second.resident && GLEW_NV_shader_buffer_load)
+            {
+                glBindBuffer(GL_ARRAY_BUFFER, item.second.handle);
+                glMakeBufferNonResidentNV(GL_ARRAY_BUFFER);
+                glBindBuffer(GL_ARRAY_BUFFER, 0);
+            }
             glDeleteBuffers(1, &item.second.handle);
+        }
     }
     opengl.buffers.clear();
     opengl.meshes.clear();
@@ -949,6 +959,20 @@ rt_buffer_t gl_create_buffer(rt_buffer_info_t const& info)
         flags |= GL_MAP_WRITE_BIT;
 
     glBufferStorage(GL_ARRAY_BUFFER, (GLsizeiptr)info.size, info.data, flags);
+    if ((info.usages & RT_BUFFER_USAGE_BINDLESS) && GLEW_NV_shader_buffer_load)
+    {
+        glMakeBufferResidentNV(GL_ARRAY_BUFFER, GL_READ_WRITE);
+        GLuint64 address = 0;
+        glGetBufferParameterui64vNV(GL_ARRAY_BUFFER, GL_BUFFER_GPU_ADDRESS_NV, &address);
+        if (address)
+        {
+            native.bindless = address;
+            native.resident = true;
+            result.bindless = address;
+        }
+        else
+            glMakeBufferNonResidentNV(GL_ARRAY_BUFFER);
+    }
     glBindBuffer(GL_ARRAY_BUFFER, 0);
 
     opengl.bufferID = handle;
@@ -964,7 +988,17 @@ void gl_destroy_buffer(rt_buffer_t& buffer)
     if (auto* native = gl_buffer_native(buffer))
     {
         if (native->handle)
+        {
+            if (native->resident && GLEW_NV_shader_buffer_load)
+            {
+                glBindBuffer(GL_ARRAY_BUFFER, native->handle);
+                glMakeBufferNonResidentNV(GL_ARRAY_BUFFER);
+                glBindBuffer(GL_ARRAY_BUFFER, 0);
+                native->resident = false;
+                native->bindless = 0;
+            }
             glDeleteBuffers(1, &native->handle);
+        }
         opengl.buffers.erase(buffer.handle);
     }
     buffer = {};
@@ -1000,6 +1034,14 @@ void* gl_map_buffer(rt_buffer_t& buffer, rt_access_t mode, size_t offset, size_t
     }
 
     glBindBuffer(GL_ARRAY_BUFFER, gl_buffer_name(buffer));
+    if (auto* native = gl_buffer_native(buffer))
+    {
+        if (native->resident && GLEW_NV_shader_buffer_load)
+        {
+            glMakeBufferNonResidentNV(GL_ARRAY_BUFFER);
+            native->resident = false;
+        }
+    }
     void* memory = glMapBufferRange(GL_ARRAY_BUFFER, (GLintptr)offset, (GLsizeiptr)size, access);
     glBindBuffer(GL_ARRAY_BUFFER, 0);
     return memory;
@@ -1012,12 +1054,20 @@ void gl_unmap_buffer(rt_buffer_t& buffer)
 
     glBindBuffer(GL_ARRAY_BUFFER, gl_buffer_name(buffer));
     glUnmapBuffer(GL_ARRAY_BUFFER);
+    if (auto* native = gl_buffer_native(buffer))
+    {
+        if (native->bindless && !native->resident && GLEW_NV_shader_buffer_load)
+        {
+            glMakeBufferResidentNV(GL_ARRAY_BUFFER, GL_READ_WRITE);
+            native->resident = true;
+        }
+    }
     glBindBuffer(GL_ARRAY_BUFFER, 0);
 }
 
 // ====================================================================
 
-static void gl_release_bindless(gl_texture_view_native_t& native)
+static void gl_release_bindless_texture_view(gl_texture_view_native_t& native)
 {
     if (native.bindlessHandle)
     {
@@ -1224,7 +1274,7 @@ void gl_destroy_texture(rt_texture_t& texture)
         {
             if (it->second.texture == native)
             {
-                gl_release_bindless(it->second);
+                gl_release_bindless_texture_view(it->second);
                 if (it->second.handle)
                     glDeleteTextures(1, &it->second.handle);
                 it = opengl.textureViews.erase(it);
@@ -1329,7 +1379,7 @@ void gl_destroy_texture_view(rt_texture_view_t& view)
 {
     if (auto* native = gl_texture_view_native(view))
     {
-        gl_release_bindless(*native);
+        gl_release_bindless_texture_view(*native);
         if (native->handle)
             glDeleteTextures(1, &native->handle);
         opengl.textureViews.erase(view.handle);

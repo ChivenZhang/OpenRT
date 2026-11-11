@@ -193,6 +193,7 @@ static VkBufferUsageFlags rt_to_vk_buffer_usage(uint32_t usage)
     if (usage & RT_BUFFER_USAGE_VERTEX) flags |= VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
     if (usage & RT_BUFFER_USAGE_UNIFORM) flags |= VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
     if (usage & RT_BUFFER_USAGE_STORAGE) flags |= VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+    if (usage & RT_BUFFER_USAGE_BINDLESS) flags |= VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
     if (usage & RT_BUFFER_USAGE_INDIRECT) flags |= VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT;
     return flags;
 }
@@ -584,6 +585,7 @@ struct vk_buffer_native_t
     VkDeviceSize mappedSize = 0;
     VkPipelineStageFlags stage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
     VkAccessFlags access = 0;
+    uint32_t bindless = 0;
 };
 
 struct vk_texture_native_t
@@ -738,9 +740,14 @@ struct vk_native_t
     VkImage bindlessImage = nullptr;
     VkDeviceMemory bindlessMemory = nullptr;
     VkImageView bindlessPlaceholder = nullptr;
+    VkBuffer bindlessBuffer = nullptr;
+    VkDeviceMemory bindlessBufferMemory = nullptr;
     uint32_t bindlessCapacity = 0;
     uint32_t bindlessCursor = 1;
     std::vector<uint32_t> bindlessFree;
+    uint32_t bindlessBufferCapacity = 0;
+    uint32_t bindlessBufferCursor = 1;
+    std::vector<uint32_t> bindlessBufferFree;
     std::vector<vk_staging_t> pendingStaging;
 
     PFN_vkCmdDrawMeshTasksNV fnDrawMeshTasksNV = nullptr;
@@ -1104,6 +1111,10 @@ static void vk_destroy_bindless()
             vkDestroyImage(vulkan.device, vulkan.bindlessImage, vulkan.allocator);
         if (vulkan.bindlessMemory)
             vkFreeMemory(vulkan.device, vulkan.bindlessMemory, vulkan.allocator);
+        if (vulkan.bindlessBuffer)
+            vkDestroyBuffer(vulkan.device, vulkan.bindlessBuffer, vulkan.allocator);
+        if (vulkan.bindlessBufferMemory)
+            vkFreeMemory(vulkan.device, vulkan.bindlessBufferMemory, vulkan.allocator);
     }
     vulkan.bindlessPool = nullptr;
     vulkan.bindlessLayout = nullptr;
@@ -1111,12 +1122,17 @@ static void vk_destroy_bindless()
     vulkan.bindlessPlaceholder = nullptr;
     vulkan.bindlessImage = nullptr;
     vulkan.bindlessMemory = nullptr;
+    vulkan.bindlessBuffer = nullptr;
+    vulkan.bindlessBufferMemory = nullptr;
     vulkan.bindlessCapacity = 0;
     vulkan.bindlessCursor = 1;
     vulkan.bindlessFree.clear();
+    vulkan.bindlessBufferCapacity = 0;
+    vulkan.bindlessBufferCursor = 1;
+    vulkan.bindlessBufferFree.clear();
 }
 
-static void vk_write_bindless(uint32_t index, VkImageView view)
+static void vk_write_bindless_texture_view(uint32_t index, VkImageView view)
 {
     if (!vulkan.bindlessSet || index == 0 || index >= vulkan.bindlessCapacity) return;
     VkDescriptorImageInfo imageInfo = {};
@@ -1133,7 +1149,7 @@ static void vk_write_bindless(uint32_t index, VkImageView view)
     vkUpdateDescriptorSets(vulkan.device, 1, &write, 0, nullptr);
 }
 
-static uint32_t vk_alloc_bindless()
+static uint32_t vk_alloc_bindless_texture_view()
 {
     if (!vulkan.bindlessSet) return 0;
     if (!vulkan.bindlessFree.empty())
@@ -1150,11 +1166,54 @@ static uint32_t vk_alloc_bindless()
     return vulkan.bindlessCursor++;
 }
 
-static void vk_release_bindless(vk_texture_view_native_t& native)
+static void vk_release_bindless_texture_view(vk_texture_view_native_t& native)
 {
     if (!native.bindless) return;
-    vk_write_bindless(native.bindless, nullptr);
+    vk_write_bindless_texture_view(native.bindless, nullptr);
     vulkan.bindlessFree.push_back(native.bindless);
+    native.bindless = 0;
+}
+
+static void vk_write_bindless_buffer(uint32_t index, VkBuffer buffer, VkDeviceSize size)
+{
+    if (!vulkan.bindlessSet || index == 0 || index >= vulkan.bindlessBufferCapacity) return;
+    VkDescriptorBufferInfo bufferInfo = {};
+    bufferInfo.buffer = buffer ? buffer : vulkan.bindlessBuffer;
+    bufferInfo.offset = 0;
+    bufferInfo.range = buffer ? size : VK_WHOLE_SIZE;
+    VkWriteDescriptorSet write = {};
+    write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    write.dstSet = vulkan.bindlessSet;
+    write.dstBinding = 2;
+    write.dstArrayElement = index;
+    write.descriptorCount = 1;
+    write.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    write.pBufferInfo = &bufferInfo;
+    vkUpdateDescriptorSets(vulkan.device, 1, &write, 0, nullptr);
+}
+
+static uint32_t vk_alloc_bindless_buffer()
+{
+    if (!vulkan.bindlessSet || vulkan.bindlessBufferCapacity < 2) return 0;
+    if (!vulkan.bindlessBufferFree.empty())
+    {
+        uint32_t index = vulkan.bindlessBufferFree.back();
+        vulkan.bindlessBufferFree.pop_back();
+        return index;
+    }
+    if (vulkan.bindlessBufferCursor >= vulkan.bindlessBufferCapacity)
+    {
+        fprintf(stderr, "Vulkan: bindless buffer heap exhausted");
+        return 0;
+    }
+    return vulkan.bindlessBufferCursor++;
+}
+
+static void vk_release_bindless_buffer(vk_buffer_native_t& native)
+{
+    if (!native.bindless) return;
+    vk_write_bindless_buffer(native.bindless, nullptr, 0);
+    vulkan.bindlessBufferFree.push_back(native.bindless);
     native.bindless = 0;
 }
 
@@ -1169,34 +1228,65 @@ static void vk_init_bindless()
     uint32_t limit = indexing.maxDescriptorSetUpdateAfterBindSampledImages;
     if (limit < 2) return;
     uint32_t count = limit > 65536u ? 65536u : limit;
+    uint32_t bufferLimit = indexing.maxDescriptorSetUpdateAfterBindStorageBuffers;
+    uint32_t bufferCount = bufferLimit < 2 ? 0u : (bufferLimit > 65536u ? 65536u : bufferLimit);
 
-    VkDescriptorPoolSize poolSize = {VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, count};
-    VkDescriptorPoolCreateInfo poolInfo = {};
-    poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-    poolInfo.flags = VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT;
-    poolInfo.maxSets = 1;
-    poolInfo.poolSizeCount = 1;
-    poolInfo.pPoolSizes = &poolSize;
-    if (vkCreateDescriptorPool(vulkan.device, &poolInfo, vulkan.allocator, &vulkan.bindlessPool) != VK_SUCCESS)
-        return;
+    VkDescriptorSetLayoutBinding bindings[2] = {};
+    VkDescriptorBindingFlags bindingFlags[2] = {};
+    uint32_t bindingCount = 0;
+    bindings[bindingCount].binding = 0;
+    bindings[bindingCount].descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
+    bindings[bindingCount].descriptorCount = count;
+    bindings[bindingCount].stageFlags = VK_SHADER_STAGE_ALL;
+    bindingFlags[bindingCount] = VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT | VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT;
+    bindingCount++;
+    if (bufferCount >= 2)
+    {
+        bindings[bindingCount].binding = 2;
+        bindings[bindingCount].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        bindings[bindingCount].descriptorCount = bufferCount;
+        bindings[bindingCount].stageFlags = VK_SHADER_STAGE_ALL;
+        bindingFlags[bindingCount] = VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT | VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT;
+        bindingCount++;
+    }
 
-    VkDescriptorBindingFlags bindingFlags = VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT | VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT;
-    VkDescriptorSetLayoutBinding binding = {};
-    binding.binding = 0;
-    binding.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
-    binding.descriptorCount = count;
-    binding.stageFlags = VK_SHADER_STAGE_ALL;
     VkDescriptorSetLayoutBindingFlagsCreateInfo flagsInfo = {};
     flagsInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO;
-    flagsInfo.bindingCount = 1;
-    flagsInfo.pBindingFlags = &bindingFlags;
+    flagsInfo.bindingCount = bindingCount;
+    flagsInfo.pBindingFlags = bindingFlags;
     VkDescriptorSetLayoutCreateInfo layoutInfo = {};
     layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
     layoutInfo.pNext = &flagsInfo;
     layoutInfo.flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT;
-    layoutInfo.bindingCount = 1;
-    layoutInfo.pBindings = &binding;
-    if (vkCreateDescriptorSetLayout(vulkan.device, &layoutInfo, vulkan.allocator, &vulkan.bindlessLayout) != VK_SUCCESS)
+    layoutInfo.bindingCount = bindingCount;
+    layoutInfo.pBindings = bindings;
+    VkDescriptorSetLayout layout = VK_NULL_HANDLE;
+    if (vkCreateDescriptorSetLayout(vulkan.device, &layoutInfo, vulkan.allocator, &layout) != VK_SUCCESS)
+        layout = VK_NULL_HANDLE;
+    if (!layout && bindingCount > 1 && bufferCount >= 2)
+    {
+        bufferCount = 0;
+        bindingCount--;
+        flagsInfo.bindingCount = bindingCount;
+        layoutInfo.bindingCount = bindingCount;
+        if (vkCreateDescriptorSetLayout(vulkan.device, &layoutInfo, vulkan.allocator, &layout) != VK_SUCCESS)
+            layout = VK_NULL_HANDLE;
+    }
+    if (!layout) return;
+    vulkan.bindlessLayout = layout;
+
+    VkDescriptorPoolSize poolSizes[2] = {};
+    uint32_t poolSizeCount = 0;
+    poolSizes[poolSizeCount++] = {VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, count};
+    if (bufferCount >= 2)
+        poolSizes[poolSizeCount++] = {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, bufferCount};
+    VkDescriptorPoolCreateInfo poolInfo = {};
+    poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+    poolInfo.flags = VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT;
+    poolInfo.maxSets = 1;
+    poolInfo.poolSizeCount = poolSizeCount;
+    poolInfo.pPoolSizes = poolSizes;
+    if (vkCreateDescriptorPool(vulkan.device, &poolInfo, vulkan.allocator, &vulkan.bindlessPool) != VK_SUCCESS)
     {
         vk_destroy_bindless();
         return;
@@ -1281,8 +1371,37 @@ static void vk_init_bindless()
     vkQueueSubmit(vulkan.queue, 1, &submitInfo, VK_NULL_HANDLE);
     vkQueueWaitIdle(vulkan.queue);
     vkResetCommandBuffer(vulkan.cmdBuffer, 0);
+
+    if (bufferCount >= 2)
+    {
+        VkBufferCreateInfo bufferInfo = {};
+        bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+        bufferInfo.size = 256;
+        bufferInfo.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+        bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+        if (vkCreateBuffer(vulkan.device, &bufferInfo, vulkan.allocator, &vulkan.bindlessBuffer) != VK_SUCCESS)
+        {
+            vk_destroy_bindless();
+            return;
+        }
+        VkMemoryRequirements bufferReq = {};
+        vkGetBufferMemoryRequirements(vulkan.device, vulkan.bindlessBuffer, &bufferReq);
+        VkMemoryAllocateInfo bufferMem = {};
+        bufferMem.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+        bufferMem.allocationSize = bufferReq.size;
+        bufferMem.memoryTypeIndex = vk_find_memory_type(bufferReq.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+        if (vkAllocateMemory(vulkan.device, &bufferMem, vulkan.allocator, &vulkan.bindlessBufferMemory) != VK_SUCCESS ||
+            vkBindBufferMemory(vulkan.device, vulkan.bindlessBuffer, vulkan.bindlessBufferMemory, 0) != VK_SUCCESS)
+        {
+            vk_destroy_bindless();
+            return;
+        }
+    }
+
     vulkan.bindlessCapacity = count;
     vulkan.bindlessCursor = 1;
+    vulkan.bindlessBufferCapacity = bufferCount;
+    vulkan.bindlessBufferCursor = 1;
 }
 
 static uint32_t vk_sample_count(VkSampleCountFlags flags);
@@ -1518,6 +1637,7 @@ void vk_unload_library()
     }
     vulkan.layouts.clear();
 
+    vk_destroy_bindless();
     for (auto& item : vulkan.buffers)
     {
         auto& buffer = item.second;
@@ -1528,7 +1648,6 @@ void vk_unload_library()
     }
     vulkan.buffers.clear();
 
-    vk_destroy_bindless();
     for (auto& item : vulkan.textureViews)
     {
         if (item.second.handle)
@@ -1714,6 +1833,39 @@ rt_buffer_t vk_create_buffer(rt_buffer_info_t const& info)
             vkUnmapMemory(vulkan.device, native.memory);
             native.stage = VK_PIPELINE_STAGE_HOST_BIT;
             native.access = VK_ACCESS_HOST_WRITE_BIT;
+            if (info.usages & RT_BUFFER_USAGE_BINDLESS)
+            {
+                bool immediate = vulkan.currentPassType == RT_MODULE_NONE;
+                if (immediate)
+                {
+                    VkCommandBufferBeginInfo beginInfo = {};
+                    beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+                    beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+                    if (vkBeginCommandBuffer(vulkan.cmdBuffer, &beginInfo) != VK_SUCCESS)
+                    {
+                        fprintf(stderr, "Vulkan: failed to begin command buffer");
+                        abort();
+                    }
+                }
+                vk_transition_buffer(native,
+                    VK_PIPELINE_STAGE_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                    VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT);
+                if (immediate)
+                {
+                    if (vkEndCommandBuffer(vulkan.cmdBuffer) != VK_SUCCESS)
+                    {
+                        fprintf(stderr, "Vulkan: failed to end command buffer");
+                        abort();
+                    }
+                    VkSubmitInfo submitInfo = {};
+                    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+                    submitInfo.commandBufferCount = 1;
+                    submitInfo.pCommandBuffers = &vulkan.cmdBuffer;
+                    vkQueueSubmit(vulkan.queue, 1, &submitInfo, VK_NULL_HANDLE);
+                    vkQueueWaitIdle(vulkan.queue);
+                    vkResetCommandBuffer(vulkan.cmdBuffer, 0);
+                }
+            }
         }
         else
         {
@@ -1739,6 +1891,12 @@ rt_buffer_t vk_create_buffer(rt_buffer_info_t const& info)
                 VkBufferCopy region = {0, 0, info.size};
                 vkCmdCopyBuffer(vulkan.cmdBuffer, staging.buffer, native.handle, 1, &region);
                 vulkan.pendingStaging.push_back(staging);
+                if (info.usages & RT_BUFFER_USAGE_BINDLESS)
+                {
+                    vk_transition_buffer(native,
+                        VK_PIPELINE_STAGE_VERTEX_SHADER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                        VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT);
+                }
                 if (immediate)
                 {
                     if (vkEndCommandBuffer(vulkan.cmdBuffer) != VK_SUCCESS)
@@ -1764,6 +1922,16 @@ rt_buffer_t vk_create_buffer(rt_buffer_info_t const& info)
     result.size = info.size;
     result.usages = info.usages;
     result.native = &native;
+    if (info.usages & RT_BUFFER_USAGE_BINDLESS)
+    {
+        uint32_t index = vk_alloc_bindless_buffer();
+        if (index)
+        {
+            vk_write_bindless_buffer(index, native.handle, info.size);
+            native.bindless = index;
+            result.bindless = index;
+        }
+    }
     return result;
 }
 
@@ -1778,6 +1946,7 @@ void vk_destroy_buffer(rt_buffer_t& buffer)
                 vkUnmapMemory(vulkan.device, native->memory);
                 native->mapped = nullptr;
             }
+            vk_release_bindless_buffer(*native);
             if (native->handle) vkDestroyBuffer(vulkan.device, native->handle, vulkan.allocator);
             if (native->memory) vkFreeMemory(vulkan.device, native->memory, vulkan.allocator);
             vulkan.buffers.erase(buffer.handle);
@@ -1979,7 +2148,7 @@ void vk_destroy_texture(rt_texture_t& texture)
             {
                 if (view->second.texture == native)
                 {
-                    vk_release_bindless(view->second);
+                    vk_release_bindless_texture_view(view->second);
                     if (view->second.handle)
                         vkDestroyImageView(vulkan.device, view->second.handle, vulkan.allocator);
                     view = vulkan.textureViews.erase(view);
@@ -2063,10 +2232,10 @@ rt_texture_view_t vk_create_texture_view(rt_texture_t& texture, rt_texture_view_
     result.native = &native;
     if (usages & RT_TEXTURE_USAGE_TEXTURE_BINDLESS)
     {
-        uint32_t index = vk_alloc_bindless();
+        uint32_t index = vk_alloc_bindless_texture_view();
         if (index)
         {
-            vk_write_bindless(index, imageView);
+            vk_write_bindless_texture_view(index, imageView);
             native.bindless = index;
             result.bindless = index;
         }
@@ -2078,7 +2247,7 @@ void vk_destroy_texture_view(rt_texture_view_t& view)
 {
     if (auto* native = vk_texture_view_native(view))
     {
-        vk_release_bindless(*native);
+        vk_release_bindless_texture_view(*native);
         if (vulkan.device && native->handle)
             vkDestroyImageView(vulkan.device, native->handle, vulkan.allocator);
         vulkan.textureViews.erase(view.handle);
