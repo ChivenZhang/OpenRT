@@ -898,9 +898,7 @@ void wg_load_library(WGPUDevice device, WGPUQueue queue)
     rt_draw_array = wg_draw_array;
     rt_draw_index = wg_draw_index;
     rt_draw_array_indirect = wg_draw_array_indirect;
-    rt_draw_array_indirect_multi = wg_draw_array_indirect_multi;
     rt_draw_index_indirect = wg_draw_index_indirect;
-    rt_draw_index_indirect_multi = wg_draw_index_indirect_multi;
     rt_draw_mesh_multi = wg_draw_mesh_multi;
     rt_draw_meshlet = wg_draw_meshlet;
     rt_submit = wg_submit;
@@ -1079,9 +1077,7 @@ void wg_unload_library()
     if (rt_draw_array == wg_draw_array) rt_draw_array = nullptr;
     if (rt_draw_index == wg_draw_index) rt_draw_index = nullptr;
     if (rt_draw_array_indirect == wg_draw_array_indirect) rt_draw_array_indirect = nullptr;
-    if (rt_draw_array_indirect_multi == wg_draw_array_indirect_multi) rt_draw_array_indirect_multi = nullptr;
     if (rt_draw_index_indirect == wg_draw_index_indirect) rt_draw_index_indirect = nullptr;
-    if (rt_draw_index_indirect_multi == wg_draw_index_indirect_multi) rt_draw_index_indirect_multi = nullptr;
     if (rt_draw_mesh_multi == wg_draw_mesh_multi) rt_draw_mesh_multi = nullptr;
     if (rt_draw_meshlet == wg_draw_meshlet) rt_draw_meshlet = nullptr;
     if (rt_submit == wg_submit) rt_submit = nullptr;
@@ -2295,28 +2291,7 @@ void wg_draw_index(rt_buffer_view_t vbo[], uint32_t vbo_num, rt_buffer_view_t& e
     wgpuRenderPassEncoderDrawIndexed(webgpu.renderPass, index_num, instance_num, index_start, (int32_t)vertex_start, instance_start);
 }
 
-void wg_draw_array_indirect(rt_buffer_view_t vbo[], uint32_t vbo_num, rt_buffer_t& indirect, size_t offset)
-{
-    if (webgpu.currentPipeline == nullptr)
-    {
-        fprintf(stderr, "Pipeline not begin");
-        abort();
-    }
-    if (webgpu.currentPassType != RT_MODULE_RENDER)
-    {
-        fprintf(stderr, "Pipeline not begin");
-        abort();
-    }
-    auto* indirectNative = wg_buffer_native(indirect);
-    if (!indirectNative || !indirectNative->handle || !webgpu.renderPass)
-        return;
-    wg_flush_descriptors();
-    wg_bind_draw_vbos(vbo, vbo_num);
-    wg_transition_buffer(*indirectNative, WG_STATE_SHADER_READ);
-    wgpuRenderPassEncoderDrawIndirect(webgpu.renderPass, indirectNative->handle, (uint64_t)offset);
-}
-
-void wg_draw_array_indirect_multi(rt_buffer_view_t vbo[], uint32_t vbo_num, rt_buffer_t& indirect, size_t offset, uint32_t draw_count, uint32_t draw_stride)
+void wg_draw_array_indirect(rt_buffer_view_t vbo[], uint32_t vbo_num, rt_buffer_t& indirect, size_t offset, uint32_t draw_count, uint32_t draw_stride)
 {
     if (webgpu.currentPipeline == nullptr)
     {
@@ -2339,31 +2314,7 @@ void wg_draw_array_indirect_multi(rt_buffer_view_t vbo[], uint32_t vbo_num, rt_b
         wgpuRenderPassEncoderDrawIndirect(webgpu.renderPass, indirectNative->handle, (uint64_t)offset + (uint64_t)stride * i);
 }
 
-void wg_draw_index_indirect(rt_buffer_view_t vbo[], uint32_t vbo_num, rt_buffer_view_t& ebo, rt_buffer_t& indirect, size_t offset)
-{
-    if (webgpu.currentPipeline == nullptr)
-    {
-        fprintf(stderr, "Pipeline not begin");
-        abort();
-    }
-    if (webgpu.currentPassType != RT_MODULE_RENDER)
-    {
-        fprintf(stderr, "Pipeline not begin");
-        abort();
-    }
-    auto* indexNative = wg_buffer_native(ebo.buffer);
-    auto* indirectNative = wg_buffer_native(indirect);
-    if (!indexNative || !indexNative->handle || !indirectNative || !indirectNative->handle || !webgpu.renderPass)
-        return;
-    wg_flush_descriptors();
-    wg_bind_draw_vbos(vbo, vbo_num);
-    wg_transition_buffer(*indexNative, WG_STATE_INDEX);
-    wgpuRenderPassEncoderSetIndexBuffer(webgpu.renderPass, indexNative->handle, rt_to_wg_index_type(wg_current_render_module().index_type), (uint64_t)ebo.offset, wg_buffer_view_size(ebo));
-    wg_transition_buffer(*indirectNative, WG_STATE_SHADER_READ);
-    wgpuRenderPassEncoderDrawIndexedIndirect(webgpu.renderPass, indirectNative->handle, (uint64_t)offset);
-}
-
-void wg_draw_index_indirect_multi(rt_buffer_view_t vbo[], uint32_t vbo_num, rt_buffer_view_t& ebo, rt_buffer_t& indirect, size_t offset, uint32_t draw_count, uint32_t draw_stride)
+void wg_draw_index_indirect(rt_buffer_view_t vbo[], uint32_t vbo_num, rt_buffer_view_t& ebo, rt_buffer_t& indirect, size_t offset, uint32_t draw_count, uint32_t draw_stride)
 {
     if (webgpu.currentPipeline == nullptr)
     {

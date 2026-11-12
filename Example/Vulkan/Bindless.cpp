@@ -47,7 +47,7 @@
 
     void main()
     {
-        uint vertexId = buffers[nonuniformEXT(handles[7])].words[uint(gl_VertexIndex)];
+        uint vertexId = uint(gl_VertexIndex);
         uint positionBuffer = handles[4];
         uint normalBuffer = handles[5];
         uint uvBuffer = handles[6];
@@ -258,7 +258,17 @@ void frame(int width, int height)
     static auto positions = rt_create_buffer({.size = sizeof(cubePositions), .usages = RT_BUFFER_USAGE_BINDLESS, .data = cubePositions});
     static auto normals = rt_create_buffer({.size = sizeof(cubeNormals), .usages = RT_BUFFER_USAGE_BINDLESS, .data = cubeNormals});
     static auto uvs = rt_create_buffer({.size = sizeof(cubeUvs), .usages = RT_BUFFER_USAGE_BINDLESS, .data = cubeUvs});
-    static auto indices = rt_create_buffer({.size = sizeof(cubeIndices), .usages = RT_BUFFER_USAGE_BINDLESS, .data = cubeIndices});
+    static auto indices = rt_create_buffer({.size = sizeof(cubeIndices), .usages = RT_BUFFER_USAGE_INDEX, .data = cubeIndices});
+    struct DrawIndexIndirect
+    {
+        uint32_t indexCount;
+        uint32_t instanceCount;
+        uint32_t firstIndex;
+        int32_t baseVertex;
+        uint32_t firstInstance;
+    };
+    static const DrawIndexIndirect draw = {36, 1, 0, 0, 0};
+    static auto indirect = rt_create_buffer({.size = sizeof(draw), .usages = RT_BUFFER_USAGE_INDIRECT, .data = &draw});
     static const char* files[] = {
         "../../Example/OpenGL/Default.png",
         "../../Example/OpenGL/Example.png",
@@ -279,7 +289,7 @@ void frame(int width, int height)
     };
     static auto limits = rt_get_limits();
     static auto table = rt_create_buffer({
-        .size = (size_t)limits.max_bindless_handle_size * 8,
+        .size = (size_t)limits.max_bindless_handle_size * 7,
         .usages = RT_BUFFER_USAGE_STORAGE | RT_BUFFER_USAGE_MAP_WRITE,
     });
     static auto samp = rt_create_sampler({.min_filter = RT_LINEAR, .mag_filter = RT_LINEAR, .address_u = RT_REPEAT, .address_v = RT_REPEAT,});
@@ -292,8 +302,8 @@ void frame(int width, int height)
     });
     if (auto* memory = rt_map_buffer(table, RT_WRITE_ONLY, 0, table.size))
     {
-        rt_buffer_t geometry[] = {positions, normals, uvs, indices};
-        write_handles(memory, limits.max_bindless_handle_size, textures, 4, geometry, 4);
+        rt_buffer_t geometry[] = {positions, normals, uvs};
+        write_handles(memory, limits.max_bindless_handle_size, textures, 4, geometry, 3);
         rt_unmap_buffer(table);
     }
     {
@@ -311,7 +321,8 @@ void frame(int width, int height)
             meshMat = glm::rotate(meshMat, glm::radians(-18.0f), glm::vec3(1, 0, 0));
             Push push = make_push(projView, meshMat, (uint32_t)i);
             rt_push_constant((const uint8_t*)&push, sizeof(push));
-            rt_draw_array(nullptr, 0, 36, 1, 0, 0);
+            rt_buffer_view_t index = {.buffer = indices};
+            rt_draw_index_indirect(nullptr, 0, index, indirect, 0, 1, 0);
         }
 
         rt_end_render(pass);

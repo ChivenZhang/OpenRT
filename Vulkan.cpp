@@ -1538,9 +1538,7 @@ void vk_load_library(VkInstance instance, VkPhysicalDevice physical, VkDevice de
     rt_draw_array = vk_draw_array;
     rt_draw_index = vk_draw_index;
     rt_draw_array_indirect = vk_draw_array_indirect;
-    rt_draw_array_indirect_multi = vk_draw_array_indirect_multi;
     rt_draw_index_indirect = vk_draw_index_indirect;
-    rt_draw_index_indirect_multi = vk_draw_index_indirect_multi;
     rt_draw_meshlet = vk_draw_meshlet;
     rt_submit = vk_submit;
 
@@ -1748,9 +1746,7 @@ void vk_unload_library()
     if (rt_draw_array == vk_draw_array) rt_draw_array = nullptr;
     if (rt_draw_index == vk_draw_index) rt_draw_index = nullptr;
     if (rt_draw_array_indirect == vk_draw_array_indirect) rt_draw_array_indirect = nullptr;
-    if (rt_draw_array_indirect_multi == vk_draw_array_indirect_multi) rt_draw_array_indirect_multi = nullptr;
     if (rt_draw_index_indirect == vk_draw_index_indirect) rt_draw_index_indirect = nullptr;
-    if (rt_draw_index_indirect_multi == vk_draw_index_indirect_multi) rt_draw_index_indirect_multi = nullptr;
     if (rt_draw_meshlet == vk_draw_meshlet) rt_draw_meshlet = nullptr;
     if (rt_submit == vk_submit) rt_submit = nullptr;
 }
@@ -3299,28 +3295,7 @@ void vk_draw_index(rt_buffer_view_t vbo[], uint32_t vbo_num, rt_buffer_view_t& e
     vkCmdDrawIndexed(vulkan.cmdBuffer, index_num, instance_num, index_start, (int32_t)vertex_start, instance_start);
 }
 
-void vk_draw_array_indirect(rt_buffer_view_t vbo[], uint32_t vbo_num, rt_buffer_t& indirect, size_t offset)
-{
-    if (vulkan.currentPipeline == nullptr)
-    {
-        fprintf(stderr, "Pipeline not begin");
-        abort();
-    }
-    if (vulkan.currentPassType != RT_MODULE_RENDER)
-    {
-        fprintf(stderr, "Pipeline not begin");
-        abort();
-    }
-    auto* indirectNative = vk_buffer_native(indirect);
-    if (!indirectNative)
-        return;
-    vk_flush_descriptors();
-    vk_transition_buffer(*indirectNative, VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT, VK_ACCESS_INDIRECT_COMMAND_READ_BIT);
-    vk_bind_draw_vbos(vbo, vbo_num);
-    vkCmdDrawIndirect(vulkan.cmdBuffer, indirectNative->handle, (VkDeviceSize)offset, 1, sizeof(VkDrawIndirectCommand));
-}
-
-void vk_draw_array_indirect_multi(rt_buffer_view_t vbo[], uint32_t vbo_num, rt_buffer_t& indirect, size_t offset, uint32_t draw_count, uint32_t draw_stride)
+void vk_draw_array_indirect(rt_buffer_view_t vbo[], uint32_t vbo_num, rt_buffer_t& indirect, size_t offset, uint32_t draw_count, uint32_t draw_stride)
 {
     if (vulkan.currentPipeline == nullptr)
     {
@@ -3342,32 +3317,7 @@ void vk_draw_array_indirect_multi(rt_buffer_view_t vbo[], uint32_t vbo_num, rt_b
     vkCmdDrawIndirect(vulkan.cmdBuffer, indirectNative->handle, (VkDeviceSize)offset, draw_count, stride);
 }
 
-void vk_draw_index_indirect(rt_buffer_view_t vbo[], uint32_t vbo_num, rt_buffer_view_t& ebo, rt_buffer_t& indirect, size_t offset)
-{
-    if (vulkan.currentPipeline == nullptr)
-    {
-        fprintf(stderr, "Pipeline not begin");
-        abort();
-    }
-    if (vulkan.currentPassType != RT_MODULE_RENDER)
-    {
-        fprintf(stderr, "Pipeline not begin");
-        abort();
-    }
-    auto* indexNative = vk_buffer_native(ebo.buffer);
-    auto* indirectNative = vk_buffer_native(indirect);
-    if (!indexNative || !indirectNative)
-        return;
-    vk_flush_descriptors();
-    vk_transition_buffer(*indexNative, VK_PIPELINE_STAGE_VERTEX_INPUT_BIT, VK_ACCESS_INDEX_READ_BIT);
-    vk_transition_buffer(*indirectNative, VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT, VK_ACCESS_INDIRECT_COMMAND_READ_BIT);
-    vk_bind_draw_vbos(vbo, vbo_num);
-    rt_module_render_t const& module = vk_current_render_module();
-    vkCmdBindIndexBuffer(vulkan.cmdBuffer, indexNative->handle, (VkDeviceSize)ebo.offset, rt_to_vk_index_type(module.index_type));
-    vkCmdDrawIndexedIndirect(vulkan.cmdBuffer, indirectNative->handle, (VkDeviceSize)offset, 1, sizeof(VkDrawIndexedIndirectCommand));
-}
-
-void vk_draw_index_indirect_multi(rt_buffer_view_t vbo[], uint32_t vbo_num, rt_buffer_view_t& ebo, rt_buffer_t& indirect, size_t offset, uint32_t draw_count, uint32_t draw_stride)
+void vk_draw_index_indirect(rt_buffer_view_t vbo[], uint32_t vbo_num, rt_buffer_view_t& ebo, rt_buffer_t& indirect, size_t offset, uint32_t draw_count, uint32_t draw_stride)
 {
     if (vulkan.currentPipeline == nullptr)
     {

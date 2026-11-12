@@ -52,6 +52,7 @@ void frame(int width, int height)
         out vec3 vertex;
         out vec3 normal;
         out vec2 uv;
+        flat out uint drawId;
 
         layout(std430, binding = 0) readonly buffer Bindless
         {
@@ -59,24 +60,27 @@ void frame(int width, int height)
             uvec2 positions;
             uvec2 normals;
             uvec2 uvs;
-            uvec2 indices;
         };
-
-        uniform mat4 projMat;
-        uniform mat4 viewMat;
-        uniform mat4 meshMat;
+        layout(std430, binding = 2) readonly buffer Transforms
+        {
+            mat4 projMat;
+            mat4 viewMat;
+            mat4 meshMat[];
+        };
 
         void main()
         {
-            uint vertexId = ((uint*)buffer(indices))[uint(gl_VertexID)];
+            drawId = uint(gl_DrawID);
+            mat4 model = meshMat[drawId];
+            uint vertexId = uint(gl_VertexID);
             float* positionData = (float*)buffer(positions);
             float* normalData = (float*)buffer(normals);
             float* uvData = (float*)buffer(uvs);
             vec3 inVertex = vec3(positionData[vertexId * 3 + 0], positionData[vertexId * 3 + 1], positionData[vertexId * 3 + 2]);
             vec3 inNormal = vec3(normalData[vertexId * 3 + 0], normalData[vertexId * 3 + 1], normalData[vertexId * 3 + 2]);
             vec2 inUv = vec2(uvData[vertexId * 2 + 0], uvData[vertexId * 2 + 1]);
-            vertex = vec3(meshMat * vec4(inVertex, 1));
-            normal = vec3(meshMat * vec4(inNormal, 0));
+            vertex = vec3(model * vec4(inVertex, 1));
+            normal = vec3(model * vec4(inNormal, 0));
             uv = inUv;
             gl_Position = projMat * viewMat * vec4(vertex, 1.0);
         }
@@ -87,6 +91,7 @@ void frame(int width, int height)
         in vec3 vertex;
         in vec3 normal;
         in vec2 uv;
+        flat in uint drawId;
         out vec4 final;
 
         layout(std430, binding = 0) readonly buffer Bindless
@@ -95,10 +100,11 @@ void frame(int width, int height)
             uvec2 positions;
             uvec2 normals;
             uvec2 uvs;
-            uvec2 indices;
         };
-
-        uniform uint albedo;
+        layout(std430, binding = 1) readonly buffer Materials
+        {
+            uint albedo[];
+        };
 
         const vec3 LIGHT_POSITION = vec3(5.0, 5.0, 5.0);
         const vec3 LIGHT_COLOR = vec3(1.0, 0.98, 0.94);
@@ -120,7 +126,7 @@ void frame(int width, int height)
 
             vec3 ambient = AMBIENT_COLOR;
             float diff = max(dot(N, L), 0.0);
-            vec3 diffuse = diff * DIFFUSE_COLOR * texture(sampler2D(textures[albedo]), uv).rgb;
+            vec3 diffuse = diff * DIFFUSE_COLOR * texture(sampler2D(textures[albedo[drawId]]), uv).rgb;
             float spec = pow(max(dot(N, H), 0.0), SHININESS);
             vec3 specular = spec * SPECULAR_COLOR;
 
@@ -128,8 +134,13 @@ void frame(int width, int height)
         }
     )";
 
+    static constexpr uint32_t objectCount = 4;
     static auto layout = rt_create_layout({
-        .entry = {{.binding = 0, .type = RT_BINDING_STORAGE_BUFFER}},
+        .entry = {
+            {.binding = 0, .type = RT_BINDING_STORAGE_BUFFER},
+            {.binding = 1, .type = RT_BINDING_STORAGE_BUFFER},
+            {.binding = 2, .type = RT_BINDING_STORAGE_BUFFER},
+        },
     });
     static auto module = rt_create_module_render({
         .layout = layout,
@@ -174,7 +185,32 @@ void frame(int width, int height)
     static auto positions = rt_create_buffer({.size = sizeof(cubePositions), .usages = RT_BUFFER_USAGE_BINDLESS, .data = cubePositions});
     static auto normals = rt_create_buffer({.size = sizeof(cubeNormals), .usages = RT_BUFFER_USAGE_BINDLESS, .data = cubeNormals});
     static auto uvs = rt_create_buffer({.size = sizeof(cubeUvs), .usages = RT_BUFFER_USAGE_BINDLESS, .data = cubeUvs});
-    static auto indices = rt_create_buffer({.size = sizeof(cubeIndices), .usages = RT_BUFFER_USAGE_BINDLESS, .data = cubeIndices});
+    static auto indices = rt_create_buffer({.size = sizeof(cubeIndices), .usages = RT_BUFFER_USAGE_INDEX, .data = cubeIndices});
+    struct DrawIndexIndirect
+    {
+        uint32_t indexCount;
+        uint32_t instanceCount;
+        uint32_t firstIndex;
+        int32_t baseVertex;
+        uint32_t firstInstance;
+    };
+    static const DrawIndexIndirect draw[objectCount] = {
+        {36, 1, 0, 0, 0},
+        {36, 1, 0, 0, 0},
+        {36, 1, 0, 0, 0},
+        {36, 1, 0, 0, 0},
+    };
+    static auto indirect = rt_create_buffer({.size = sizeof(draw), .usages = RT_BUFFER_USAGE_INDIRECT, .data = draw});
+    static const uint32_t albedo[objectCount] = {0, 1, 2, 3};
+    static auto materials = rt_create_buffer({.size = sizeof(albedo), .usages = RT_BUFFER_USAGE_STORAGE, .data = albedo});
+    struct Transforms
+    {
+        glm::mat4 projMat;
+        glm::mat4 viewMat;
+        glm::mat4 meshMat[objectCount];
+    };
+    static_assert(sizeof(Transforms) == sizeof(glm::mat4) * (2 + objectCount));
+    static auto transforms = rt_create_buffer({.size = sizeof(Transforms), .usages = RT_BUFFER_USAGE_STORAGE | RT_BUFFER_USAGE_MAP_WRITE});
     static const char* files[] = {
         "../../Example/OpenGL/Default.png",
         "../../Example/OpenGL/Example.png",
@@ -195,12 +231,16 @@ void frame(int width, int height)
     };
     static auto limits = rt_get_limits();
     static auto table = rt_create_buffer({
-        .size = (size_t)limits.max_bindless_handle_size * 8,
+        .size = (size_t)limits.max_bindless_handle_size * 7,
         .usages = RT_BUFFER_USAGE_STORAGE | RT_BUFFER_USAGE_MAP_WRITE,
     });
     static auto binding = rt_create_binding({
         .layout = layout,
-        .entry = {{.binding = 0, .buffer = table}},
+        .entry = {
+            {.binding = 0, .buffer = table},
+            {.binding = 1, .buffer = materials},
+            {.binding = 2, .buffer = transforms},
+        },
     });
     if (auto* memory = rt_map_buffer(table, RT_WRITE_ONLY, 0, table.size))
     {
@@ -218,7 +258,6 @@ void frame(int width, int height)
             handles[4] = positions.bindless;
             handles[5] = normals.bindless;
             handles[6] = uvs.bindless;
-            handles[7] = indices.bindless;
         }
         rt_unmap_buffer(table);
     }
@@ -228,21 +267,23 @@ void frame(int width, int height)
     rt_bind_module_render(module);
     rt_bind_binding(binding);
 
-    auto projMat = glm::perspective(glm::radians(45.0f), (float)width / (float)height, 0.1f, 100.0f);
-    auto viewMat = glm::lookAt(glm::vec3(0, 2, 8), glm::vec3(0, 0, 0), glm::vec3(0, 1, 0));
-    rt_push_const_mat4("projMat", &projMat[0][0]);
-    rt_push_const_mat4("viewMat", &viewMat[0][0]);
-
     float spin = (float)SDL_GetTicks() / 2000.0f;
-    for (int i = 0; i < 4; ++i)
+    if (auto* memory = rt_map_buffer(transforms, RT_WRITE_ONLY, 0, transforms.size))
     {
-        auto meshMat = glm::translate(glm::mat4(1), places[i]);
-        meshMat = glm::rotate(meshMat, spin + i * 0.4f, glm::vec3(0, 1, 0));
-        meshMat = glm::rotate(meshMat, glm::radians(-18.0f), glm::vec3(1, 0, 0));
-        rt_push_const_mat4("meshMat", &meshMat[0][0]);
-        rt_push_const_uint("albedo", (uint32_t)i);
-        rt_draw_array(nullptr, 0, 36, 1, 0, 0);
+        auto* block = (Transforms*)memory;
+        block->projMat = glm::perspective(glm::radians(45.0f), (float)width / (float)height, 0.1f, 100.0f);
+        block->viewMat = glm::lookAt(glm::vec3(0, 2, 8), glm::vec3(0, 0, 0), glm::vec3(0, 1, 0));
+        for (uint32_t i = 0; i < objectCount; ++i)
+        {
+            auto meshMat = glm::translate(glm::mat4(1), places[i]);
+            meshMat = glm::rotate(meshMat, spin + i * 0.4f, glm::vec3(0, 1, 0));
+            meshMat = glm::rotate(meshMat, glm::radians(-18.0f), glm::vec3(1, 0, 0));
+            block->meshMat[i] = meshMat;
+        }
+        rt_unmap_buffer(transforms);
     }
+    rt_buffer_view_t index = {.buffer = indices};
+    rt_draw_index_indirect(nullptr, 0, index, indirect, 0, objectCount, 0);
 
     rt_end_render(pass);
     present(width, height, pass_color);

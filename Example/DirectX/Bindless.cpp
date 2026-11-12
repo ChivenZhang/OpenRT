@@ -297,6 +297,16 @@ void frame(int width, int height)
     static auto pass_color = rt_create_texture_color(width, height);
     static auto pass_depth = rt_create_texture_depth(width, height);
     static auto cube = rt_create_mesh_cube(1.4f, 1.4f, 1.4f);
+    struct DrawIndexIndirect
+    {
+        uint32_t indexCount;
+        uint32_t instanceCount;
+        uint32_t firstIndex;
+        int32_t baseVertex;
+        uint32_t firstInstance;
+    };
+    static const DrawIndexIndirect draw = {(uint32_t)(cube.index.size / sizeof(uint32_t)), 1, 0, 0, 0};
+    static auto indirect = rt_create_buffer({.size = sizeof(draw), .usages = RT_BUFFER_USAGE_INDIRECT, .data = &draw});
     static const char* files[] = {
         "../../Example/OpenGL/Default.png",
         "../../Example/OpenGL/Example.png",
@@ -350,7 +360,7 @@ void frame(int width, int height)
             rt_push_constant((const uint8_t*)&push, sizeof(push));
             rt_buffer_view_t vertex[] = {{.buffer = cube.vertex[0]}, {.buffer = cube.vertex[1]}, {.buffer = cube.vertex[2]}};
             rt_buffer_view_t index = {.buffer = cube.index};
-            rt_draw_index(vertex, 3, index, cube.index.size / sizeof(uint32_t), 1, 0, 0, 0);
+            rt_draw_index_indirect(vertex, 3, index, indirect, 0, 1, 0);
         }
 
         rt_end_render(pass);

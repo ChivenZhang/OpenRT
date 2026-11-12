@@ -1206,9 +1206,7 @@ void mt_load_library(MTL::Device* device, MTL::CommandQueue* queue)
     rt_draw_array = mt_draw_array;
     rt_draw_index = mt_draw_index;
     rt_draw_array_indirect = mt_draw_array_indirect;
-    rt_draw_array_indirect_multi = mt_draw_array_indirect_multi;
     rt_draw_index_indirect = mt_draw_index_indirect;
-    rt_draw_index_indirect_multi = mt_draw_index_indirect_multi;
     rt_draw_mesh_multi = mt_draw_mesh_multi;
     rt_draw_meshlet = mt_draw_meshlet;
     rt_submit = mt_submit;
@@ -1371,9 +1369,7 @@ void mt_unload_library()
     if (rt_draw_array == mt_draw_array) rt_draw_array = nullptr;
     if (rt_draw_index == mt_draw_index) rt_draw_index = nullptr;
     if (rt_draw_array_indirect == mt_draw_array_indirect) rt_draw_array_indirect = nullptr;
-    if (rt_draw_array_indirect_multi == mt_draw_array_indirect_multi) rt_draw_array_indirect_multi = nullptr;
     if (rt_draw_index_indirect == mt_draw_index_indirect) rt_draw_index_indirect = nullptr;
-    if (rt_draw_index_indirect_multi == mt_draw_index_indirect_multi) rt_draw_index_indirect_multi = nullptr;
     if (rt_draw_mesh_multi == mt_draw_mesh_multi) rt_draw_mesh_multi = nullptr;
     if (rt_draw_meshlet == mt_draw_meshlet) rt_draw_meshlet = nullptr;
     if (rt_submit == mt_submit) rt_submit = nullptr;
@@ -2405,28 +2401,7 @@ void mt_draw_index(rt_buffer_view_t vbo[], uint32_t vbo_num, rt_buffer_view_t& e
         rt_to_mt_index_type(module.index_type), indexNative->handle, indexOffset, instance_num, (NS::Integer)vertex_start, instance_start);
 }
 
-void mt_draw_array_indirect(rt_buffer_view_t vbo[], uint32_t vbo_num, rt_buffer_t& indirect, size_t offset)
-{
-    if (metal.currentPipeline == nullptr)
-    {
-        fprintf(stderr, "Pipeline not begin");
-        abort();
-    }
-    if (metal.currentPassType != RT_MODULE_RENDER)
-    {
-        fprintf(stderr, "Pipeline not begin");
-        abort();
-    }
-    auto* indirectNative = mt_buffer_native(indirect);
-    if (!indirectNative || !indirectNative->handle)
-        return;
-    mt_flush_descriptors();
-    mt_bind_draw_vbos(vbo, vbo_num);
-    mt_transition_buffer(*indirectNative, MTL_STATE_SHADER_READ);
-    metal.renderEncoder->drawPrimitives(mt_draw_primitive(), indirectNative->handle, (NS::UInteger)offset);
-}
-
-void mt_draw_array_indirect_multi(rt_buffer_view_t vbo[], uint32_t vbo_num, rt_buffer_t& indirect, size_t offset, uint32_t draw_count, uint32_t draw_stride)
+void mt_draw_array_indirect(rt_buffer_view_t vbo[], uint32_t vbo_num, rt_buffer_t& indirect, size_t offset, uint32_t draw_count, uint32_t draw_stride)
 {
     if (metal.currentPipeline == nullptr)
     {
@@ -2449,32 +2424,7 @@ void mt_draw_array_indirect_multi(rt_buffer_view_t vbo[], uint32_t vbo_num, rt_b
         metal.renderEncoder->drawPrimitives(mt_draw_primitive(), indirectNative->handle, (NS::UInteger)offset + (NS::UInteger)stride * i);
 }
 
-void mt_draw_index_indirect(rt_buffer_view_t vbo[], uint32_t vbo_num, rt_buffer_view_t& ebo, rt_buffer_t& indirect, size_t offset)
-{
-    if (metal.currentPipeline == nullptr)
-    {
-        fprintf(stderr, "Pipeline not begin");
-        abort();
-    }
-    if (metal.currentPassType != RT_MODULE_RENDER)
-    {
-        fprintf(stderr, "Pipeline not begin");
-        abort();
-    }
-    auto* indexNative = mt_buffer_native(ebo.buffer);
-    auto* indirectNative = mt_buffer_native(indirect);
-    if (!indexNative || !indexNative->handle || !indirectNative || !indirectNative->handle)
-        return;
-    mt_flush_descriptors();
-    mt_bind_draw_vbos(vbo, vbo_num);
-    mt_transition_buffer(*indexNative, MTL_STATE_INDEX);
-    mt_transition_buffer(*indirectNative, MTL_STATE_SHADER_READ);
-    metal.renderEncoder->drawIndexedPrimitives(mt_draw_primitive(),
-        rt_to_mt_index_type(mt_current_render_module().index_type),
-        indexNative->handle, (NS::UInteger)ebo.offset, indirectNative->handle, (NS::UInteger)offset);
-}
-
-void mt_draw_index_indirect_multi(rt_buffer_view_t vbo[], uint32_t vbo_num, rt_buffer_view_t& ebo, rt_buffer_t& indirect, size_t offset, uint32_t draw_count, uint32_t draw_stride)
+void mt_draw_index_indirect(rt_buffer_view_t vbo[], uint32_t vbo_num, rt_buffer_view_t& ebo, rt_buffer_t& indirect, size_t offset, uint32_t draw_count, uint32_t draw_stride)
 {
     if (metal.currentPipeline == nullptr)
     {
