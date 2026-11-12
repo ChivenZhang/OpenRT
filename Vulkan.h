@@ -50,6 +50,7 @@ void vk_end_compute(rt_pass_compute_t& pass);
 void vk_bind_module_compute(rt_module_compute_t& module);
 void vk_dispatch_compute(uint32_t groupX, uint32_t groupY, uint32_t groupZ);
 void vk_dispatch_compute_indirect(rt_buffer_t& indirect, size_t offset);
+void vk_dispatch_compute_indirect_multi(rt_buffer_t& indirect, size_t offset, uint32_t dispatch_count, uint32_t dispatch_stride);
 
 void vk_begin_render(rt_pass_render_t& pass);
 void vk_end_render(rt_pass_render_t& pass);
@@ -61,7 +62,9 @@ void vk_set_stencil_reference(int32_t refer);
 void vk_draw_array(rt_buffer_view_t vbo[], uint32_t vbo_num, uint32_t vertex_num, uint32_t instance_num, uint32_t vertex_start, uint32_t instance_start);
 void vk_draw_index(rt_buffer_view_t vbo[], uint32_t vbo_num, rt_buffer_view_t& ebo, uint32_t index_num, uint32_t instance_num, uint32_t index_start, uint32_t vertex_start, uint32_t instance_start);
 void vk_draw_array_indirect(rt_buffer_view_t vbo[], uint32_t vbo_num, rt_buffer_t& indirect, size_t offset);
+void vk_draw_array_indirect_multi(rt_buffer_view_t vbo[], uint32_t vbo_num, rt_buffer_t& indirect, size_t offset, uint32_t draw_count, uint32_t draw_stride);
 void vk_draw_index_indirect(rt_buffer_view_t vbo[], uint32_t vbo_num, rt_buffer_view_t& ebo, rt_buffer_t& indirect, size_t offset);
+void vk_draw_index_indirect_multi(rt_buffer_view_t vbo[], uint32_t vbo_num, rt_buffer_view_t& ebo, rt_buffer_t& indirect, size_t offset, uint32_t draw_count, uint32_t draw_stride);
 void vk_draw_mesh_task(uint32_t groupX, uint32_t groupY = 1, uint32_t groupZ = 1);
 void vk_draw_mesh_task_indirect(rt_buffer_t& indirect, size_t offset, uint32_t draw_count, uint32_t draw_stride);
 
@@ -87,10 +90,7 @@ void vk_copy_texture_buffer(rt_buffer_texel_t source, rt_texture_copy_t destinat
 rt_mesh_t vk_create_mesh(const float* vertices, const float* normals, const float* uvs, size_t vertex_count, const unsigned int* indices, size_t index_count);
 void vk_destroy_mesh(rt_mesh_t& mesh);
 void vk_draw_mesh(rt_mesh_t& mesh);
-
-rt_meshlet_t vk_create_meshlet(const float* vertices, const float* normals, const float* uvs, size_t vertex_count, const unsigned int* indices, size_t index_count);
-void vk_destroy_meshlet(rt_meshlet_t& meshlet);
-void vk_draw_meshlet(rt_meshlet_t& meshlet);
+void vk_draw_meshlet(rt_mesh_t& mesh);
 
 void vk_submit();
 

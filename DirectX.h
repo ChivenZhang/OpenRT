@@ -50,6 +50,7 @@ void dx_end_compute(rt_pass_compute_t& pass);
 void dx_bind_module_compute(rt_module_compute_t& module);
 void dx_dispatch_compute(uint32_t groupX, uint32_t groupY, uint32_t groupZ);
 void dx_dispatch_compute_indirect(rt_buffer_t& indirect, size_t offset);
+void dx_dispatch_compute_indirect_multi(rt_buffer_t& indirect, size_t offset, uint32_t dispatch_count, uint32_t dispatch_stride);
 
 void dx_begin_render(rt_pass_render_t& pass);
 void dx_end_render(rt_pass_render_t& pass);
@@ -61,7 +62,9 @@ void dx_set_stencil_reference(int32_t refer);
 void dx_draw_array(rt_buffer_view_t vbo[], uint32_t vbo_num, uint32_t vertex_num, uint32_t instance_num, uint32_t vertex_start, uint32_t instance_start);
 void dx_draw_index(rt_buffer_view_t vbo[], uint32_t vbo_num, rt_buffer_view_t& ebo, uint32_t index_num, uint32_t instance_num, uint32_t index_start, uint32_t vertex_start, uint32_t instance_start);
 void dx_draw_array_indirect(rt_buffer_view_t vbo[], uint32_t vbo_num, rt_buffer_t& indirect, size_t offset);
+void dx_draw_array_indirect_multi(rt_buffer_view_t vbo[], uint32_t vbo_num, rt_buffer_t& indirect, size_t offset, uint32_t draw_count, uint32_t draw_stride);
 void dx_draw_index_indirect(rt_buffer_view_t vbo[], uint32_t vbo_num, rt_buffer_view_t& ebo, rt_buffer_t& indirect, size_t offset);
+void dx_draw_index_indirect_multi(rt_buffer_view_t vbo[], uint32_t vbo_num, rt_buffer_view_t& ebo, rt_buffer_t& indirect, size_t offset, uint32_t draw_count, uint32_t draw_stride);
 void dx_draw_mesh_task(uint32_t groupX, uint32_t groupY = 1, uint32_t groupZ = 1);
 void dx_draw_mesh_task_indirect(rt_buffer_t& indirect, size_t offset, uint32_t draw_count, uint32_t draw_stride);
 
@@ -88,10 +91,7 @@ rt_mesh_t dx_create_mesh(const float* vertices, const float* normals, const floa
 void dx_destroy_mesh(rt_mesh_t& mesh);
 void dx_draw_mesh(rt_mesh_t& mesh);
 void dx_draw_mesh_multi(rt_mesh_t& mesh, uint32_t count);
-
-rt_meshlet_t dx_create_meshlet(const float* vertices, const float* normals, const float* uvs, size_t vertex_count, const unsigned int* indices, size_t index_count);
-void dx_destroy_meshlet(rt_meshlet_t& meshlet);
-void dx_draw_meshlet(rt_meshlet_t& meshlet);
+void dx_draw_meshlet(rt_mesh_t& mesh);
 
 void dx_submit();
 

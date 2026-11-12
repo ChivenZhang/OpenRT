@@ -514,12 +514,6 @@ struct gl_mesh_native_t
     uint32_t indexCount = 0;
 };
 
-struct gl_meshlet_native_t
-{
-    uint32_t vertexCount = 0;
-    uint32_t indexCount = 0;
-};
-
 struct gl_pass_compute_native_t { uint32_t dummy = 0; };
 struct gl_pass_transfer_native_t { uint32_t dummy = 0; };
 
@@ -533,7 +527,6 @@ struct OpenGL
     uint32_t bindingID = 0;
     uint32_t moduleID = 0;
     uint32_t meshID = 0;
-    uint32_t meshletID = 0;
     uint32_t passID = 0;
     rt_limits_t limits;
 
@@ -545,7 +538,6 @@ struct OpenGL
     std::map<uint32_t, gl_binding_native_t> bindings;
     std::map<uint32_t, gl_module_native_t> modules;
     std::map<uint32_t, gl_mesh_native_t> meshes;
-    std::map<uint32_t, gl_meshlet_native_t> meshlets;
     std::map<uint32_t, gl_pass_compute_native_t> computePasses;
     std::map<uint32_t, gl_pass_transfer_native_t> transferPasses;
     GLuint fbo = 0;
@@ -691,6 +683,7 @@ void gl_load_library()
     rt_bind_module_compute = gl_bind_module_compute;
     rt_dispatch_compute = gl_dispatch_compute;
     rt_dispatch_compute_indirect = gl_dispatch_compute_indirect;
+    rt_dispatch_compute_indirect_multi = gl_dispatch_compute_indirect_multi;
     rt_begin_render = gl_begin_render;
     rt_end_render = gl_end_render;
     rt_bind_module_render = gl_bind_module_render;
@@ -701,7 +694,9 @@ void gl_load_library()
     rt_draw_array = gl_draw_array;
     rt_draw_index = gl_draw_index;
     rt_draw_array_indirect = gl_draw_array_indirect;
+    rt_draw_array_indirect_multi = gl_draw_array_indirect_multi;
     rt_draw_index_indirect = gl_draw_index_indirect;
+    rt_draw_index_indirect_multi = gl_draw_index_indirect_multi;
     rt_draw_mesh_task = gl_draw_mesh_task;
     rt_draw_mesh_task_indirect = gl_draw_mesh_task_indirect;
     rt_push_constant = gl_push_constant;
@@ -725,8 +720,6 @@ void gl_load_library()
     rt_destroy_mesh = gl_destroy_mesh;
     rt_draw_mesh = gl_draw_mesh;
     rt_draw_mesh_multi = gl_draw_mesh_multi;
-    rt_create_meshlet = gl_create_meshlet;
-    rt_destroy_meshlet = gl_destroy_meshlet;
     rt_draw_meshlet = gl_draw_meshlet;
     rt_submit = gl_submit;
 
@@ -830,12 +823,11 @@ void gl_unload_library()
     }
     opengl.buffers.clear();
     opengl.meshes.clear();
-    opengl.meshlets.clear();
     opengl.computePasses.clear();
     opengl.transferPasses.clear();
     opengl.bufferID = opengl.textureID = opengl.textureViewID = opengl.samplerID = 0;
     opengl.layoutID = opengl.bindingID = opengl.moduleID = 0;
-    opengl.meshID = opengl.meshletID = opengl.passID = 0;
+    opengl.meshID = opengl.passID = 0;
 
     opengl.currentPassType = RT_MODULE_NONE;
     opengl.currentPipeline = nullptr;
@@ -870,6 +862,7 @@ void gl_unload_library()
     if (rt_bind_module_compute == gl_bind_module_compute) rt_bind_module_compute = nullptr;
     if(rt_dispatch_compute == gl_dispatch_compute) rt_dispatch_compute = nullptr;
     if(rt_dispatch_compute_indirect == gl_dispatch_compute_indirect) rt_dispatch_compute_indirect = nullptr;
+    if(rt_dispatch_compute_indirect_multi == gl_dispatch_compute_indirect_multi) rt_dispatch_compute_indirect_multi = nullptr;
     if(rt_begin_render == gl_begin_render) rt_begin_render = nullptr;
     if(rt_end_render == gl_end_render) rt_end_render = nullptr;
     if (rt_bind_module_render == gl_bind_module_render) rt_bind_module_render = nullptr;
@@ -880,7 +873,9 @@ void gl_unload_library()
     if(rt_draw_array == gl_draw_array) rt_draw_array = nullptr;
     if(rt_draw_index == gl_draw_index) rt_draw_index = nullptr;
     if(rt_draw_array_indirect == gl_draw_array_indirect) rt_draw_array_indirect = nullptr;
+    if(rt_draw_array_indirect_multi == gl_draw_array_indirect_multi) rt_draw_array_indirect_multi = nullptr;
     if(rt_draw_index_indirect == gl_draw_index_indirect) rt_draw_index_indirect = nullptr;
+    if(rt_draw_index_indirect_multi == gl_draw_index_indirect_multi) rt_draw_index_indirect_multi = nullptr;
     if(rt_draw_mesh_task == gl_draw_mesh_task) rt_draw_mesh_task = nullptr;
     if(rt_draw_mesh_task_indirect == gl_draw_mesh_task_indirect) rt_draw_mesh_task_indirect = nullptr;
     if(rt_push_constant == gl_push_constant) rt_push_constant = nullptr;
@@ -903,8 +898,6 @@ void gl_unload_library()
     if(rt_create_mesh == gl_create_mesh) rt_create_mesh = nullptr;
     if(rt_destroy_mesh == gl_destroy_mesh) rt_destroy_mesh = nullptr;
     if(rt_draw_mesh == gl_draw_mesh) rt_draw_mesh = nullptr;
-    if(rt_create_meshlet == gl_create_meshlet) rt_create_meshlet = nullptr;
-    if(rt_destroy_meshlet == gl_destroy_meshlet) rt_destroy_meshlet = nullptr;
     if(rt_draw_meshlet == gl_draw_meshlet) rt_draw_meshlet = nullptr;
     if(rt_submit == gl_submit) rt_submit = nullptr;
 }
@@ -1914,6 +1907,32 @@ void gl_dispatch_compute_indirect(rt_buffer_t& indirect, size_t offset)
     glMemoryBarrier(GL_UNIFORM_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT | GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_SHADER_STORAGE_BARRIER_BIT | GL_COMMAND_BARRIER_BIT);
 }
 
+void gl_dispatch_compute_indirect_multi(rt_buffer_t& indirect, size_t offset, uint32_t dispatch_count, uint32_t dispatch_stride)
+{
+    if (opengl.currentPipeline == nullptr)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    if (opengl.currentPassType != RT_MODULE_COMPUTE)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    if (opengl.currentComputeModule == nullptr)
+    {
+        fprintf(stderr, "Pipeline module not bound");
+        abort();
+    }
+
+    uint32_t stride = dispatch_stride ? dispatch_stride : sizeof(uint32_t) * 3;
+    glBindBuffer(GL_DISPATCH_INDIRECT_BUFFER, gl_buffer_name(indirect));
+    for (uint32_t i = 0; i < dispatch_count; ++i)
+        glDispatchComputeIndirect((GLintptr)offset + (GLintptr)stride * i);
+
+    glMemoryBarrier(GL_UNIFORM_BARRIER_BIT | GL_TEXTURE_FETCH_BARRIER_BIT | GL_SHADER_IMAGE_ACCESS_BARRIER_BIT | GL_SHADER_STORAGE_BARRIER_BIT | GL_COMMAND_BARRIER_BIT);
+}
+
 // ====================================================================
 
 static GLsizei rt_to_gl_vertex_size(rt_vertex_format_t format)
@@ -2476,6 +2495,35 @@ void gl_draw_array_indirect(rt_buffer_view_t vbo[], uint32_t vbo_num, rt_buffer_
     glDrawArraysIndirect(rt_to_gl_primitive(module.primitive), (void*)offset);
 }
 
+void gl_draw_array_indirect_multi(rt_buffer_view_t vbo[], uint32_t vbo_num, rt_buffer_t& indirect, size_t offset, uint32_t draw_count, uint32_t draw_stride)
+{
+    if (opengl.currentPipeline == nullptr)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    if (opengl.currentPassType != RT_MODULE_RENDER)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+
+    rt_module_render_t const& module = gl_current_render_module();
+    uint32_t count = vbo_num;
+    if (count > std::size(module.vertex))
+        count = (uint32_t)std::size(module.vertex);
+    for (uint32_t i = 0; i < count; ++i)
+    {
+        GLsizei stride = rt_to_gl_vertex_stride(module.vertex[i]);
+        if (stride == 0 || !vbo || vbo[i].buffer.handle == 0)
+            continue;
+        glBindVertexBuffer(i, gl_buffer_name(vbo[i].buffer), (GLintptr)vbo[i].offset, stride);
+    }
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+    glBindBuffer(GL_DRAW_INDIRECT_BUFFER, gl_buffer_name(indirect));
+    glMultiDrawArraysIndirect(rt_to_gl_primitive(module.primitive), (void*)offset, (GLsizei)draw_count, (GLsizei)draw_stride);
+}
+
 void gl_draw_index_indirect(rt_buffer_view_t vbo[], uint32_t vbo_num, rt_buffer_view_t& ebo, rt_buffer_t& indirect, size_t offset)
 {
     if (opengl.currentPipeline == nullptr)
@@ -2503,6 +2551,35 @@ void gl_draw_index_indirect(rt_buffer_view_t vbo[], uint32_t vbo_num, rt_buffer_
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, gl_buffer_name(ebo.buffer));
     glBindBuffer(GL_DRAW_INDIRECT_BUFFER, gl_buffer_name(indirect));
     glDrawElementsIndirect(rt_to_gl_primitive(module.primitive), rt_to_gl_index_type(module.index_type), (void*)offset);
+}
+
+void gl_draw_index_indirect_multi(rt_buffer_view_t vbo[], uint32_t vbo_num, rt_buffer_view_t& ebo, rt_buffer_t& indirect, size_t offset, uint32_t draw_count, uint32_t draw_stride)
+{
+    if (opengl.currentPipeline == nullptr)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    if (opengl.currentPassType != RT_MODULE_RENDER)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+
+    rt_module_render_t const& module = gl_current_render_module();
+    uint32_t count = vbo_num;
+    if (count > std::size(module.vertex))
+        count = (uint32_t)std::size(module.vertex);
+    for (uint32_t i = 0; i < count; ++i)
+    {
+        GLsizei stride = rt_to_gl_vertex_stride(module.vertex[i]);
+        if (stride == 0 || !vbo || vbo[i].buffer.handle == 0)
+            continue;
+        glBindVertexBuffer(i, gl_buffer_name(vbo[i].buffer), (GLintptr)vbo[i].offset, stride);
+    }
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, gl_buffer_name(ebo.buffer));
+    glBindBuffer(GL_DRAW_INDIRECT_BUFFER, gl_buffer_name(indirect));
+    glMultiDrawElementsIndirect(rt_to_gl_primitive(module.primitive), rt_to_gl_index_type(module.index_type), (void*)offset, (GLsizei)draw_count, (GLsizei)draw_stride);
 }
 
 void gl_draw_mesh_task(uint32_t groupX, uint32_t groupY, uint32_t groupZ)
@@ -3271,49 +3348,9 @@ void gl_draw_mesh_multi(rt_mesh_t& mesh, uint32_t count)
     }
 }
 
-// ====================================================================
 
-rt_meshlet_t gl_create_meshlet(const float* vertices, // vec4
-                                      const float* normals, // vec4
-                                      const float* uvs, size_t vertex_count, const unsigned int* indices,
-                                      size_t index_count)
-{
-    rt_meshlet_t result = {};
 
-    if (vertices)
-        result.vertex[0] = gl_create_buffer({.size = vertex_count * 4 * sizeof(float), .usages = RT_BUFFER_USAGE_STORAGE | RT_BUFFER_USAGE_COPY_DST, .data = vertices,});
-
-    if (normals)
-        result.vertex[1] = gl_create_buffer({.size = vertex_count * 4 * sizeof(float), .usages = RT_BUFFER_USAGE_STORAGE | RT_BUFFER_USAGE_COPY_DST, .data = normals,});
-
-    if (uvs)
-        result.vertex[2] = gl_create_buffer({.size = vertex_count * 2 * sizeof(float), .usages = RT_BUFFER_USAGE_STORAGE | RT_BUFFER_USAGE_COPY_DST, .data = uvs,});
-
-    if (indices)
-        result.index = gl_create_buffer({.size = index_count * sizeof(uint32_t), .usages = RT_BUFFER_USAGE_STORAGE | RT_BUFFER_USAGE_COPY_DST, .data = indices,});
-
-    std::iota(result.location, result.location + std::size(result.location), 0);
-    auto handle = opengl.meshletID + 1;
-    auto& native = opengl.meshlets[handle];
-    native.vertexCount = (uint32_t)vertex_count;
-    native.indexCount = (uint32_t)index_count;
-    opengl.meshletID = handle;
-    result.handle = handle;
-    result.native = &native;
-    return result;
-}
-
-void gl_destroy_meshlet(rt_meshlet_t& meshlet)
-{
-    for (auto& vertex : meshlet.vertex)
-        gl_destroy_buffer(vertex);
-    gl_destroy_buffer(meshlet.index);
-    opengl.meshlets.erase(meshlet.handle);
-    meshlet.handle = 0;
-    meshlet.native = nullptr;
-}
-
-void gl_draw_meshlet(rt_meshlet_t& meshlet)
+void gl_draw_meshlet(rt_mesh_t& mesh)
 {
     if (opengl.currentPipeline == nullptr)
     {
@@ -3336,11 +3373,11 @@ void gl_draw_meshlet(rt_meshlet_t& meshlet)
             if (attrib.format == RT_VERTEX_NONE)
                 continue;
 
-            for (uint32_t k = 0; k < std::size(meshlet.vertex); ++k)
+            for (uint32_t k = 0; k < std::size(mesh.vertex); ++k)
             {
-                if (meshlet.vertex[k].handle == 0 || meshlet.location[k] != attrib.location)
+                if (mesh.vertex[k].handle == 0 || mesh.location[k] != attrib.location)
                     continue;
-                glBindBufferBase(GL_SHADER_STORAGE_BUFFER, attrib.location, gl_buffer_name(meshlet.vertex[k]));
+                glBindBufferBase(GL_SHADER_STORAGE_BUFFER, attrib.location, gl_buffer_name(mesh.vertex[k]));
                 break;
             }
             if (attrib.location + 1 > index_binding)
@@ -3348,12 +3385,12 @@ void gl_draw_meshlet(rt_meshlet_t& meshlet)
         }
     }
 
-    if (meshlet.index.handle)
+    if (mesh.index.handle)
     {
-        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, index_binding, gl_buffer_name(meshlet.index));
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, index_binding, gl_buffer_name(mesh.index));
         GLsizei index_stride = rt_index_size(module.index_type);
-        auto index_count = (GLsizei)(meshlet.index.size / (size_t)index_stride);
-        glDrawMeshTasksNV(0, index_count / 3);
+        auto index_count = (GLsizei)(mesh.index.size / (size_t)index_stride);
+        gl_draw_mesh_task((uint32_t)(index_count / 3), 1, 1);
     }
 }
 

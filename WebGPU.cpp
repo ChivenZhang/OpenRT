@@ -561,14 +561,13 @@ struct wg_module_native_t
 };
 
 struct wg_mesh_native_t { uint32_t vertexCount = 0, indexCount = 0; };
-struct wg_meshlet_native_t { uint32_t vertexCount = 0, indexCount = 0; };
 struct wg_pass_compute_native_t { uint32_t dummy = 0; };
 struct wg_pass_transfer_native_t { uint32_t dummy = 0; };
 
 struct wg_native_t
 {
     uint32_t bufferID = 0, textureID = 0, textureViewID = 0, samplerID = 0, layoutID = 0, bindingID = 0, moduleID = 0;
-    uint32_t meshID = 0, meshletID = 0, passID = 0;
+    uint32_t meshID = 0, passID = 0;
     rt_limits_t limits;
 
     std::map<uint32_t, wg_buffer_native_t> buffers;
@@ -579,7 +578,6 @@ struct wg_native_t
     std::map<uint32_t, wg_binding_native_t> bindings;
     std::map<uint32_t, wg_module_native_t> modules;
     std::map<uint32_t, wg_mesh_native_t> meshes;
-    std::map<uint32_t, wg_meshlet_native_t> meshlets;
     std::map<uint32_t, wg_pass_compute_native_t> computePasses;
     std::map<uint32_t, wg_pass_transfer_native_t> transferPasses;
 
@@ -867,6 +865,7 @@ void wg_load_library(WGPUDevice device, WGPUQueue queue)
     rt_bind_module_compute = wg_bind_module_compute;
     rt_dispatch_compute = wg_dispatch_compute;
     rt_dispatch_compute_indirect = wg_dispatch_compute_indirect;
+    rt_dispatch_compute_indirect_multi = wg_dispatch_compute_indirect_multi;
     rt_begin_render = wg_begin_render;
     rt_end_render = wg_end_render;
     rt_bind_module_render = wg_bind_module_render;
@@ -899,10 +898,10 @@ void wg_load_library(WGPUDevice device, WGPUQueue queue)
     rt_draw_array = wg_draw_array;
     rt_draw_index = wg_draw_index;
     rt_draw_array_indirect = wg_draw_array_indirect;
+    rt_draw_array_indirect_multi = wg_draw_array_indirect_multi;
     rt_draw_index_indirect = wg_draw_index_indirect;
+    rt_draw_index_indirect_multi = wg_draw_index_indirect_multi;
     rt_draw_mesh_multi = wg_draw_mesh_multi;
-    rt_create_meshlet = wg_create_meshlet;
-    rt_destroy_meshlet = wg_destroy_meshlet;
     rt_draw_meshlet = wg_draw_meshlet;
     rt_submit = wg_submit;
 
@@ -1008,7 +1007,6 @@ void wg_unload_library()
     }
     webgpu.samplers.clear();
     webgpu.meshes.clear();
-    webgpu.meshlets.clear();
     webgpu.computePasses.clear();
     webgpu.transferPasses.clear();
     if (webgpu.pushBuffer) { wgpuBufferRelease(webgpu.pushBuffer); webgpu.pushBuffer = nullptr; }
@@ -1016,7 +1014,7 @@ void wg_unload_library()
     webgpu.device = nullptr;
     webgpu.bufferID = webgpu.textureID = webgpu.textureViewID = webgpu.samplerID = 0;
     webgpu.layoutID = webgpu.bindingID = webgpu.moduleID = 0;
-    webgpu.meshID = webgpu.meshletID = webgpu.passID = 0;
+    webgpu.meshID = webgpu.passID = 0;
     webgpu.currentPassType = RT_MODULE_NONE;
     webgpu.currentPipeline = nullptr;
 
@@ -1048,6 +1046,7 @@ void wg_unload_library()
     if (rt_bind_module_compute == wg_bind_module_compute) rt_bind_module_compute = nullptr;
     if (rt_dispatch_compute == wg_dispatch_compute) rt_dispatch_compute = nullptr;
     if (rt_dispatch_compute_indirect == wg_dispatch_compute_indirect) rt_dispatch_compute_indirect = nullptr;
+    if (rt_dispatch_compute_indirect_multi == wg_dispatch_compute_indirect_multi) rt_dispatch_compute_indirect_multi = nullptr;
     if (rt_begin_render == wg_begin_render) rt_begin_render = nullptr;
     if (rt_end_render == wg_end_render) rt_end_render = nullptr;
     if (rt_bind_module_render == wg_bind_module_render) rt_bind_module_render = nullptr;
@@ -1080,10 +1079,10 @@ void wg_unload_library()
     if (rt_draw_array == wg_draw_array) rt_draw_array = nullptr;
     if (rt_draw_index == wg_draw_index) rt_draw_index = nullptr;
     if (rt_draw_array_indirect == wg_draw_array_indirect) rt_draw_array_indirect = nullptr;
+    if (rt_draw_array_indirect_multi == wg_draw_array_indirect_multi) rt_draw_array_indirect_multi = nullptr;
     if (rt_draw_index_indirect == wg_draw_index_indirect) rt_draw_index_indirect = nullptr;
+    if (rt_draw_index_indirect_multi == wg_draw_index_indirect_multi) rt_draw_index_indirect_multi = nullptr;
     if (rt_draw_mesh_multi == wg_draw_mesh_multi) rt_draw_mesh_multi = nullptr;
-    if (rt_create_meshlet == wg_create_meshlet) rt_create_meshlet = nullptr;
-    if (rt_destroy_meshlet == wg_destroy_meshlet) rt_destroy_meshlet = nullptr;
     if (rt_draw_meshlet == wg_draw_meshlet) rt_draw_meshlet = nullptr;
     if (rt_submit == wg_submit) rt_submit = nullptr;
 }
@@ -2025,6 +2024,36 @@ void wg_dispatch_compute_indirect(rt_buffer_t& indirect, size_t offset)
         wgpuComputePassEncoderDispatchWorkgroupsIndirect(webgpu.computePass, native->handle, (uint64_t)offset);
 }
 
+void wg_dispatch_compute_indirect_multi(rt_buffer_t& indirect, size_t offset, uint32_t dispatch_count, uint32_t dispatch_stride)
+{
+    if (webgpu.currentPipeline == nullptr)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    if (webgpu.currentPassType != RT_MODULE_COMPUTE)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    if (webgpu.currentComputeModule == nullptr)
+    {
+        fprintf(stderr, "Pipeline module not bound");
+        abort();
+    }
+    auto* native = wg_buffer_native(indirect);
+    if (!native || !native->handle)
+        return;
+    wg_flush_descriptors();
+    wg_transition_buffer(*native, WG_STATE_SHADER_READ);
+    uint32_t stride = dispatch_stride ? dispatch_stride : sizeof(uint32_t) * 3;
+    if (webgpu.computePass)
+    {
+        for (uint32_t i = 0; i < dispatch_count; ++i)
+            wgpuComputePassEncoderDispatchWorkgroupsIndirect(webgpu.computePass, native->handle, (uint64_t)offset + (uint64_t)stride * i);
+    }
+}
+
 static uint64_t wg_buffer_view_size(rt_buffer_view_t const& view)
 {
     if (view.size != (size_t)-1U)
@@ -2287,6 +2316,29 @@ void wg_draw_array_indirect(rt_buffer_view_t vbo[], uint32_t vbo_num, rt_buffer_
     wgpuRenderPassEncoderDrawIndirect(webgpu.renderPass, indirectNative->handle, (uint64_t)offset);
 }
 
+void wg_draw_array_indirect_multi(rt_buffer_view_t vbo[], uint32_t vbo_num, rt_buffer_t& indirect, size_t offset, uint32_t draw_count, uint32_t draw_stride)
+{
+    if (webgpu.currentPipeline == nullptr)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    if (webgpu.currentPassType != RT_MODULE_RENDER)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    auto* indirectNative = wg_buffer_native(indirect);
+    if (!indirectNative || !indirectNative->handle || !webgpu.renderPass)
+        return;
+    wg_flush_descriptors();
+    wg_bind_draw_vbos(vbo, vbo_num);
+    wg_transition_buffer(*indirectNative, WG_STATE_SHADER_READ);
+    uint32_t stride = draw_stride ? draw_stride : sizeof(uint32_t) * 4;
+    for (uint32_t i = 0; i < draw_count; ++i)
+        wgpuRenderPassEncoderDrawIndirect(webgpu.renderPass, indirectNative->handle, (uint64_t)offset + (uint64_t)stride * i);
+}
+
 void wg_draw_index_indirect(rt_buffer_view_t vbo[], uint32_t vbo_num, rt_buffer_view_t& ebo, rt_buffer_t& indirect, size_t offset)
 {
     if (webgpu.currentPipeline == nullptr)
@@ -2309,6 +2361,32 @@ void wg_draw_index_indirect(rt_buffer_view_t vbo[], uint32_t vbo_num, rt_buffer_
     wgpuRenderPassEncoderSetIndexBuffer(webgpu.renderPass, indexNative->handle, rt_to_wg_index_type(wg_current_render_module().index_type), (uint64_t)ebo.offset, wg_buffer_view_size(ebo));
     wg_transition_buffer(*indirectNative, WG_STATE_SHADER_READ);
     wgpuRenderPassEncoderDrawIndexedIndirect(webgpu.renderPass, indirectNative->handle, (uint64_t)offset);
+}
+
+void wg_draw_index_indirect_multi(rt_buffer_view_t vbo[], uint32_t vbo_num, rt_buffer_view_t& ebo, rt_buffer_t& indirect, size_t offset, uint32_t draw_count, uint32_t draw_stride)
+{
+    if (webgpu.currentPipeline == nullptr)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    if (webgpu.currentPassType != RT_MODULE_RENDER)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    auto* indexNative = wg_buffer_native(ebo.buffer);
+    auto* indirectNative = wg_buffer_native(indirect);
+    if (!indexNative || !indexNative->handle || !indirectNative || !indirectNative->handle || !webgpu.renderPass)
+        return;
+    wg_flush_descriptors();
+    wg_bind_draw_vbos(vbo, vbo_num);
+    wg_transition_buffer(*indexNative, WG_STATE_INDEX);
+    wgpuRenderPassEncoderSetIndexBuffer(webgpu.renderPass, indexNative->handle, rt_to_wg_index_type(wg_current_render_module().index_type), (uint64_t)ebo.offset, wg_buffer_view_size(ebo));
+    wg_transition_buffer(*indirectNative, WG_STATE_SHADER_READ);
+    uint32_t stride = draw_stride ? draw_stride : sizeof(uint32_t) * 5;
+    for (uint32_t i = 0; i < draw_count; ++i)
+        wgpuRenderPassEncoderDrawIndexedIndirect(webgpu.renderPass, indirectNative->handle, (uint64_t)offset + (uint64_t)stride * i);
 }
 
 void wg_draw_mesh_task(uint32_t, uint32_t, uint32_t)
@@ -2690,53 +2768,16 @@ void wg_draw_mesh_multi(rt_mesh_t& mesh, uint32_t count)
     wg_draw_mesh_impl(mesh, std::max(1u, count));
 }
 
-rt_meshlet_t wg_create_meshlet(const float* vertices, const float* normals, const float* uvs, size_t vertex_count, const unsigned int* indices, size_t index_count)
-{
-    rt_meshlet_t result = {};
-    if (!vertices || vertex_count == 0) return result;
-    uint32_t handle = webgpu.meshletID + 1;
-    auto& native = webgpu.meshlets[handle];
-    native.vertexCount = (uint32_t)vertex_count;
-    native.indexCount = (uint32_t)index_count;
-    if (vertices)
-        result.vertex[0] = wg_create_buffer({.size = vertex_count * 4 * sizeof(float), .usages = RT_BUFFER_USAGE_STORAGE | RT_BUFFER_USAGE_COPY_DST, .data = vertices});
-    if (normals)
-        result.vertex[1] = wg_create_buffer({.size = vertex_count * 4 * sizeof(float), .usages = RT_BUFFER_USAGE_STORAGE | RT_BUFFER_USAGE_COPY_DST, .data = normals});
-    if (uvs)
-        result.vertex[2] = wg_create_buffer({.size = vertex_count * 2 * sizeof(float), .usages = RT_BUFFER_USAGE_STORAGE | RT_BUFFER_USAGE_COPY_DST, .data = uvs});
-    if (indices)
-        result.index = wg_create_buffer({.size = index_count * sizeof(uint32_t), .usages = RT_BUFFER_USAGE_STORAGE | RT_BUFFER_USAGE_COPY_DST, .data = indices});
-    std::iota(result.location, result.location + std::size(result.location), 0);
-    webgpu.meshletID = handle;
-    result.handle = handle;
-    result.native = &native;
-    return result;
-}
 
-void wg_destroy_meshlet(rt_meshlet_t& meshlet)
-{
-    for (auto& vertex : meshlet.vertex)
-        wg_destroy_buffer(vertex);
-    wg_destroy_buffer(meshlet.index);
-    webgpu.meshlets.erase(meshlet.handle);
-    meshlet.handle = 0;
-    meshlet.native = nullptr;
-}
 
-void wg_draw_meshlet(rt_meshlet_t& meshlet)
+void wg_draw_meshlet(rt_mesh_t& mesh)
 {
-    if (webgpu.currentPipeline == nullptr)
-    {
-        fprintf(stderr, "Pipeline not begin");
-        abort();
-    }
-    if (webgpu.currentPassType != RT_MODULE_RENDER)
-    {
-        fprintf(stderr, "Pipeline not begin");
-        abort();
-    }
-    (void)wg_current_render_module();
-    wg_flush_descriptors();
+    if (!mesh.index.handle)
+        return;
+    rt_module_render_t const& module = wg_current_render_module();
+    uint32_t indexStride = rt_to_wg_index_size(module.index_type);
+    uint32_t tasks = indexStride ? (uint32_t)(mesh.index.size / indexStride) / 3 : 0;
+    wg_draw_mesh_task(tasks, 1, 1);
 }
 
 void wg_submit()

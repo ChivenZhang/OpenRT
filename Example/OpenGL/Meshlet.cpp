@@ -30,6 +30,10 @@ void frame(int width, int height)
         layout(max_vertices=256, max_primitives=126) out;
         layout(triangles) out;
 
+        struct vec2_t { float x, y; };
+        struct vec3_t { float x, y, z; };
+        struct vec4_t { float x, y, z, w; };
+
         out PerVertexData
         {
             vec3 vertex;
@@ -44,17 +48,17 @@ void frame(int width, int height)
 
         layout(std430, binding = 0) buffer Vertices
         {
-            vec3 vertices[];
+            vec3_t vertices[];
         };
 
         layout(std430, binding = 1) buffer Normals
         {
-            vec3 normals[];
+            vec3_t normals[];
         };
 
         layout(std430, binding = 2) buffer UVs
         {
-            vec2 uvs[];
+            vec2_t uvs[];
         };
 
         layout(std430, binding = 3) buffer Indices
@@ -186,9 +190,11 @@ void frame(int width, int height)
             for(uint i=0; i<3; ++i)
             {
                 uint index = indices[meshlet_id * 3 + i];
-                in_vertex[i] = vec3(meshMat * vec4(vertices[index], 1));
-                in_uv[i] = uvs[index];
-                in_vertex[i].y = texture(texture1, uvs[index]).r * height;
+                vec2 uv = vec2(uvs[index].x, uvs[index].y);
+                vec3 vertex = vec3(vertices[index].x, vertices[index].y, vertices[index].z);
+                in_vertex[i] = vec3(meshMat * vec4(vertex, 1));
+                in_uv[i] = uv;
+                in_vertex[i].y = texture(texture1, uv).r * height;
             }
             assembleLOD3(in_vertex, in_uv, vid, iid);
 
@@ -288,7 +294,7 @@ void frame(int width, int height)
         });
         rt_bind_binding(binding);
 
-        static auto meshlet = rt_create_meshlet_plane(5, 100);
+        static auto meshlet = rt_create_mesh_plane(5, 100);
         rt_draw_meshlet(meshlet);
 
         rt_end_render(pass);

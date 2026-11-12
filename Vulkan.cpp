@@ -663,12 +663,6 @@ struct vk_mesh_native_t
     uint32_t indexCount = 0;
 };
 
-struct vk_meshlet_native_t
-{
-    uint32_t vertexCount = 0;
-    uint32_t indexCount = 0;
-};
-
 struct vk_pass_compute_native_t
 {
     VkPipelineBindPoint bindPoint = VK_PIPELINE_BIND_POINT_COMPUTE;
@@ -707,7 +701,6 @@ struct vk_native_t
     uint32_t bindingID = 0;
     uint32_t moduleID = 0;
     uint32_t meshID = 0;
-    uint32_t meshletID = 0;
     uint32_t passID = 0;
     rt_limits_t limits;
 
@@ -719,7 +712,6 @@ struct vk_native_t
     std::map<uint32_t, vk_binding_native_t> bindings;
     std::map<uint32_t, vk_module_native_t> modules;
     std::map<uint32_t, vk_mesh_native_t> meshes;
-    std::map<uint32_t, vk_meshlet_native_t> meshlets;
     std::map<uint32_t, vk_pass_compute_native_t> computePasses;
     std::map<uint32_t, vk_pass_transfer_native_t> transferPasses;
     vk_pass_render_native_t renderPass = {};
@@ -1513,6 +1505,7 @@ void vk_load_library(VkInstance instance, VkPhysicalDevice physical, VkDevice de
     rt_bind_module_compute = vk_bind_module_compute;
     rt_dispatch_compute = vk_dispatch_compute;
     rt_dispatch_compute_indirect = vk_dispatch_compute_indirect;
+    rt_dispatch_compute_indirect_multi = vk_dispatch_compute_indirect_multi;
     rt_begin_render = vk_begin_render;
     rt_end_render = vk_end_render;
     rt_bind_module_render = vk_bind_module_render;
@@ -1545,9 +1538,9 @@ void vk_load_library(VkInstance instance, VkPhysicalDevice physical, VkDevice de
     rt_draw_array = vk_draw_array;
     rt_draw_index = vk_draw_index;
     rt_draw_array_indirect = vk_draw_array_indirect;
+    rt_draw_array_indirect_multi = vk_draw_array_indirect_multi;
     rt_draw_index_indirect = vk_draw_index_indirect;
-    rt_create_meshlet = vk_create_meshlet;
-    rt_destroy_meshlet = vk_destroy_meshlet;
+    rt_draw_index_indirect_multi = vk_draw_index_indirect_multi;
     rt_draw_meshlet = vk_draw_meshlet;
     rt_submit = vk_submit;
 
@@ -1681,7 +1674,6 @@ void vk_unload_library()
     }
 
     vulkan.meshes.clear();
-    vulkan.meshlets.clear();
     vulkan.computePasses.clear();
     vulkan.renderPass = {};
     vulkan.transferPasses.clear();
@@ -1691,7 +1683,7 @@ void vk_unload_library()
     vulkan.physicalDevice = nullptr;
     vulkan.bufferID = vulkan.textureID = vulkan.textureViewID = vulkan.samplerID = 0;
     vulkan.layoutID = vulkan.bindingID = vulkan.moduleID = 0;
-    vulkan.meshID = vulkan.meshletID = vulkan.passID = 0;
+    vulkan.meshID = vulkan.passID = 0;
     vulkan.currentPassType = RT_MODULE_NONE;
     vulkan.currentPipeline = nullptr;
 
@@ -1723,6 +1715,7 @@ void vk_unload_library()
     if (rt_bind_module_compute == vk_bind_module_compute) rt_bind_module_compute = nullptr;
     if (rt_dispatch_compute == vk_dispatch_compute) rt_dispatch_compute = nullptr;
     if (rt_dispatch_compute_indirect == vk_dispatch_compute_indirect) rt_dispatch_compute_indirect = nullptr;
+    if (rt_dispatch_compute_indirect_multi == vk_dispatch_compute_indirect_multi) rt_dispatch_compute_indirect_multi = nullptr;
     if (rt_begin_render == vk_begin_render) rt_begin_render = nullptr;
     if (rt_end_render == vk_end_render) rt_end_render = nullptr;
     if (rt_bind_module_render == vk_bind_module_render) rt_bind_module_render = nullptr;
@@ -1755,9 +1748,9 @@ void vk_unload_library()
     if (rt_draw_array == vk_draw_array) rt_draw_array = nullptr;
     if (rt_draw_index == vk_draw_index) rt_draw_index = nullptr;
     if (rt_draw_array_indirect == vk_draw_array_indirect) rt_draw_array_indirect = nullptr;
+    if (rt_draw_array_indirect_multi == vk_draw_array_indirect_multi) rt_draw_array_indirect_multi = nullptr;
     if (rt_draw_index_indirect == vk_draw_index_indirect) rt_draw_index_indirect = nullptr;
-    if (rt_create_meshlet == vk_create_meshlet) rt_create_meshlet = nullptr;
-    if (rt_destroy_meshlet == vk_destroy_meshlet) rt_destroy_meshlet = nullptr;
+    if (rt_draw_index_indirect_multi == vk_draw_index_indirect_multi) rt_draw_index_indirect_multi = nullptr;
     if (rt_draw_meshlet == vk_draw_meshlet) rt_draw_meshlet = nullptr;
     if (rt_submit == vk_submit) rt_submit = nullptr;
 }
@@ -3017,6 +3010,33 @@ void vk_dispatch_compute_indirect(rt_buffer_t& indirect, size_t offset)
     vkCmdDispatchIndirect(vulkan.cmdBuffer, native->handle, (VkDeviceSize)offset);
 }
 
+void vk_dispatch_compute_indirect_multi(rt_buffer_t& indirect, size_t offset, uint32_t dispatch_count, uint32_t dispatch_stride)
+{
+    if (vulkan.currentPipeline == nullptr)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    if (vulkan.currentPassType != RT_MODULE_COMPUTE)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    if (vulkan.currentComputeModule == nullptr)
+    {
+        fprintf(stderr, "Pipeline module not bound");
+        abort();
+    }
+    auto* native = vk_buffer_native(indirect);
+    if (!native)
+        return;
+    vk_flush_descriptors();
+    vk_transition_buffer(*native, VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT, VK_ACCESS_INDIRECT_COMMAND_READ_BIT);
+    uint32_t stride = dispatch_stride ? dispatch_stride : (uint32_t)sizeof(VkDispatchIndirectCommand);
+    for (uint32_t i = 0; i < dispatch_count; ++i)
+        vkCmdDispatchIndirect(vulkan.cmdBuffer, native->handle, (VkDeviceSize)offset + (VkDeviceSize)stride * i);
+}
+
 static void vk_bind_draw_vbos(rt_buffer_view_t vbo[], uint32_t vbo_num)
 {
     rt_module_render_t const& module = vk_current_render_module();
@@ -3300,6 +3320,28 @@ void vk_draw_array_indirect(rt_buffer_view_t vbo[], uint32_t vbo_num, rt_buffer_
     vkCmdDrawIndirect(vulkan.cmdBuffer, indirectNative->handle, (VkDeviceSize)offset, 1, sizeof(VkDrawIndirectCommand));
 }
 
+void vk_draw_array_indirect_multi(rt_buffer_view_t vbo[], uint32_t vbo_num, rt_buffer_t& indirect, size_t offset, uint32_t draw_count, uint32_t draw_stride)
+{
+    if (vulkan.currentPipeline == nullptr)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    if (vulkan.currentPassType != RT_MODULE_RENDER)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    auto* indirectNative = vk_buffer_native(indirect);
+    if (!indirectNative)
+        return;
+    vk_flush_descriptors();
+    vk_transition_buffer(*indirectNative, VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT, VK_ACCESS_INDIRECT_COMMAND_READ_BIT);
+    vk_bind_draw_vbos(vbo, vbo_num);
+    uint32_t stride = draw_stride ? draw_stride : (uint32_t)sizeof(VkDrawIndirectCommand);
+    vkCmdDrawIndirect(vulkan.cmdBuffer, indirectNative->handle, (VkDeviceSize)offset, draw_count, stride);
+}
+
 void vk_draw_index_indirect(rt_buffer_view_t vbo[], uint32_t vbo_num, rt_buffer_view_t& ebo, rt_buffer_t& indirect, size_t offset)
 {
     if (vulkan.currentPipeline == nullptr)
@@ -3323,6 +3365,32 @@ void vk_draw_index_indirect(rt_buffer_view_t vbo[], uint32_t vbo_num, rt_buffer_
     rt_module_render_t const& module = vk_current_render_module();
     vkCmdBindIndexBuffer(vulkan.cmdBuffer, indexNative->handle, (VkDeviceSize)ebo.offset, rt_to_vk_index_type(module.index_type));
     vkCmdDrawIndexedIndirect(vulkan.cmdBuffer, indirectNative->handle, (VkDeviceSize)offset, 1, sizeof(VkDrawIndexedIndirectCommand));
+}
+
+void vk_draw_index_indirect_multi(rt_buffer_view_t vbo[], uint32_t vbo_num, rt_buffer_view_t& ebo, rt_buffer_t& indirect, size_t offset, uint32_t draw_count, uint32_t draw_stride)
+{
+    if (vulkan.currentPipeline == nullptr)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    if (vulkan.currentPassType != RT_MODULE_RENDER)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    auto* indexNative = vk_buffer_native(ebo.buffer);
+    auto* indirectNative = vk_buffer_native(indirect);
+    if (!indexNative || !indirectNative)
+        return;
+    vk_flush_descriptors();
+    vk_transition_buffer(*indexNative, VK_PIPELINE_STAGE_VERTEX_INPUT_BIT, VK_ACCESS_INDEX_READ_BIT);
+    vk_transition_buffer(*indirectNative, VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT, VK_ACCESS_INDIRECT_COMMAND_READ_BIT);
+    vk_bind_draw_vbos(vbo, vbo_num);
+    rt_module_render_t const& module = vk_current_render_module();
+    vkCmdBindIndexBuffer(vulkan.cmdBuffer, indexNative->handle, (VkDeviceSize)ebo.offset, rt_to_vk_index_type(module.index_type));
+    uint32_t stride = draw_stride ? draw_stride : (uint32_t)sizeof(VkDrawIndexedIndirectCommand);
+    vkCmdDrawIndexedIndirect(vulkan.cmdBuffer, indirectNative->handle, (VkDeviceSize)offset, draw_count, stride);
 }
 
 void vk_draw_mesh_task(uint32_t groupX, uint32_t groupY, uint32_t groupZ)
@@ -3754,58 +3822,16 @@ void vk_draw_mesh(rt_mesh_t& mesh)
         vkCmdDraw(vulkan.cmdBuffer, vertex_count, 1, 0, 0);
 }
 
-rt_meshlet_t vk_create_meshlet(const float* vertices, const float* normals, const float* uvs, size_t vertex_count, const unsigned int* indices, size_t index_count)
-{
-    rt_meshlet_t result = {};
-    if (!vertices || vertex_count == 0) return result;
-    uint32_t handle = vulkan.meshletID + 1;
-    auto& native = vulkan.meshlets[handle];
-    native.vertexCount = (uint32_t)vertex_count;
-    native.indexCount = (uint32_t)index_count;
-    if (vertices)
-        result.vertex[0] = vk_create_buffer({.size = vertex_count * 4 * sizeof(float), .usages = RT_BUFFER_USAGE_STORAGE | RT_BUFFER_USAGE_COPY_DST, .data = vertices});
-    if (normals)
-        result.vertex[1] = vk_create_buffer({.size = vertex_count * 4 * sizeof(float), .usages = RT_BUFFER_USAGE_STORAGE | RT_BUFFER_USAGE_COPY_DST, .data = normals});
-    if (uvs)
-        result.vertex[2] = vk_create_buffer({.size = vertex_count * 2 * sizeof(float), .usages = RT_BUFFER_USAGE_STORAGE | RT_BUFFER_USAGE_COPY_DST, .data = uvs});
-    if (indices)
-        result.index = vk_create_buffer({.size = index_count * sizeof(uint32_t), .usages = RT_BUFFER_USAGE_STORAGE | RT_BUFFER_USAGE_COPY_DST, .data = indices});
-    std::iota(result.location, result.location + std::size(result.location), 0);
-    vulkan.meshletID = handle;
-    result.handle = handle;
-    result.native = &native;
-    return result;
-}
 
-void vk_destroy_meshlet(rt_meshlet_t& meshlet)
-{
-    for (auto& vertex : meshlet.vertex)
-        vk_destroy_buffer(vertex);
-    vk_destroy_buffer(meshlet.index);
-    vulkan.meshlets.erase(meshlet.handle);
-    meshlet.handle = 0;
-    meshlet.native = nullptr;
-}
 
-void vk_draw_meshlet(rt_meshlet_t& meshlet)
+void vk_draw_meshlet(rt_mesh_t& mesh)
 {
-    if (vulkan.currentPipeline == nullptr)
-    {
-        fprintf(stderr, "Pipeline not begin");
-        abort();
-    }
-    if (vulkan.currentPassType != RT_MODULE_RENDER)
-    {
-        fprintf(stderr, "Pipeline not begin");
-        abort();
-    }
-    (void)vk_current_render_module();
-    vk_flush_descriptors();
-    vk_begin_rendering();
-    auto* native = (vk_meshlet_native_t*)meshlet.native;
-    uint32_t tasks = native && native->indexCount ? native->indexCount / 3 : 1;
-    if (vulkan.fnDrawMeshTasksNV)
-        vulkan.fnDrawMeshTasksNV(vulkan.cmdBuffer, std::max(1u, tasks), 0);
+    if (!mesh.index.handle)
+        return;
+    rt_module_render_t const& module = vk_current_render_module();
+    uint32_t indexStride = rt_to_vk_index_size(module.index_type);
+    uint32_t tasks = indexStride ? (uint32_t)(mesh.index.size / indexStride) / 3 : 0;
+    vk_draw_mesh_task(tasks, 1, 1);
 }
 
 void vk_submit()

@@ -680,7 +680,6 @@ struct mt_module_native_t
 };
 
 struct mt_mesh_native_t { uint32_t vertexCount = 0, indexCount = 0; };
-struct mt_meshlet_native_t { uint32_t vertexCount = 0, indexCount = 0; };
 struct mt_pass_compute_native_t { uint32_t dummy = 0; };
 struct mt_pass_transfer_native_t { uint32_t dummy = 0; };
 
@@ -708,7 +707,7 @@ struct mt_staging_t
 struct mt_native_t
 {
     uint32_t bufferID = 0, textureID = 0, textureViewID = 0, samplerID = 0, layoutID = 0, bindingID = 0, moduleID = 0;
-    uint32_t meshID = 0, meshletID = 0, passID = 0;
+    uint32_t meshID = 0, passID = 0;
     rt_limits_t limits;
 
     std::map<uint32_t, mt_buffer_native_t> buffers;
@@ -719,7 +718,6 @@ struct mt_native_t
     std::map<uint32_t, mt_binding_native_t> bindings;
     std::map<uint32_t, mt_module_native_t> modules;
     std::map<uint32_t, mt_mesh_native_t> meshes;
-    std::map<uint32_t, mt_meshlet_native_t> meshlets;
     std::map<uint32_t, mt_pass_compute_native_t> computePasses;
     std::map<uint32_t, mt_pass_transfer_native_t> transferPasses;
     std::vector<MTL::Texture*> bindlessTextures;
@@ -1175,6 +1173,7 @@ void mt_load_library(MTL::Device* device, MTL::CommandQueue* queue)
     rt_bind_module_compute = mt_bind_module_compute;
     rt_dispatch_compute = mt_dispatch_compute;
     rt_dispatch_compute_indirect = mt_dispatch_compute_indirect;
+    rt_dispatch_compute_indirect_multi = mt_dispatch_compute_indirect_multi;
     rt_begin_render = mt_begin_render;
     rt_end_render = mt_end_render;
     rt_bind_module_render = mt_bind_module_render;
@@ -1207,10 +1206,10 @@ void mt_load_library(MTL::Device* device, MTL::CommandQueue* queue)
     rt_draw_array = mt_draw_array;
     rt_draw_index = mt_draw_index;
     rt_draw_array_indirect = mt_draw_array_indirect;
+    rt_draw_array_indirect_multi = mt_draw_array_indirect_multi;
     rt_draw_index_indirect = mt_draw_index_indirect;
+    rt_draw_index_indirect_multi = mt_draw_index_indirect_multi;
     rt_draw_mesh_multi = mt_draw_mesh_multi;
-    rt_create_meshlet = mt_create_meshlet;
-    rt_destroy_meshlet = mt_destroy_meshlet;
     rt_draw_meshlet = mt_draw_meshlet;
     rt_submit = mt_submit;
 
@@ -1299,7 +1298,6 @@ void mt_unload_library()
         mt_release(item.second.handle);
     metal.samplers.clear();
     metal.meshes.clear();
-    metal.meshlets.clear();
     metal.computePasses.clear();
     metal.transferPasses.clear();
     if (metal.ownsQueue) mt_release(metal.queue);
@@ -1308,7 +1306,7 @@ void mt_unload_library()
     metal.ownsQueue = false;
     metal.bufferID = metal.textureID = metal.textureViewID = metal.samplerID = 0;
     metal.layoutID = metal.bindingID = metal.moduleID = 0;
-    metal.meshID = metal.meshletID = metal.passID = 0;
+    metal.meshID = metal.passID = 0;
     metal.currentPassType = RT_MODULE_NONE;
     metal.currentPipeline = nullptr;
 
@@ -1340,6 +1338,7 @@ void mt_unload_library()
     if (rt_bind_module_compute == mt_bind_module_compute) rt_bind_module_compute = nullptr;
     if (rt_dispatch_compute == mt_dispatch_compute) rt_dispatch_compute = nullptr;
     if (rt_dispatch_compute_indirect == mt_dispatch_compute_indirect) rt_dispatch_compute_indirect = nullptr;
+    if (rt_dispatch_compute_indirect_multi == mt_dispatch_compute_indirect_multi) rt_dispatch_compute_indirect_multi = nullptr;
     if (rt_begin_render == mt_begin_render) rt_begin_render = nullptr;
     if (rt_end_render == mt_end_render) rt_end_render = nullptr;
     if (rt_bind_module_render == mt_bind_module_render) rt_bind_module_render = nullptr;
@@ -1372,10 +1371,10 @@ void mt_unload_library()
     if (rt_draw_array == mt_draw_array) rt_draw_array = nullptr;
     if (rt_draw_index == mt_draw_index) rt_draw_index = nullptr;
     if (rt_draw_array_indirect == mt_draw_array_indirect) rt_draw_array_indirect = nullptr;
+    if (rt_draw_array_indirect_multi == mt_draw_array_indirect_multi) rt_draw_array_indirect_multi = nullptr;
     if (rt_draw_index_indirect == mt_draw_index_indirect) rt_draw_index_indirect = nullptr;
+    if (rt_draw_index_indirect_multi == mt_draw_index_indirect_multi) rt_draw_index_indirect_multi = nullptr;
     if (rt_draw_mesh_multi == mt_draw_mesh_multi) rt_draw_mesh_multi = nullptr;
-    if (rt_create_meshlet == mt_create_meshlet) rt_create_meshlet = nullptr;
-    if (rt_destroy_meshlet == mt_destroy_meshlet) rt_destroy_meshlet = nullptr;
     if (rt_draw_meshlet == mt_draw_meshlet) rt_draw_meshlet = nullptr;
     if (rt_submit == mt_submit) rt_submit = nullptr;
 }
@@ -2144,6 +2143,37 @@ void mt_dispatch_compute_indirect(rt_buffer_t& indirect, size_t offset)
     metal.computeEncoder->dispatchThreadgroups(buf->handle, (NS::UInteger)offset, threads);
 }
 
+void mt_dispatch_compute_indirect_multi(rt_buffer_t& indirect, size_t offset, uint32_t dispatch_count, uint32_t dispatch_stride)
+{
+    if (metal.currentPipeline == nullptr)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    if (metal.currentPassType != RT_MODULE_COMPUTE)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    if (metal.currentComputeModule == nullptr)
+    {
+        fprintf(stderr, "Pipeline module not bound");
+        abort();
+    }
+    auto* buf = mt_buffer_native(indirect);
+    if (!buf || !buf->handle)
+        return;
+    mt_flush_descriptors();
+    mt_transition_buffer(*buf, MTL_STATE_SHADER_READ);
+    MTL::Size threads = MTL::Size::Make(1, 1, 1);
+    auto* native = mt_current_module_native();
+    if (native && native->computePipeline)
+        threads = MTL::Size::Make(native->computePipeline->threadExecutionWidth(), 1, 1);
+    uint32_t stride = dispatch_stride ? dispatch_stride : sizeof(uint32_t) * 3;
+    for (uint32_t i = 0; i < dispatch_count; ++i)
+        metal.computeEncoder->dispatchThreadgroups(buf->handle, (NS::UInteger)offset + (NS::UInteger)stride * i, threads);
+}
+
 static void mt_bind_draw_vbos(rt_buffer_view_t vbo[], uint32_t vbo_num)
 {
     rt_module_render_t const& module = mt_current_render_module();
@@ -2396,6 +2426,29 @@ void mt_draw_array_indirect(rt_buffer_view_t vbo[], uint32_t vbo_num, rt_buffer_
     metal.renderEncoder->drawPrimitives(mt_draw_primitive(), indirectNative->handle, (NS::UInteger)offset);
 }
 
+void mt_draw_array_indirect_multi(rt_buffer_view_t vbo[], uint32_t vbo_num, rt_buffer_t& indirect, size_t offset, uint32_t draw_count, uint32_t draw_stride)
+{
+    if (metal.currentPipeline == nullptr)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    if (metal.currentPassType != RT_MODULE_RENDER)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    auto* indirectNative = mt_buffer_native(indirect);
+    if (!indirectNative || !indirectNative->handle)
+        return;
+    mt_flush_descriptors();
+    mt_bind_draw_vbos(vbo, vbo_num);
+    mt_transition_buffer(*indirectNative, MTL_STATE_SHADER_READ);
+    uint32_t stride = draw_stride ? draw_stride : sizeof(uint32_t) * 4;
+    for (uint32_t i = 0; i < draw_count; ++i)
+        metal.renderEncoder->drawPrimitives(mt_draw_primitive(), indirectNative->handle, (NS::UInteger)offset + (NS::UInteger)stride * i);
+}
+
 void mt_draw_index_indirect(rt_buffer_view_t vbo[], uint32_t vbo_num, rt_buffer_view_t& ebo, rt_buffer_t& indirect, size_t offset)
 {
     if (metal.currentPipeline == nullptr)
@@ -2419,6 +2472,33 @@ void mt_draw_index_indirect(rt_buffer_view_t vbo[], uint32_t vbo_num, rt_buffer_
     metal.renderEncoder->drawIndexedPrimitives(mt_draw_primitive(),
         rt_to_mt_index_type(mt_current_render_module().index_type),
         indexNative->handle, (NS::UInteger)ebo.offset, indirectNative->handle, (NS::UInteger)offset);
+}
+
+void mt_draw_index_indirect_multi(rt_buffer_view_t vbo[], uint32_t vbo_num, rt_buffer_view_t& ebo, rt_buffer_t& indirect, size_t offset, uint32_t draw_count, uint32_t draw_stride)
+{
+    if (metal.currentPipeline == nullptr)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    if (metal.currentPassType != RT_MODULE_RENDER)
+    {
+        fprintf(stderr, "Pipeline not begin");
+        abort();
+    }
+    auto* indexNative = mt_buffer_native(ebo.buffer);
+    auto* indirectNative = mt_buffer_native(indirect);
+    if (!indexNative || !indexNative->handle || !indirectNative || !indirectNative->handle)
+        return;
+    mt_flush_descriptors();
+    mt_bind_draw_vbos(vbo, vbo_num);
+    mt_transition_buffer(*indexNative, MTL_STATE_INDEX);
+    mt_transition_buffer(*indirectNative, MTL_STATE_SHADER_READ);
+    uint32_t stride = draw_stride ? draw_stride : sizeof(uint32_t) * 5;
+    for (uint32_t i = 0; i < draw_count; ++i)
+        metal.renderEncoder->drawIndexedPrimitives(mt_draw_primitive(),
+            rt_to_mt_index_type(mt_current_render_module().index_type),
+            indexNative->handle, (NS::UInteger)ebo.offset, indirectNative->handle, (NS::UInteger)offset + (NS::UInteger)stride * i);
 }
 
 void mt_draw_mesh_task(uint32_t groupX, uint32_t groupY, uint32_t groupZ)
@@ -2813,56 +2893,16 @@ void mt_draw_mesh_multi(rt_mesh_t& mesh, uint32_t count)
     mt_draw_mesh_impl(mesh, std::max(1u, count));
 }
 
-rt_meshlet_t mt_create_meshlet(const float* vertices, const float* normals, const float* uvs, size_t vertex_count, const unsigned int* indices, size_t index_count)
-{
-    rt_meshlet_t result = {};
-    if (!vertices || vertex_count == 0) return result;
-    uint32_t handle = metal.meshletID + 1;
-    auto& native = metal.meshlets[handle];
-    native.vertexCount = (uint32_t)vertex_count;
-    native.indexCount = (uint32_t)index_count;
-    if (vertices)
-        result.vertex[0] = mt_create_buffer({.size = vertex_count * 4 * sizeof(float), .usages = RT_BUFFER_USAGE_STORAGE | RT_BUFFER_USAGE_COPY_DST, .data = vertices});
-    if (normals)
-        result.vertex[1] = mt_create_buffer({.size = vertex_count * 4 * sizeof(float), .usages = RT_BUFFER_USAGE_STORAGE | RT_BUFFER_USAGE_COPY_DST, .data = normals});
-    if (uvs)
-        result.vertex[2] = mt_create_buffer({.size = vertex_count * 2 * sizeof(float), .usages = RT_BUFFER_USAGE_STORAGE | RT_BUFFER_USAGE_COPY_DST, .data = uvs});
-    if (indices)
-        result.index = mt_create_buffer({.size = index_count * sizeof(uint32_t), .usages = RT_BUFFER_USAGE_STORAGE | RT_BUFFER_USAGE_COPY_DST, .data = indices});
-    std::iota(result.location, result.location + std::size(result.location), 0);
-    metal.meshletID = handle;
-    result.handle = handle;
-    result.native = &native;
-    return result;
-}
 
-void mt_destroy_meshlet(rt_meshlet_t& meshlet)
-{
-    for (auto& vertex : meshlet.vertex)
-        mt_destroy_buffer(vertex);
-    mt_destroy_buffer(meshlet.index);
-    metal.meshlets.erase(meshlet.handle);
-    meshlet.handle = 0;
-    meshlet.native = nullptr;
-}
 
-void mt_draw_meshlet(rt_meshlet_t& meshlet)
+void mt_draw_meshlet(rt_mesh_t& mesh)
 {
-    if (metal.currentPipeline == nullptr)
-    {
-        fprintf(stderr, "Pipeline not begin");
-        abort();
-    }
-    if (metal.currentPassType != RT_MODULE_RENDER)
-    {
-        fprintf(stderr, "Pipeline not begin");
-        abort();
-    }
-    (void)mt_current_render_module();
-    mt_flush_descriptors();
-    auto* native = (mt_meshlet_native_t*)meshlet.native;
-    uint32_t tasks = native && native->indexCount ? native->indexCount / 3 : 1;
-    metal.renderEncoder->drawMeshThreadgroups(MTL::Size::Make(std::max(1u, tasks), 1, 1), MTL::Size::Make(1, 1, 1), MTL::Size::Make(1, 1, 1));
+    if (!mesh.index.handle)
+        return;
+    rt_module_render_t const& module = mt_current_render_module();
+    uint32_t indexStride = rt_to_mt_index_size(module.index_type);
+    uint32_t tasks = indexStride ? (uint32_t)(mesh.index.size / indexStride) / 3 : 0;
+    mt_draw_mesh_task(tasks, 1, 1);
 }
 
 void mt_submit()
