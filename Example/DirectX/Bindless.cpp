@@ -36,12 +36,10 @@ static constexpr auto VS = R"(
         uint albedo;
     };
 
-    struct VSIn
-    {
-        float3 in_vertex : TEXCOORD0;
-        float3 in_normal : TEXCOORD1;
-        float2 in_uv : TEXCOORD2;
-    };
+    RWByteAddressBuffer indices : register(u2);
+    RWByteAddressBuffer positions : register(u3);
+    RWByteAddressBuffer normals : register(u4);
+    RWByteAddressBuffer uvs : register(u5);
 
     struct VSOut
     {
@@ -51,17 +49,21 @@ static constexpr auto VS = R"(
         float2 uv : TEXCOORD2;
     };
 
-    VSOut main(VSIn input)
+    VSOut main(uint vid : SV_VertexID)
     {
+        uint vertexId = indices.Load(vid * 4);
+        float3 inVertex = asfloat(positions.Load3(vertexId * 12));
+        float3 inNormal = asfloat(normals.Load3(vertexId * 12));
+        float2 inUv = asfloat(uvs.Load2(vertexId * 8));
         float4x4 meshMat = float4x4(
             float4(c0.x, c1.x, c2.x, translation.x),
             float4(c0.y, c1.y, c2.y, translation.y),
             float4(c0.z, c1.z, c2.z, translation.z),
             float4(c0.w, c1.w, c2.w, 1.0));
         VSOut output;
-        output.vertex = mul(meshMat, float4(input.in_vertex, 1)).xyz;
-        output.normal = mul(meshMat, float4(input.in_normal, 0)).xyz;
-        output.uv = input.in_uv;
+        output.vertex = mul(meshMat, float4(inVertex, 1)).xyz;
+        output.normal = mul(meshMat, float4(inNormal, 0)).xyz;
+        output.uv = inUv;
         output.position = mul(projView, float4(output.vertex, 1));
         return output;
     }
@@ -283,8 +285,15 @@ void frame(int width, int height)
     wait_present();
     static auto vs = compile_shader(VS, "vs_5_1");
     static auto fs = compile_shader(FS, "ps_5_1");
-    static auto layout = rt_create_layout({
-        .entry = {{.binding = 0, .type = RT_BINDING_UNIFORM_BUFFER}, {.binding = 1, .type = RT_BINDING_SAMPLER}},
+        static auto layout = rt_create_layout({
+        .entry = {
+            {.binding = 0, .type = RT_BINDING_UNIFORM_BUFFER},
+            {.binding = 1, .type = RT_BINDING_SAMPLER},
+            {.binding = 2, .stages = RT_STAGE_VERTEX, .type = RT_BINDING_STORAGE_BUFFER},
+            {.binding = 3, .stages = RT_STAGE_VERTEX, .type = RT_BINDING_STORAGE_BUFFER},
+            {.binding = 4, .stages = RT_STAGE_VERTEX, .type = RT_BINDING_STORAGE_BUFFER},
+            {.binding = 5, .stages = RT_STAGE_VERTEX, .type = RT_BINDING_STORAGE_BUFFER},
+        },
     });
     static auto module = rt_create_module_render({
         .layout = layout,
@@ -292,20 +301,74 @@ void frame(int width, int height)
         .fshader = {.code = (const char*)fs.data(), .size = (uint32_t)fs.size()},
         .colors = {{.format = RT_TEXTURE_RGBA8UNORM,}},
         .depth = {.write = true, .func = RT_LEQUAL,},
-        .vertex = {rt_vertex_vertex, rt_vertex_normal, rt_vertex_uv,},
     });
     static auto pass_color = rt_create_texture_color(width, height);
     static auto pass_depth = rt_create_texture_depth(width, height);
-    static auto cube = rt_create_mesh_cube(1.4f, 1.4f, 1.4f);
-    struct DrawIndexIndirect
+    static const float cubePositions[24 * 3] = {
+        -0.7f, -0.7f,  0.7f,  0.7f, -0.7f,  0.7f,  0.7f,  0.7f,  0.7f, -0.7f,  0.7f,  0.7f,
+         0.7f, -0.7f, -0.7f, -0.7f, -0.7f, -0.7f, -0.7f,  0.7f, -0.7f,  0.7f,  0.7f, -0.7f,
+        -0.7f,  0.7f,  0.7f,  0.7f,  0.7f,  0.7f,  0.7f,  0.7f, -0.7f, -0.7f,  0.7f, -0.7f,
+        -0.7f, -0.7f, -0.7f,  0.7f, -0.7f, -0.7f,  0.7f, -0.7f,  0.7f, -0.7f, -0.7f,  0.7f,
+         0.7f, -0.7f,  0.7f,  0.7f, -0.7f, -0.7f,  0.7f,  0.7f, -0.7f,  0.7f,  0.7f,  0.7f,
+        -0.7f, -0.7f, -0.7f, -0.7f, -0.7f,  0.7f, -0.7f,  0.7f,  0.7f, -0.7f,  0.7f, -0.7f,
+    };
+    static const float cubeNormals[24 * 3] = {
+        0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1,
+        0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1,
+        0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0,
+        0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0,
+        1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0,
+        -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0,
+    };
+    static const float cubeUvs[24 * 2] = {
+        0, 0, 1, 0, 1, 1, 0, 1,
+        0, 0, 1, 0, 1, 1, 0, 1,
+        0, 0, 1, 0, 1, 1, 0, 1,
+        0, 0, 1, 0, 1, 1, 0, 1,
+        0, 0, 1, 0, 1, 1, 0, 1,
+        0, 0, 1, 0, 1, 1, 0, 1,
+    };
+    static const uint32_t cubeIndices[36] = {
+        0, 1, 2, 0, 2, 3,
+        4, 5, 6, 4, 6, 7,
+        8, 9, 10, 8, 10, 11,
+        12, 13, 14, 12, 14, 15,
+        16, 17, 18, 16, 18, 19,
+        20, 21, 22, 20, 22, 23,
+    };
+    static auto positions = rt_create_buffer({.size = sizeof(cubePositions), .usages = RT_BUFFER_USAGE_STORAGE});
+    static auto normals = rt_create_buffer({.size = sizeof(cubeNormals), .usages = RT_BUFFER_USAGE_STORAGE});
+    static auto uvs = rt_create_buffer({.size = sizeof(cubeUvs), .usages = RT_BUFFER_USAGE_STORAGE});
+    static auto indices = rt_create_buffer({.size = sizeof(cubeIndices), .usages = RT_BUFFER_USAGE_STORAGE});
+    static bool geometryReady = false;
+    if (!geometryReady)
     {
-        uint32_t indexCount;
+        auto upload = [](const void* data, size_t size, rt_buffer_t& buffer)
+        {
+            rt_buffer_data_t source = {};
+            source.data = (const uint8_t*)data;
+            source.size = size;
+            rt_buffer_copy_t destination = {.buffer = buffer};
+            rt_copy_buffer_data(source, destination, size);
+        };
+        rt_pass_transfer_t transfer = {};
+        rt_begin_transfer(transfer);
+        upload(cubePositions, sizeof(cubePositions), positions);
+        upload(cubeNormals, sizeof(cubeNormals), normals);
+        upload(cubeUvs, sizeof(cubeUvs), uvs);
+        upload(cubeIndices, sizeof(cubeIndices), indices);
+        rt_end_transfer(transfer);
+        rt_submit();
+        geometryReady = true;
+    }
+    struct DrawArrayIndirect
+    {
+        uint32_t vertexCount;
         uint32_t instanceCount;
-        uint32_t firstIndex;
-        int32_t baseVertex;
+        uint32_t firstVertex;
         uint32_t firstInstance;
     };
-    static const DrawIndexIndirect draw = {(uint32_t)(cube.index.size / sizeof(uint32_t)), 1, 0, 0, 0};
+    static const DrawArrayIndirect draw = {36, 1, 0, 0};
     static auto indirect = rt_create_buffer({.size = sizeof(draw), .usages = RT_BUFFER_USAGE_INDIRECT, .data = &draw});
     static const char* files[] = {
         "../../Example/OpenGL/Default.png",
@@ -336,6 +399,10 @@ void frame(int width, int height)
         .entry = {
             {.binding = 0, .buffer = table},
             {.binding = 1, .sampler = samp},
+            {.binding = 2, .buffer = indices},
+            {.binding = 3, .buffer = positions},
+            {.binding = 4, .buffer = normals},
+            {.binding = 5, .buffer = uvs},
         },
     });
     if (auto* memory = rt_map_buffer(table, RT_WRITE_ONLY, 0, table.size))
@@ -358,9 +425,7 @@ void frame(int width, int height)
             meshMat = glm::rotate(meshMat, glm::radians(-18.0f), glm::vec3(1, 0, 0));
             Push push = make_push(projView, meshMat, (uint32_t)i);
             rt_push_constant((const uint8_t*)&push, sizeof(push));
-            rt_buffer_view_t vertex[] = {{.buffer = cube.vertex[0]}, {.buffer = cube.vertex[1]}, {.buffer = cube.vertex[2]}};
-            rt_buffer_view_t index = {.buffer = cube.index};
-            rt_draw_index_indirect(vertex, 3, index, indirect, 0, 1, 0);
+            rt_draw_array_indirect(nullptr, 0, indirect, 0, 1, 0);
         }
 
         rt_end_render(pass);

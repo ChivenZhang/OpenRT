@@ -67,12 +67,16 @@ void frame(int width, int height)
             mat4 viewMat;
             mat4 meshMat[];
         };
+        layout(std430, binding = 3) readonly buffer Indices
+        {
+            uint index[];
+        };
 
         void main()
         {
             drawId = uint(gl_DrawID);
             mat4 model = meshMat[drawId];
-            uint vertexId = uint(gl_VertexID);
+            uint vertexId = index[uint(gl_VertexID)];
             float* positionData = (float*)buffer(positions);
             float* normalData = (float*)buffer(normals);
             float* uvData = (float*)buffer(uvs);
@@ -140,6 +144,7 @@ void frame(int width, int height)
             {.binding = 0, .type = RT_BINDING_STORAGE_BUFFER},
             {.binding = 1, .type = RT_BINDING_STORAGE_BUFFER},
             {.binding = 2, .type = RT_BINDING_STORAGE_BUFFER},
+            {.binding = 3, .stages = RT_STAGE_VERTEX, .type = RT_BINDING_STORAGE_BUFFER},
         },
     });
     static auto module = rt_create_module_render({
@@ -185,20 +190,19 @@ void frame(int width, int height)
     static auto positions = rt_create_buffer({.size = sizeof(cubePositions), .usages = RT_BUFFER_USAGE_BINDLESS, .data = cubePositions});
     static auto normals = rt_create_buffer({.size = sizeof(cubeNormals), .usages = RT_BUFFER_USAGE_BINDLESS, .data = cubeNormals});
     static auto uvs = rt_create_buffer({.size = sizeof(cubeUvs), .usages = RT_BUFFER_USAGE_BINDLESS, .data = cubeUvs});
-    static auto indices = rt_create_buffer({.size = sizeof(cubeIndices), .usages = RT_BUFFER_USAGE_INDEX, .data = cubeIndices});
-    struct DrawIndexIndirect
+    static auto indices = rt_create_buffer({.size = sizeof(cubeIndices), .usages = RT_BUFFER_USAGE_STORAGE, .data = cubeIndices});
+    struct DrawArrayIndirect
     {
-        uint32_t indexCount;
+        uint32_t vertexCount;
         uint32_t instanceCount;
-        uint32_t firstIndex;
-        int32_t baseVertex;
+        uint32_t firstVertex;
         uint32_t firstInstance;
     };
-    static const DrawIndexIndirect draw[objectCount] = {
-        {36, 1, 0, 0, 0},
-        {36, 1, 0, 0, 0},
-        {36, 1, 0, 0, 0},
-        {36, 1, 0, 0, 0},
+    static const DrawArrayIndirect draw[objectCount] = {
+        {36, 1, 0, 0},
+        {36, 1, 0, 0},
+        {36, 1, 0, 0},
+        {36, 1, 0, 0},
     };
     static auto indirect = rt_create_buffer({.size = sizeof(draw), .usages = RT_BUFFER_USAGE_INDIRECT, .data = draw});
     static const uint32_t albedo[objectCount] = {0, 1, 2, 3};
@@ -240,6 +244,7 @@ void frame(int width, int height)
             {.binding = 0, .buffer = table},
             {.binding = 1, .buffer = materials},
             {.binding = 2, .buffer = transforms},
+            {.binding = 3, .buffer = indices},
         },
     });
     if (auto* memory = rt_map_buffer(table, RT_WRITE_ONLY, 0, table.size))
@@ -282,8 +287,7 @@ void frame(int width, int height)
         }
         rt_unmap_buffer(transforms);
     }
-    rt_buffer_view_t index = {.buffer = indices};
-    rt_draw_index_indirect(nullptr, 0, index, indirect, 0, objectCount, 0);
+    rt_draw_array_indirect(nullptr, 0, indirect, 0, objectCount, 0);
 
     rt_end_render(pass);
     present(width, height, pass_color);

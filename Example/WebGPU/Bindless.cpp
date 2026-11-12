@@ -29,6 +29,10 @@ static constexpr auto VS = R"(
         albedo: u32,
     }
     @group(0) @binding(16) var<uniform> push: Push;
+    @group(0) @binding(6) var<storage, read_write> indices: array<u32>;
+    @group(0) @binding(7) var<storage, read_write> positions: array<f32>;
+    @group(0) @binding(8) var<storage, read_write> normals: array<f32>;
+    @group(0) @binding(9) var<storage, read_write> uvs: array<f32>;
 
     struct VSOut {
         @builtin(position) position: vec4f,
@@ -38,12 +42,16 @@ static constexpr auto VS = R"(
     };
 
     @vertex
-    fn vs_main(@location(0) in_vertex: vec3f, @location(1) in_normal: vec3f, @location(2) in_uv: vec2f) -> VSOut {
+    fn vs_main(@builtin(vertex_index) vid: u32) -> VSOut {
+        let vertexId = indices[vid];
+        let inVertex = vec3f(positions[vertexId * 3u + 0u], positions[vertexId * 3u + 1u], positions[vertexId * 3u + 2u]);
+        let inNormal = vec3f(normals[vertexId * 3u + 0u], normals[vertexId * 3u + 1u], normals[vertexId * 3u + 2u]);
+        let inUv = vec2f(uvs[vertexId * 2u + 0u], uvs[vertexId * 2u + 1u]);
         let meshMat = mat4x4f(push.c0, push.c1, push.c2, vec4f(push.translation, 1.0));
         var output: VSOut;
-        output.world = (meshMat * vec4f(in_vertex, 1.0)).xyz;
-        output.normal = (meshMat * vec4f(in_normal, 0.0)).xyz;
-        output.uv = in_uv;
+        output.world = (meshMat * vec4f(inVertex, 1.0)).xyz;
+        output.normal = (meshMat * vec4f(inNormal, 0.0)).xyz;
+        output.uv = inUv;
         output.position = push.projView * vec4f(output.world, 1.0);
         return output;
     }
@@ -285,6 +293,10 @@ void frame(int width, int height)
             {.binding = 3, .type = RT_BINDING_TEXTURE},
             {.binding = 4, .type = RT_BINDING_TEXTURE},
             {.binding = 5, .type = RT_BINDING_TEXTURE},
+            {.binding = 6, .stages = RT_STAGE_VERTEX, .type = RT_BINDING_STORAGE_BUFFER},
+            {.binding = 7, .stages = RT_STAGE_VERTEX, .type = RT_BINDING_STORAGE_BUFFER},
+            {.binding = 8, .stages = RT_STAGE_VERTEX, .type = RT_BINDING_STORAGE_BUFFER},
+            {.binding = 9, .stages = RT_STAGE_VERTEX, .type = RT_BINDING_STORAGE_BUFFER},
         },
     });
     static auto module = rt_create_module_render({
@@ -293,7 +305,6 @@ void frame(int width, int height)
         .fshader = {.code = FS, .size = (uint32_t)strlen(FS), .entry = "fs_main"},
         .colors = {{.format = colorFormat,}},
         .depth = {.write = true, .func = RT_LEQUAL,},
-        .vertex = {rt_vertex_vertex, rt_vertex_normal, rt_vertex_uv,},
         .wind_mode = RT_CCW,
     });
     static auto pass_color = rt_create_texture({
@@ -303,16 +314,50 @@ void frame(int width, int height)
         .min_filter = RT_LINEAR, .mag_filter = RT_LINEAR,
     });
     static auto pass_depth = rt_create_texture_depth(width, height);
-    static auto cube = rt_create_mesh_cube(1.4f, 1.4f, 1.4f);
-    struct DrawIndexIndirect
+    static const float cubePositions[24 * 3] = {
+        -0.7f, -0.7f,  0.7f,  0.7f, -0.7f,  0.7f,  0.7f,  0.7f,  0.7f, -0.7f,  0.7f,  0.7f,
+         0.7f, -0.7f, -0.7f, -0.7f, -0.7f, -0.7f, -0.7f,  0.7f, -0.7f,  0.7f,  0.7f, -0.7f,
+        -0.7f,  0.7f,  0.7f,  0.7f,  0.7f,  0.7f,  0.7f,  0.7f, -0.7f, -0.7f,  0.7f, -0.7f,
+        -0.7f, -0.7f, -0.7f,  0.7f, -0.7f, -0.7f,  0.7f, -0.7f,  0.7f, -0.7f, -0.7f,  0.7f,
+         0.7f, -0.7f,  0.7f,  0.7f, -0.7f, -0.7f,  0.7f,  0.7f, -0.7f,  0.7f,  0.7f,  0.7f,
+        -0.7f, -0.7f, -0.7f, -0.7f, -0.7f,  0.7f, -0.7f,  0.7f,  0.7f, -0.7f,  0.7f, -0.7f,
+    };
+    static const float cubeNormals[24 * 3] = {
+        0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1,
+        0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1,
+        0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0,
+        0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0,
+        1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0,
+        -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0,
+    };
+    static const float cubeUvs[24 * 2] = {
+        0, 0, 1, 0, 1, 1, 0, 1,
+        0, 0, 1, 0, 1, 1, 0, 1,
+        0, 0, 1, 0, 1, 1, 0, 1,
+        0, 0, 1, 0, 1, 1, 0, 1,
+        0, 0, 1, 0, 1, 1, 0, 1,
+        0, 0, 1, 0, 1, 1, 0, 1,
+    };
+    static const uint32_t cubeIndices[36] = {
+        0, 1, 2, 0, 2, 3,
+        4, 5, 6, 4, 6, 7,
+        8, 9, 10, 8, 10, 11,
+        12, 13, 14, 12, 14, 15,
+        16, 17, 18, 16, 18, 19,
+        20, 21, 22, 20, 22, 23,
+    };
+    static auto positions = rt_create_buffer({.size = sizeof(cubePositions), .usages = RT_BUFFER_USAGE_STORAGE, .data = cubePositions});
+    static auto normals = rt_create_buffer({.size = sizeof(cubeNormals), .usages = RT_BUFFER_USAGE_STORAGE, .data = cubeNormals});
+    static auto uvs = rt_create_buffer({.size = sizeof(cubeUvs), .usages = RT_BUFFER_USAGE_STORAGE, .data = cubeUvs});
+    static auto indices = rt_create_buffer({.size = sizeof(cubeIndices), .usages = RT_BUFFER_USAGE_STORAGE, .data = cubeIndices});
+    struct DrawArrayIndirect
     {
-        uint32_t indexCount;
+        uint32_t vertexCount;
         uint32_t instanceCount;
-        uint32_t firstIndex;
-        int32_t baseVertex;
+        uint32_t firstVertex;
         uint32_t firstInstance;
     };
-    static const DrawIndexIndirect draw = {(uint32_t)(cube.index.size / sizeof(uint32_t)), 1, 0, 0, 0};
+    static const DrawArrayIndirect draw = {36, 1, 0, 0};
     static auto indirect = rt_create_buffer({.size = sizeof(draw), .usages = RT_BUFFER_USAGE_INDIRECT, .data = &draw});
     static const char* files[] = {
         "Example/OpenGL/Default.png",
@@ -347,6 +392,10 @@ void frame(int width, int height)
             {.binding = 3, .texture = textures[1].default_view},
             {.binding = 4, .texture = textures[2].default_view},
             {.binding = 5, .texture = textures[3].default_view},
+            {.binding = 6, .buffer = indices},
+            {.binding = 7, .buffer = positions},
+            {.binding = 8, .buffer = normals},
+            {.binding = 9, .buffer = uvs},
         },
     });
     if (auto* memory = rt_map_buffer(table, RT_WRITE_ONLY, 0, table.size))
@@ -372,9 +421,7 @@ void frame(int width, int height)
             meshMat = glm::rotate(meshMat, glm::radians(-18.0f), glm::vec3(1, 0, 0));
             Push push = make_push(projView, meshMat, (uint32_t)i);
             rt_push_constant((const uint8_t*)&push, sizeof(push));
-            rt_buffer_view_t vertex[] = {{.buffer = cube.vertex[0]}, {.buffer = cube.vertex[1]}, {.buffer = cube.vertex[2]}};
-            rt_buffer_view_t index = {.buffer = cube.index};
-            rt_draw_index_indirect(vertex, 3, index, indirect, 0, 1, 0);
+            rt_draw_array_indirect(nullptr, 0, indirect, 0, 1, 0);
         }
 
         rt_end_render(pass);

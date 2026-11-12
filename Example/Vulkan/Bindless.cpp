@@ -44,10 +44,14 @@
     {
         uint words[];
     } buffers[];
+    layout(std430, set = 0, binding = 2) readonly buffer Indices
+    {
+        uint index[];
+    };
 
     void main()
     {
-        uint vertexId = uint(gl_VertexIndex);
+        uint vertexId = index[uint(gl_VertexIndex)];
         uint positionBuffer = handles[4];
         uint normalBuffer = handles[5];
         uint uvBuffer = handles[6];
@@ -212,7 +216,11 @@ static void write_handles(void* memory, uint32_t stride, rt_texture_t const* tex
 void frame(int width, int height)
 {
     static auto layout = rt_create_layout({
-        .entry = {{.binding = 0, .type = RT_BINDING_STORAGE_BUFFER}, {.binding = 1, .type = RT_BINDING_SAMPLER}},
+        .entry = {
+            {.binding = 0, .type = RT_BINDING_STORAGE_BUFFER},
+            {.binding = 1, .type = RT_BINDING_SAMPLER},
+            {.binding = 2, .stages = RT_STAGE_VERTEX, .type = RT_BINDING_STORAGE_BUFFER},
+        },
     });
     static auto module = rt_create_module_render({
         .layout = layout,
@@ -258,16 +266,15 @@ void frame(int width, int height)
     static auto positions = rt_create_buffer({.size = sizeof(cubePositions), .usages = RT_BUFFER_USAGE_BINDLESS, .data = cubePositions});
     static auto normals = rt_create_buffer({.size = sizeof(cubeNormals), .usages = RT_BUFFER_USAGE_BINDLESS, .data = cubeNormals});
     static auto uvs = rt_create_buffer({.size = sizeof(cubeUvs), .usages = RT_BUFFER_USAGE_BINDLESS, .data = cubeUvs});
-    static auto indices = rt_create_buffer({.size = sizeof(cubeIndices), .usages = RT_BUFFER_USAGE_INDEX, .data = cubeIndices});
-    struct DrawIndexIndirect
+    static auto indices = rt_create_buffer({.size = sizeof(cubeIndices), .usages = RT_BUFFER_USAGE_STORAGE, .data = cubeIndices});
+    struct DrawArrayIndirect
     {
-        uint32_t indexCount;
+        uint32_t vertexCount;
         uint32_t instanceCount;
-        uint32_t firstIndex;
-        int32_t baseVertex;
+        uint32_t firstVertex;
         uint32_t firstInstance;
     };
-    static const DrawIndexIndirect draw = {36, 1, 0, 0, 0};
+    static const DrawArrayIndirect draw = {36, 1, 0, 0};
     static auto indirect = rt_create_buffer({.size = sizeof(draw), .usages = RT_BUFFER_USAGE_INDIRECT, .data = &draw});
     static const char* files[] = {
         "../../Example/OpenGL/Default.png",
@@ -298,6 +305,7 @@ void frame(int width, int height)
         .entry = {
             {.binding = 0, .buffer = table},
             {.binding = 1, .sampler = samp},
+            {.binding = 2, .buffer = indices},
         },
     });
     if (auto* memory = rt_map_buffer(table, RT_WRITE_ONLY, 0, table.size))
@@ -321,8 +329,7 @@ void frame(int width, int height)
             meshMat = glm::rotate(meshMat, glm::radians(-18.0f), glm::vec3(1, 0, 0));
             Push push = make_push(projView, meshMat, (uint32_t)i);
             rt_push_constant((const uint8_t*)&push, sizeof(push));
-            rt_buffer_view_t index = {.buffer = indices};
-            rt_draw_index_indirect(nullptr, 0, index, indirect, 0, 1, 0);
+            rt_draw_array_indirect(nullptr, 0, indirect, 0, 1, 0);
         }
 
         rt_end_render(pass);

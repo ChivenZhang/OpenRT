@@ -1333,6 +1333,8 @@ rt_buffer_t dx_create_buffer(rt_buffer_info_t const& info)
     desc.MipLevels = 1;
     desc.SampleDesc.Count = 1;
     desc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+    if ((info.usages & RT_BUFFER_USAGE_STORAGE) && native.heap != D3D12_HEAP_TYPE_UPLOAD)
+        desc.Flags |= D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
     D3D12_RESOURCE_STATES init = (native.heap == D3D12_HEAP_TYPE_UPLOAD) ?
         D3D12_RESOURCE_STATE_GENERIC_READ : D3D12_RESOURCE_STATE_COMMON;
     if (FAILED(direct.device->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &desc, init, nullptr, IID_PPV_ARGS(&native.handle))))
