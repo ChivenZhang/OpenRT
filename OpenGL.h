@@ -28,7 +28,7 @@ void gl_destroy_texture(rt_texture_t& texture);
 
 rt_texture_view_t gl_create_texture_view(rt_texture_t& texture, rt_texture_view_info_t const& info);
 void gl_destroy_texture_view(rt_texture_view_t& view);
-void gl_bind_texture_view(rt_texture_view_t& view, rt_texture_view_bind_t bind = {});
+void gl_bind_texture_view(rt_binding_entry_t& entry);
 
 rt_sampler_t gl_create_sampler(rt_sampler_info_t const& info);
 void gl_destroy_sampler(rt_sampler_t& sampler);

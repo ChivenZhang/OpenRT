@@ -1356,17 +1356,16 @@ void wg_destroy_texture_view(rt_texture_view_t& view)
     view = {};
 }
 
-void wg_bind_texture_view(rt_texture_view_t& view, rt_texture_view_bind_t bind)
+void wg_bind_texture_view(rt_binding_entry_t& entry)
 {
     if (webgpu.currentPipeline == nullptr)
     {
         fprintf(stderr, "Pipeline not begin");
         abort();
     }
-    webgpu.currentBinding[bind.binding].type = RT_BINDING_TEXTURE;
-    webgpu.currentBinding[bind.binding].texture_view = view;
-    webgpu.currentBinding[bind.binding].texture_bind = {};
-    webgpu.currentBinding[bind.binding].texture_bind.binding = bind.binding;
+    webgpu.currentBinding[entry.binding].type = RT_BINDING_TEXTURE;
+    webgpu.currentBinding[entry.binding].texture_view = entry.texture;
+    webgpu.currentBinding[entry.binding].texture_bind = entry.texture_bind;
 }
 
 

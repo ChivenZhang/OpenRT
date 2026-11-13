@@ -1714,17 +1714,16 @@ void dx_destroy_texture_view(rt_texture_view_t& view)
     view = {};
 }
 
-void dx_bind_texture_view(rt_texture_view_t& view, rt_texture_view_bind_t bind)
+void dx_bind_texture_view(rt_binding_entry_t& entry)
 {
     if (direct.currentPipeline == nullptr)
     {
         fprintf(stderr, "Pipeline not begin");
         abort();
     }
-    direct.currentBinding[bind.binding].type = RT_BINDING_TEXTURE;
-    direct.currentBinding[bind.binding].texture_view = view;
-    direct.currentBinding[bind.binding].texture_bind = {};
-    direct.currentBinding[bind.binding].texture_bind.binding = bind.binding;
+    direct.currentBinding[entry.binding].type = RT_BINDING_TEXTURE;
+    direct.currentBinding[entry.binding].texture_view = entry.texture;
+    direct.currentBinding[entry.binding].texture_bind = entry.texture_bind;
 }
 
 

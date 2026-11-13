@@ -2244,17 +2244,16 @@ void vk_destroy_texture_view(rt_texture_view_t& view)
     view = {};
 }
 
-void vk_bind_texture_view(rt_texture_view_t& view, rt_texture_view_bind_t bind)
+void vk_bind_texture_view(rt_binding_entry_t& entry)
 {
     if (vulkan.currentPipeline == nullptr)
     {
         fprintf(stderr, "Pipeline not begin");
         abort();
     }
-    vulkan.currentBinding[bind.binding].type = RT_BINDING_TEXTURE;
-    vulkan.currentBinding[bind.binding].texture_view = view;
-    vulkan.currentBinding[bind.binding].texture_bind = {};
-    vulkan.currentBinding[bind.binding].texture_bind.binding = bind.binding;
+    vulkan.currentBinding[entry.binding].type = RT_BINDING_TEXTURE;
+    vulkan.currentBinding[entry.binding].texture_view = entry.texture;
+    vulkan.currentBinding[entry.binding].texture_bind = entry.texture_bind;
 }
 
 

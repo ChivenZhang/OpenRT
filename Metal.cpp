@@ -1734,17 +1734,16 @@ void mt_destroy_texture_view(rt_texture_view_t& view)
     view = {};
 }
 
-void mt_bind_texture_view(rt_texture_view_t& view, rt_texture_view_bind_t bind)
+void mt_bind_texture_view(rt_binding_entry_t& entry)
 {
     if (metal.currentPipeline == nullptr)
     {
         fprintf(stderr, "Pipeline not begin");
         abort();
     }
-    metal.currentBinding[bind.binding].type = RT_BINDING_TEXTURE;
-    metal.currentBinding[bind.binding].texture_view = view;
-    metal.currentBinding[bind.binding].texture_bind = {};
-    metal.currentBinding[bind.binding].texture_bind.binding = bind.binding;
+    metal.currentBinding[entry.binding].type = RT_BINDING_TEXTURE;
+    metal.currentBinding[entry.binding].texture_view = entry.texture;
+    metal.currentBinding[entry.binding].texture_bind = entry.texture_bind;
 }
 
 

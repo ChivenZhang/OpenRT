@@ -1376,16 +1376,16 @@ void gl_destroy_texture_view(rt_texture_view_t& view)
     view = {};
 }
 
-void gl_bind_texture_view(rt_texture_view_t& view, rt_texture_view_bind_t bind)
+void gl_bind_texture_view(rt_binding_entry_t& entry)
 {
     if (opengl.currentPipeline == nullptr)
     {
         fprintf(stderr, "Pipeline not begin");
         abort();
     }
-    GLenum target = rt_to_gl_texture_target(view.target);
-    glActiveTexture(GL_TEXTURE0 + bind.binding);
-    glBindTexture(target, gl_texture_view_name(view));
+    GLenum target = rt_to_gl_texture_target(entry.texture.target);
+    glActiveTexture(GL_TEXTURE0 + entry.binding);
+    glBindTexture(target, gl_texture_view_name(entry.texture));
 }
 
 
