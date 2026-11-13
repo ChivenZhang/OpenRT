@@ -1488,7 +1488,6 @@ void vk_load_library(VkInstance instance, VkPhysicalDevice physical, VkDevice de
     rt_destroy_texture = vk_destroy_texture;
     rt_create_texture_view = vk_create_texture_view;
     rt_destroy_texture_view = vk_destroy_texture_view;
-    rt_bind_texture_view = vk_bind_texture_view;
     rt_create_sampler = vk_create_sampler;
     rt_destroy_sampler = vk_destroy_sampler;
     rt_create_layout = vk_create_layout;
@@ -1696,7 +1695,6 @@ void vk_unload_library()
     if (rt_destroy_texture == vk_destroy_texture) rt_destroy_texture = nullptr;
     if (rt_create_texture_view == vk_create_texture_view) rt_create_texture_view = nullptr;
     if (rt_destroy_texture_view == vk_destroy_texture_view) rt_destroy_texture_view = nullptr;
-    if (rt_bind_texture_view == vk_bind_texture_view) rt_bind_texture_view = nullptr;
     if (rt_create_sampler == vk_create_sampler) rt_create_sampler = nullptr;
     if (rt_destroy_sampler == vk_destroy_sampler) rt_destroy_sampler = nullptr;
     if (rt_create_layout == vk_create_layout) rt_create_layout = nullptr;
@@ -2243,19 +2241,6 @@ void vk_destroy_texture_view(rt_texture_view_t& view)
     }
     view = {};
 }
-
-void vk_bind_texture_view(rt_binding_entry_t& entry)
-{
-    if (vulkan.currentPipeline == nullptr)
-    {
-        fprintf(stderr, "Pipeline not begin");
-        abort();
-    }
-    vulkan.currentBinding[entry.binding].type = RT_BINDING_TEXTURE;
-    vulkan.currentBinding[entry.binding].texture_view = entry.texture;
-    vulkan.currentBinding[entry.binding].texture_bind = entry.texture_bind;
-}
-
 
 rt_sampler_t vk_create_sampler(rt_sampler_info_t const& info)
 {

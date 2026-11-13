@@ -1156,7 +1156,6 @@ void mt_load_library(MTL::Device* device, MTL::CommandQueue* queue)
     rt_destroy_texture = mt_destroy_texture;
     rt_create_texture_view = mt_create_texture_view;
     rt_destroy_texture_view = mt_destroy_texture_view;
-    rt_bind_texture_view = mt_bind_texture_view;
     rt_create_sampler = mt_create_sampler;
     rt_destroy_sampler = mt_destroy_sampler;
     rt_create_layout = mt_create_layout;
@@ -1319,7 +1318,6 @@ void mt_unload_library()
     if (rt_destroy_texture == mt_destroy_texture) rt_destroy_texture = nullptr;
     if (rt_create_texture_view == mt_create_texture_view) rt_create_texture_view = nullptr;
     if (rt_destroy_texture_view == mt_destroy_texture_view) rt_destroy_texture_view = nullptr;
-    if (rt_bind_texture_view == mt_bind_texture_view) rt_bind_texture_view = nullptr;
     if (rt_create_sampler == mt_create_sampler) rt_create_sampler = nullptr;
     if (rt_destroy_sampler == mt_destroy_sampler) rt_destroy_sampler = nullptr;
     if (rt_create_layout == mt_create_layout) rt_create_layout = nullptr;
@@ -1733,19 +1731,6 @@ void mt_destroy_texture_view(rt_texture_view_t& view)
     }
     view = {};
 }
-
-void mt_bind_texture_view(rt_binding_entry_t& entry)
-{
-    if (metal.currentPipeline == nullptr)
-    {
-        fprintf(stderr, "Pipeline not begin");
-        abort();
-    }
-    metal.currentBinding[entry.binding].type = RT_BINDING_TEXTURE;
-    metal.currentBinding[entry.binding].texture_view = entry.texture;
-    metal.currentBinding[entry.binding].texture_bind = entry.texture_bind;
-}
-
 
 rt_sampler_t mt_create_sampler(rt_sampler_info_t const& info)
 {

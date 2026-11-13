@@ -848,7 +848,6 @@ void wg_load_library(WGPUDevice device, WGPUQueue queue)
     rt_destroy_texture = wg_destroy_texture;
     rt_create_texture_view = wg_create_texture_view;
     rt_destroy_texture_view = wg_destroy_texture_view;
-    rt_bind_texture_view = wg_bind_texture_view;
     rt_create_sampler = wg_create_sampler;
     rt_destroy_sampler = wg_destroy_sampler;
     rt_create_layout = wg_create_layout;
@@ -1027,7 +1026,6 @@ void wg_unload_library()
     if (rt_destroy_texture == wg_destroy_texture) rt_destroy_texture = nullptr;
     if (rt_create_texture_view == wg_create_texture_view) rt_create_texture_view = nullptr;
     if (rt_destroy_texture_view == wg_destroy_texture_view) rt_destroy_texture_view = nullptr;
-    if (rt_bind_texture_view == wg_bind_texture_view) rt_bind_texture_view = nullptr;
     if (rt_create_sampler == wg_create_sampler) rt_create_sampler = nullptr;
     if (rt_destroy_sampler == wg_destroy_sampler) rt_destroy_sampler = nullptr;
     if (rt_create_layout == wg_create_layout) rt_create_layout = nullptr;
@@ -1355,19 +1353,6 @@ void wg_destroy_texture_view(rt_texture_view_t& view)
         webgpu.textureViews.erase(view.handle);
     view = {};
 }
-
-void wg_bind_texture_view(rt_binding_entry_t& entry)
-{
-    if (webgpu.currentPipeline == nullptr)
-    {
-        fprintf(stderr, "Pipeline not begin");
-        abort();
-    }
-    webgpu.currentBinding[entry.binding].type = RT_BINDING_TEXTURE;
-    webgpu.currentBinding[entry.binding].texture_view = entry.texture;
-    webgpu.currentBinding[entry.binding].texture_bind = entry.texture_bind;
-}
-
 
 rt_sampler_t wg_create_sampler(rt_sampler_info_t const& info)
 {

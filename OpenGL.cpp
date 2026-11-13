@@ -666,7 +666,6 @@ void gl_load_library()
     rt_destroy_texture = gl_destroy_texture;
     rt_create_texture_view = gl_create_texture_view;
     rt_destroy_texture_view = gl_destroy_texture_view;
-    rt_bind_texture_view = gl_bind_texture_view;
     rt_create_sampler = gl_create_sampler;
     rt_destroy_sampler = gl_destroy_sampler;
     rt_create_layout = gl_create_layout;
@@ -843,7 +842,6 @@ void gl_unload_library()
     if(rt_destroy_texture == gl_destroy_texture) rt_destroy_texture = nullptr;
     if(rt_create_texture_view == gl_create_texture_view) rt_create_texture_view = nullptr;
     if(rt_destroy_texture_view == gl_destroy_texture_view) rt_destroy_texture_view = nullptr;
-    if(rt_bind_texture_view == gl_bind_texture_view) rt_bind_texture_view = nullptr;
     if(rt_create_sampler == gl_create_sampler) rt_create_sampler = nullptr;
     if(rt_destroy_sampler == gl_destroy_sampler) rt_destroy_sampler = nullptr;
     if(rt_create_layout == gl_create_layout) rt_create_layout = nullptr;
@@ -1375,19 +1373,6 @@ void gl_destroy_texture_view(rt_texture_view_t& view)
     }
     view = {};
 }
-
-void gl_bind_texture_view(rt_binding_entry_t& entry)
-{
-    if (opengl.currentPipeline == nullptr)
-    {
-        fprintf(stderr, "Pipeline not begin");
-        abort();
-    }
-    GLenum target = rt_to_gl_texture_target(entry.texture.target);
-    glActiveTexture(GL_TEXTURE0 + entry.binding);
-    glBindTexture(target, gl_texture_view_name(entry.texture));
-}
-
 
 // ====================================================================
 

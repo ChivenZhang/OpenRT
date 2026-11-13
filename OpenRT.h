@@ -961,7 +961,6 @@ OPENRT_API void (*rt_destroy_texture)(rt_texture_t& texture);
 
 OPENRT_API rt_texture_view_t (*rt_create_texture_view)(rt_texture_t& texture, rt_texture_view_info_t const& info);
 OPENRT_API void (*rt_destroy_texture_view)(rt_texture_view_t& view);
-OPENRT_API void (*rt_bind_texture_view)(rt_binding_entry_t& entry);
 
 OPENRT_API rt_sampler_t (*rt_create_sampler)(rt_sampler_info_t const& info);
 OPENRT_API void (*rt_destroy_sampler)(rt_sampler_t& sampler);
@@ -1000,6 +999,7 @@ OPENRT_API void (*rt_draw_mesh_task)(uint32_t groupX, uint32_t groupY, uint32_t 
 OPENRT_API void (*rt_draw_mesh_task_indirect)(rt_buffer_t& indirect, size_t offset, uint32_t draw_count, uint32_t draw_stride);
 
 OPENRT_API void (*rt_push_constant)(uint8_t const* buffer, size_t length);
+//[[deprecated]] !!!
 OPENRT_API void (*rt_push_const_int)(const char* name, int32_t value);
 OPENRT_API void (*rt_push_const_uint)(const char* name, uint32_t value);
 OPENRT_API void (*rt_push_const_float)(const char* name, float value);
@@ -1008,6 +1008,7 @@ OPENRT_API void (*rt_push_const_vec3)(const char* name, const float* value);
 OPENRT_API void (*rt_push_const_vec4)(const char* name, const float* value);
 OPENRT_API void (*rt_push_const_mat3)(const char* name, const float* value);
 OPENRT_API void (*rt_push_const_mat4)(const char* name, const float* value);
+//^^^^^^^^^^^^^^^^^^
 
 OPENRT_API void (*rt_begin_transfer)(rt_pass_transfer_t& pass);
 OPENRT_API void (*rt_end_transfer)(rt_pass_transfer_t& pass);

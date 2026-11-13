@@ -97,7 +97,6 @@ void (*rt_destroy_texture)(rt_texture_t& texture) = nullptr;
 
 rt_texture_view_t (*rt_create_texture_view)(rt_texture_t& texture, rt_texture_view_info_t const& info) = nullptr;
 void (*rt_destroy_texture_view)(rt_texture_view_t& view) = nullptr;
-void (*rt_bind_texture_view)(rt_binding_entry_t& entry) = nullptr;
 
 rt_sampler_t (*rt_create_sampler)(rt_sampler_info_t const& info) = nullptr;
 void (*rt_destroy_sampler)(rt_sampler_t& sampler) = nullptr;

@@ -1048,7 +1048,6 @@ void dx_load_library(ID3D12Device* device, ID3D12CommandQueue* queue)
     rt_destroy_texture = dx_destroy_texture;
     rt_create_texture_view = dx_create_texture_view;
     rt_destroy_texture_view = dx_destroy_texture_view;
-    rt_bind_texture_view = dx_bind_texture_view;
     rt_create_sampler = dx_create_sampler;
     rt_destroy_sampler = dx_destroy_sampler;
     rt_create_layout = dx_create_layout;
@@ -1242,7 +1241,6 @@ void dx_unload_library()
     if (rt_destroy_texture == dx_destroy_texture) rt_destroy_texture = nullptr;
     if (rt_create_texture_view == dx_create_texture_view) rt_create_texture_view = nullptr;
     if (rt_destroy_texture_view == dx_destroy_texture_view) rt_destroy_texture_view = nullptr;
-    if (rt_bind_texture_view == dx_bind_texture_view) rt_bind_texture_view = nullptr;
     if (rt_create_sampler == dx_create_sampler) rt_create_sampler = nullptr;
     if (rt_destroy_sampler == dx_destroy_sampler) rt_destroy_sampler = nullptr;
     if (rt_create_layout == dx_create_layout) rt_create_layout = nullptr;
@@ -1713,19 +1711,6 @@ void dx_destroy_texture_view(rt_texture_view_t& view)
     }
     view = {};
 }
-
-void dx_bind_texture_view(rt_binding_entry_t& entry)
-{
-    if (direct.currentPipeline == nullptr)
-    {
-        fprintf(stderr, "Pipeline not begin");
-        abort();
-    }
-    direct.currentBinding[entry.binding].type = RT_BINDING_TEXTURE;
-    direct.currentBinding[entry.binding].texture_view = entry.texture;
-    direct.currentBinding[entry.binding].texture_bind = entry.texture_bind;
-}
-
 
 rt_sampler_t dx_create_sampler(rt_sampler_info_t const& info)
 {
