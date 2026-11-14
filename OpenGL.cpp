@@ -1201,6 +1201,15 @@ rt_texture_t gl_create_texture(rt_texture_info_t const& info)
         glTexParameteri(glTarget, GL_TEXTURE_MAG_FILTER, rt_to_gl_filter(info.mag_filter));
         glTexParameteri(glTarget, GL_TEXTURE_BASE_LEVEL, 0);
         glTexParameteri(glTarget, GL_TEXTURE_MAX_LEVEL, (GLint)(mipmaps - 1));
+        if (info.min_filter == RT_LINEAR || info.min_filter == RT_LINEAR_MIPMAP_NEAREST || info.min_filter == RT_LINEAR_MIPMAP_LINEAR)
+        {
+            if (GLEW_EXT_texture_filter_anisotropic)
+            {
+                GLfloat maximum = 1.0f;
+                glGetFloatv(GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT, &maximum);
+                if (maximum > 1.0f) glTexParameterf(glTarget, GL_TEXTURE_MAX_ANISOTROPY_EXT, maximum < 16.0f ? maximum : 16.0f);
+            }
+        }
 
         if (info.address_u == RT_CLAMP_TO_BORDER || info.address_v == RT_CLAMP_TO_BORDER || info.address_w == RT_CLAMP_TO_BORDER)
         {
@@ -1326,12 +1335,34 @@ rt_texture_view_t gl_create_texture_view(rt_texture_t& texture, rt_texture_view_
         opengl.textureViews.erase(handle);
         return result;
     }
-    if (rt_texture_has_depth(result.format) || rt_texture_has_stencil(result.format))
+    if (result.target != RT_TEXTURE_2D_MULTISAMPLE)
     {
         auto glTarget = rt_to_gl_texture_target(info.target);
-        GLenum mode = result.aspect == RT_TEXTURE_ASPECT_STENCIL ? GL_STENCIL_INDEX : GL_DEPTH_COMPONENT;
         glBindTexture(glTarget, native.handle);
-        glTexParameteri(glTarget, GL_DEPTH_STENCIL_TEXTURE_MODE, mode);
+        if (rt_texture_has_depth(result.format) || rt_texture_has_stencil(result.format))
+        {
+            GLenum mode = result.aspect == RT_TEXTURE_ASPECT_STENCIL ? GL_STENCIL_INDEX : GL_DEPTH_COMPONENT;
+            glTexParameteri(glTarget, GL_DEPTH_STENCIL_TEXTURE_MODE, mode);
+        }
+        // Views do not inherit sampler state. Bindless handles and unbound samplers both read it from here.
+        glTexParameteri(glTarget, GL_TEXTURE_MIN_FILTER, rt_to_gl_filter(texture.min_filter));
+        glTexParameteri(glTarget, GL_TEXTURE_MAG_FILTER, rt_to_gl_filter(texture.mag_filter));
+        glTexParameteri(glTarget, GL_TEXTURE_WRAP_S, rt_to_gl_address(texture.address_u));
+        glTexParameteri(glTarget, GL_TEXTURE_WRAP_T, rt_to_gl_address(texture.address_v));
+        glTexParameteri(glTarget, GL_TEXTURE_WRAP_R, rt_to_gl_address(texture.address_w));
+        glTexParameteri(glTarget, GL_TEXTURE_BASE_LEVEL, 0);
+        glTexParameteri(glTarget, GL_TEXTURE_MAX_LEVEL, (GLint)(levelCount - 1));
+        if (texture.min_filter == RT_LINEAR || texture.min_filter == RT_LINEAR_MIPMAP_NEAREST || texture.min_filter == RT_LINEAR_MIPMAP_LINEAR)
+        {
+            if (GLEW_EXT_texture_filter_anisotropic)
+            {
+                GLfloat maximum = 1.0f;
+                glGetFloatv(GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT, &maximum);
+                if (maximum > 1.0f) glTexParameterf(glTarget, GL_TEXTURE_MAX_ANISOTROPY_EXT, maximum < 16.0f ? maximum : 16.0f);
+            }
+        }
+        if (texture.address_u == RT_CLAMP_TO_BORDER || texture.address_v == RT_CLAMP_TO_BORDER || texture.address_w == RT_CLAMP_TO_BORDER)
+            glTexParameterfv(glTarget, GL_TEXTURE_BORDER_COLOR, texture.border);
         glBindTexture(glTarget, 0);
     }
     native.texture = parentTex;
@@ -1340,18 +1371,6 @@ rt_texture_view_t gl_create_texture_view(rt_texture_t& texture, rt_texture_view_
     result.native = &native;
     if ((usages & RT_TEXTURE_USAGE_TEXTURE_BINDLESS) && GLEW_ARB_bindless_texture && native.handle && result.target != RT_TEXTURE_2D_MULTISAMPLE)
     {
-        auto glTarget = rt_to_gl_texture_target(info.target);
-        glBindTexture(glTarget, native.handle);
-        glTexParameteri(glTarget, GL_TEXTURE_MIN_FILTER, rt_to_gl_filter(texture.min_filter));
-        glTexParameteri(glTarget, GL_TEXTURE_MAG_FILTER, rt_to_gl_filter(texture.mag_filter));
-        glTexParameteri(glTarget, GL_TEXTURE_WRAP_S, rt_to_gl_address(texture.address_u));
-        glTexParameteri(glTarget, GL_TEXTURE_WRAP_T, rt_to_gl_address(texture.address_v));
-        glTexParameteri(glTarget, GL_TEXTURE_WRAP_R, rt_to_gl_address(texture.address_w));
-        glTexParameteri(glTarget, GL_TEXTURE_MAX_LEVEL, (GLint)(levelCount - 1));
-        if (texture.address_u == RT_CLAMP_TO_BORDER || texture.address_v == RT_CLAMP_TO_BORDER || texture.address_w == RT_CLAMP_TO_BORDER)
-            glTexParameterfv(glTarget, GL_TEXTURE_BORDER_COLOR, texture.border);
-        glBindTexture(glTarget, 0);
-
         if (GLuint64 bindless = glGetTextureHandleARB(native.handle))
         {
             glMakeTextureHandleResidentARB(bindless);
